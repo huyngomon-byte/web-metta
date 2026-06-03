@@ -10,7 +10,8 @@ import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseOptions } from '@/hooks/useCms';
-import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
+import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
 import { canAssignLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
@@ -59,18 +60,22 @@ function warmthTone(percent: number) {
   return 'border-red-200 bg-red-50 text-red-700';
 }
 
-function numericInputValue(value?: number) {
-  return value === undefined || value === null ? '' : String(value);
+function quoteValue(lead: Partial<Lead>) {
+  return expectedRevenueAmount(lead);
 }
 
-function parseMoneyInput(value: string) {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+function wonValue(lead: Partial<Lead>) {
+  return revenueAmount(lead);
 }
 
-function dealValue(lead: Partial<Lead>) {
-  return lead.expectedRevenue ?? lead.dealSize;
+function applyFinanceDefaults<T extends Partial<Lead>>(lead: T): T {
+  if (lead.status !== DEAL_QUOTED_STATUS && lead.status !== WON_LEAD_STATUS) return lead;
+  const finance = financeDefaultsForLead(lead);
+  return {
+    ...lead,
+    ...finance,
+    ...(lead.status === WON_LEAD_STATUS ? { revenue: lead.revenue || finance.expectedRevenue } : {}),
+  };
 }
 
 function appointmentStatusLabel(status: Appointment['status']) {
@@ -167,7 +172,7 @@ export default function LeadDetailPage() {
     }
 
     const selectedSales = salesOptions.find((sales) => sales.id === currentLead.assignedTo);
-    const normalizedLead: LeadDetailDraft = {
+    let normalizedLead: LeadDetailDraft = {
       ...currentLead,
       fullName: displayName,
       assignedToName: canAssign ? (selectedSales?.fullName || '') : currentLead.assignedToName,
@@ -177,6 +182,7 @@ export default function LeadDetailPage() {
       followUpDate: currentLead.appointmentKind === APPT_CALLBACK ? currentLead.appointmentTime : '',
       consultationDate: currentLead.appointmentKind === APPT_CONSULTATION || currentLead.appointmentKind === APPT_TEST ? currentLead.appointmentTime : '',
     } as LeadDetailDraft;
+    normalizedLead = applyFinanceDefaults(normalizedLead);
     const { appointmentKind, appointmentTime, appointmentNote, ...leadPayload } = normalizedLead;
     void appointmentKind;
     void appointmentTime;
@@ -274,7 +280,7 @@ export default function LeadDetailPage() {
 
             <FormSection title="Nhu cầu học">
               <Field label="Khóa học quan tâm">
-                <Select value={lead.interestedCourse} onChange={(event) => setLead({ ...lead, interestedCourse: event.target.value as InterestedCourse })}>
+                <Select value={lead.interestedCourse} onChange={(event) => setLead(applyFinanceDefaults({ ...lead, interestedCourse: event.target.value as InterestedCourse }))}>
                   <option value="">Chưa chọn khóa</option>
                   {courseOptions.map((course) => <option key={course}>{course}</option>)}
                 </Select>
@@ -303,7 +309,7 @@ export default function LeadDetailPage() {
                 </div>
               </Field>
               <Field label="Trạng thái">
-                <Select value={lead.status} onChange={(event) => setLead({ ...lead, status: event.target.value as Lead['status'] })}>
+                <Select value={lead.status} onChange={(event) => setLead(applyFinanceDefaults({ ...lead, status: event.target.value as Lead['status'] }))}>
                   {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </Select>
               </Field>
@@ -360,85 +366,98 @@ export default function LeadDetailPage() {
               <Textarea className="md:col-span-3" value={lead.appointmentNote || ''} onChange={(event) => set('appointmentNote', event.target.value)} placeholder="Note appointment hiển thị trong Appointments" />
             </FormSection>
 
-            <FormSection title="Finance / enrollment">
-              <Field label="Deal size">
-                <Input
-                  type="number"
-                  min="0"
-                  step="100000"
-                  value={numericInputValue(lead.dealSize)}
-                  onChange={(event) => {
-                    const amount = parseMoneyInput(event.target.value);
-                    setLead({ ...lead, dealSize: amount, expectedRevenue: amount, dealCurrency: lead.dealCurrency || DEFAULT_DEAL_CURRENCY });
-                  }}
-                  placeholder="VD: 12000000"
-                />
-              </Field>
-              <Field label="Currency">
-                <Select value={lead.dealCurrency || DEFAULT_DEAL_CURRENCY} onChange={(event) => set('dealCurrency', event.target.value)}>
-                  <option value="VND">VND</option>
-                  <option value="USD">USD</option>
-                </Select>
-              </Field>
-              <Field label="Expected revenue">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
-                  {formatCurrency(dealValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
-                </div>
-              </Field>
-              <Field label="Gói học / báo phí">
-                <Input value={lead.dealPackage || ''} onChange={(event) => set('dealPackage', event.target.value)} />
-              </Field>
-              <Field label="Ngày dự kiến chốt">
-                <Input type="date" value={lead.expectedCloseDate || ''} onChange={(event) => set('expectedCloseDate', event.target.value)} />
-              </Field>
-              {lead.status === DEAL_QUOTED_STATUS && (
-                <>
-                  <Field label="Lý do pending">
-                    <Select
-                      value={lead.pendingReason || ''}
-                      onChange={(event) => {
-                        const reason = event.target.value;
-                        const option = pendingOption(reason);
-                        setLead({
-                          ...lead,
-                          pendingReason: reason,
-                          pendingWarmthPercent: option?.warmthPercent || 0,
-                          pendingReasonNote: lead.pendingReasonNote || option?.defaultNote || '',
-                        });
-                      }}
-                    >
-                      <option value="">Chọn lý do pending</option>
-                      {pendingReasonOptions.map((option) => (
-                        <option key={option.reason} value={option.reason}>{option.reason} ({option.warmthPercent}%)</option>
-                      ))}
-                    </Select>
-                  </Field>
-                  <Field label="Warmth">
-                    <div className={`rounded-lg border px-3 py-2 text-sm font-bold ${warmthTone(warmthPercent(lead))}`}>
-                      {warmthPercent(lead)}%
+            {(lead.status === DEAL_QUOTED_STATUS || lead.status === WON_LEAD_STATUS || lead.status === LOST_LEAD_STATUS) && (
+              <FormSection title="Finance / enrollment">
+                {lead.status === DEAL_QUOTED_STATUS && (
+                  <>
+                    <Field label="Deal size">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
+                        {formatCurrency(lead.dealSize || financeDefaultsForLead(lead).dealSize, lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                      </div>
+                    </Field>
+                    <Field label="% discount">
+                      <Select
+                        value={String(lead.discountPercent || financeDefaultsForLead(lead).discountPercent)}
+                        onChange={(event) => setLead(applyFinanceDefaults({ ...lead, discountPercent: Number(event.target.value) }))}
+                      >
+                        {discountPercentOptions.map((percent) => <option key={percent} value={percent}>{percent}%</option>)}
+                      </Select>
+                    </Field>
+                    <Field label="Expected revenue">
+                      <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
+                        {formatCurrency(quoteValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                      </div>
+                    </Field>
+                  </>
+                )}
+                {lead.status === WON_LEAD_STATUS && (
+                  <Field label="Revenue">
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700">
+                      {formatCurrency(wonValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
                     </div>
                   </Field>
-                  <Textarea
-                    className="md:col-span-3"
-                    value={lead.pendingReasonNote || pendingOption(lead.pendingReason)?.defaultNote || ''}
-                    onChange={(event) => set('pendingReasonNote', event.target.value)}
-                    placeholder="Ghi chú pending để sales bổ sung thêm"
-                  />
-                </>
-              )}
-              {lead.status === LOST_LEAD_STATUS && (
-                <Field label="Lý do mất lead">
-                  <Select value={lead.lostReason || ''} onChange={(event) => set('lostReason', event.target.value)}>
-                    <option value="">Chọn lý do mất lead</option>
-                    {lostReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
-                  </Select>
-                </Field>
-              )}
-              <Textarea className="md:col-span-3" value={lead.dealNote || ''} onChange={(event) => set('dealNote', event.target.value)} placeholder="Note deal / báo phí / điều kiện chốt" />
-              {lead.status === LOST_LEAD_STATUS && (
-                <Textarea className="md:col-span-3" value={lead.lostNote || ''} onChange={(event) => set('lostNote', event.target.value)} placeholder="Ghi chú thêm về lý do mất lead" />
-              )}
-            </FormSection>
+                )}
+                {(lead.status === DEAL_QUOTED_STATUS || lead.status === WON_LEAD_STATUS) && (
+                  <>
+                    <Field label="Gói học / báo phí">
+                      <Input value={lead.dealPackage || ''} onChange={(event) => set('dealPackage', event.target.value)} />
+                    </Field>
+                    <Field label="Ngày dự kiến chốt">
+                      <Input type="date" value={lead.expectedCloseDate || ''} onChange={(event) => set('expectedCloseDate', event.target.value)} />
+                    </Field>
+                  </>
+                )}
+                {lead.status === DEAL_QUOTED_STATUS && (
+                  <>
+                    <Field label="Lý do pending">
+                      <Select
+                        value={lead.pendingReason || ''}
+                        onChange={(event) => {
+                          const reason = event.target.value;
+                          const option = pendingOption(reason);
+                          setLead({
+                            ...applyFinanceDefaults(lead),
+                            pendingReason: reason,
+                            pendingWarmthPercent: option?.warmthPercent || 0,
+                            pendingReasonNote: lead.pendingReasonNote || option?.defaultNote || '',
+                          });
+                        }}
+                      >
+                        <option value="">Chọn lý do pending</option>
+                        {pendingReasonOptions.map((option) => (
+                          <option key={option.reason} value={option.reason}>{option.reason} ({option.warmthPercent}%)</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Warmth">
+                      <div className={`rounded-lg border px-3 py-2 text-sm font-bold ${warmthTone(warmthPercent(lead))}`}>
+                        {warmthPercent(lead)}%
+                      </div>
+                    </Field>
+                    <Textarea
+                      className="md:col-span-3"
+                      value={lead.pendingReasonNote || pendingOption(lead.pendingReason)?.defaultNote || ''}
+                      onChange={(event) => set('pendingReasonNote', event.target.value)}
+                      placeholder="Ghi chú pending để sales bổ sung thêm"
+                    />
+                  </>
+                )}
+                {lead.status === LOST_LEAD_STATUS && (
+                  <Field label="Lý do mất lead">
+                    <Select value={lead.lostReason || ''} onChange={(event) => set('lostReason', event.target.value)}>
+                      <option value="">Chọn lý do mất lead</option>
+                      {lostReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+                    </Select>
+                  </Field>
+                )}
+                {(lead.status === DEAL_QUOTED_STATUS || lead.status === WON_LEAD_STATUS) && (
+                  <Textarea className="md:col-span-3" value={lead.dealNote || ''} onChange={(event) => set('dealNote', event.target.value)} placeholder="Note deal / báo phí / điều kiện chốt" />
+                )}
+                {lead.status === LOST_LEAD_STATUS && (
+                  <Textarea className="md:col-span-3" value={lead.lostNote || ''} onChange={(event) => set('lostNote', event.target.value)} placeholder="Ghi chú thêm về lý do mất lead" />
+                )}
+              </FormSection>
+            )}
 
             <Button className="w-fit" onClick={save} disabled={saving}><Save /> {saving ? 'Đang lưu...' : 'Lưu lead'}</Button>
           </CardContent>

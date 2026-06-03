@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadSources, leadStatuses, STAFF_OPTIONS } from '@/lib/constants';
+import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { formatCurrency } from '@/lib/utils';
 import { useCourseOptions } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
@@ -73,9 +74,8 @@ function formatVN(dateStr: string) {
 
 function isConverted(l: Lead) { return Boolean(l.convertedToStudentId || l.status === WON_LEAD_STATUS); }
 
-function dealAmount(l: Lead) {
-  return Number(l.expectedRevenue ?? l.dealSize ?? 0) || 0;
-}
+function expectedAmount(l: Lead) { return expectedRevenueAmount(l); }
+function closedRevenueAmount(l: Lead) { return revenueAmount(l); }
 
 function inRange(dateStr: string, from: string, to: string) {
   if (!dateStr) return false;
@@ -192,7 +192,10 @@ export default function DashboardPage() {
     const lost = rangeLeads.filter((l) => l.status === LOST_LEAD_STATUS).length;
     const expectedRevenue = rangeLeads
       .filter((l) => l.status === DEAL_QUOTED_STATUS)
-      .reduce((sum, lead) => sum + dealAmount(lead), 0);
+      .reduce((sum, lead) => sum + expectedAmount(lead), 0);
+    const revenue = rangeLeads
+      .filter((l) => isConverted(l))
+      .reduce((sum, lead) => sum + closedRevenueAmount(lead), 0);
     const convRate = total ? Math.round((converted / total) * 100) : 0;
     const lostRate = total ? Math.round((lost / total) * 100) : 0;
     // trend vs previous period
@@ -201,7 +204,7 @@ export default function DashboardPage() {
     const pFrom = daysAgo(days * 2 - 1 + off), pTo = daysAgo(days + off);
     const prev = leads.filter((l) => inRange(l.createdAt, pFrom, pTo)).length;
     const trend = prev ? Math.round(((total - prev) / prev) * 100) : 0;
-    return { total, newToday, untouched, overdueFollowUp, followUpToday, contacted, contactRate, testTrial, testTrialRate, converted, lost, expectedRevenue, convRate, lostRate, trend };
+    return { total, newToday, untouched, overdueFollowUp, followUpToday, contacted, contactRate, testTrial, testTrialRate, converted, lost, expectedRevenue, revenue, convRate, lostRate, trend };
   }, [rangeLeads, leads, today, dateFrom, dateTo]);
 
   /* ── PIC table ── */
@@ -220,7 +223,9 @@ export default function DashboardPage() {
       const t = pl.length, c = pl.filter((l) => cStatuses.includes(l.status)).length;
       const tt = pl.filter((l) => tStatuses.includes(l.status)).length;
       const cv = pl.filter(isConverted).length, lo = pl.filter((l) => l.status === LOST_LEAD_STATUS).length;
-      return { id: pic, name: salesLabel(pic), total: t, contacted: c, cRate: t ? Math.round((c / t) * 100) : 0, testTrial: tt, converted: cv, cvRate: t ? Math.round((cv / t) * 100) : 0, lost: lo, returned, pending: t - cv - lo };
+      const expectedRevenue = pl.filter((l) => l.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedAmount(lead), 0);
+      const revenue = pl.filter(isConverted).reduce((sum, lead) => sum + closedRevenueAmount(lead), 0);
+      return { id: pic, name: salesLabel(pic), total: t, contacted: c, cRate: t ? Math.round((c / t) * 100) : 0, testTrial: tt, converted: cv, cvRate: t ? Math.round((cv / t) * 100) : 0, expectedRevenue, revenue, lost: lo, returned, pending: t - cv - lo };
     }).filter((d) => d.total > 0 || d.returned > 0).sort((a, b) => (b.total + b.returned) - (a.total + a.returned));
   }, [rangeLeads, salesLabel, users]);
 
@@ -397,13 +402,14 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
         <KpiCard label="Lead mới hôm nay" value={kpi.newToday} icon={UserPlus} color="bg-blue-500" trend={kpi.trend} sub="Từ ads / form" />
         <KpiCard label="Chưa xử lý" value={kpi.untouched} icon={PhoneOff} color="bg-orange-500" sub="Chưa ai gọi" alert={kpi.untouched > 0} />
         <KpiCard label="Quá hạn follow-up" value={kpi.overdueFollowUp} icon={AlertTriangle} color="bg-red-500" sub={`${kpi.followUpToday} gọi hôm nay`} alert={kpi.overdueFollowUp > 0} />
         <KpiCard label="Liên hệ thành công" value={`${kpi.contactRate}%`} icon={Phone} color="bg-cyan-500" sub={`${kpi.contacted}/${kpi.total} lead`} />
         <KpiCard label="Test / Học thử" value={`${kpi.testTrialRate}%`} icon={ClipboardList} color="bg-violet-500" sub={`${kpi.testTrial} lead`} />
         <KpiCard label="Expected revenue" value={formatCurrency(kpi.expectedRevenue)} icon={CircleDollarSign} color="bg-orange-500" sub={DEAL_QUOTED_STATUS} />
+        <KpiCard label="Revenue" value={formatCurrency(kpi.revenue)} icon={CircleDollarSign} color="bg-emerald-500" sub={WON_LEAD_STATUS} />
         <KpiCard label="Đã chuyển đổi" value={kpi.converted} icon={UserCheck} color="bg-emerald-500" sub={`Tỷ lệ ${kpi.convRate}%`} />
         <KpiCard label="Mất lead" value={kpi.lost} icon={AlertTriangle} color="bg-red-400" sub={`Tỷ lệ ${kpi.lostRate}%`} />
       </div>
@@ -476,7 +482,7 @@ export default function DashboardPage() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b-2 border-slate-200">
-                      {['Sales', 'Nhận', 'Đã gọi', '% LH', 'Test/HT', 'Chốt', '% Chốt', 'Mất', 'Bị trả về', 'Tiến độ'].map((h) => (
+                      {['Sales', 'Nhận', 'Đã gọi', '% LH', 'Test/HT', 'Chốt', '% Chốt', 'Expected', 'Revenue', 'Mất', 'Bị trả về', 'Tiến độ'].map((h) => (
                         <th key={h} className={`py-2 px-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider ${h === 'Sales' || h === 'Tiến độ' ? 'text-left' : 'text-center'}`}>{h}</th>
                       ))}
                     </tr>
@@ -507,6 +513,8 @@ export default function DashboardPage() {
                           <td className="text-center py-2 px-1.5">
                             <RateBadge value={p.cvRate} good={30} warn={15} />
                           </td>
+                          <td className="text-center py-2 px-1.5 text-[11px] font-bold text-orange-600">{formatCurrency(p.expectedRevenue)}</td>
+                          <td className="text-center py-2 px-1.5 text-[11px] font-bold text-emerald-600">{formatCurrency(p.revenue)}</td>
                           <td className="text-center py-2 px-1.5 font-bold text-red-500">{p.lost}</td>
                           <td className="text-center py-2 px-1.5 font-bold text-orange-600">{p.returned}</td>
                           <td className="py-2 px-1.5 min-w-[100px]">
@@ -751,7 +759,7 @@ function KpiCard({ label, value, icon: Icon, color, trend, sub, alert }: {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider leading-tight">{label}</p>
-            <p className={`text-2xl sm:text-3xl font-extrabold mt-1.5 ${alert ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
+            <p className={`mt-1.5 whitespace-nowrap text-lg font-extrabold leading-tight sm:text-xl ${alert ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
             <div className="flex items-center gap-1.5 mt-1.5">
               {trend !== undefined && trend !== 0 && (
                 <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${trend > 0 ? 'text-emerald-600' : 'text-red-500'}`}>

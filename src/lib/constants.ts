@@ -149,6 +149,14 @@ export const DEAL_QUOTED_STATUS = 'Đã báo phí/Chờ chốt';
 export const WON_LEAD_STATUS = 'Đã đăng ký học';
 export const LOST_LEAD_STATUS = 'Mất lead';
 export const DEFAULT_DEAL_CURRENCY = 'VND';
+export const DEFAULT_COURSE_DEAL_SIZE = 20000000;
+export const discountPercentOptions = [5, 10, 15, 20, 25, 30] as const;
+export const courseDealSizeDefaults = [
+  { courseName: 'METTA Kiddies', dealSize: DEFAULT_COURSE_DEAL_SIZE },
+  { courseName: 'METTA on Phonics', dealSize: DEFAULT_COURSE_DEAL_SIZE },
+  { courseName: 'METTA Young Learner', dealSize: DEFAULT_COURSE_DEAL_SIZE },
+  { courseName: 'IELTS Junior', dealSize: DEFAULT_COURSE_DEAL_SIZE },
+] as const;
 
 export const pendingReasonOptions = [
   {

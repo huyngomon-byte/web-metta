@@ -66,7 +66,10 @@ export interface Lead {
   dealCurrency?: string;
   dealPackage?: string;
   dealNote?: string;
+  discountPercent?: number;
   expectedRevenue?: number;
+  revenue?: number;
+  revenueAt?: string;
   expectedCloseDate?: string;
   enrollmentType?: 'new' | 'upsell' | 'renewal' | string;
   wonAt?: string;

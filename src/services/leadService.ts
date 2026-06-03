@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, pendingReasonOptions } from '@/lib/constants';
+import { financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
 import { currentUser } from '@/services/authService';
@@ -26,7 +27,10 @@ const COL_ACTIVITIES = 'leadActivities';
 const COL_AUDIT_LOGS = 'activityLogs';
 const LS_LEADS = 'metta_leads';
 const LS_ACTIVITIES = 'metta_lead_activities';
+const LS_FINANCE_DEMO_MIGRATION = 'metta_lead_finance_demo_seed_v1';
+const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const financeDemoSeedLeads = store.leads.filter((lead) => lead.id.startsWith(FINANCE_DEMO_ID_PREFIX));
 
 type PublicLeadSubmitInput = Partial<Lead> & {
   company?: string;
@@ -67,6 +71,8 @@ function normalizeDealFields<T extends Partial<Lead>>(input: T): T {
   const lead = { ...input } as T & Partial<Lead>;
   const dealSize = parseMoney(lead.dealSize);
   const expectedRevenue = parseMoney(lead.expectedRevenue);
+  const discountPercent = parseMoney(lead.discountPercent);
+  const revenue = parseMoney(lead.revenue);
 
   if (dealSize === undefined) {
     delete lead.dealSize;
@@ -81,7 +87,19 @@ function normalizeDealFields<T extends Partial<Lead>>(input: T): T {
     lead.expectedRevenue = expectedRevenue;
   }
 
-  if ((lead.dealSize !== undefined || lead.expectedRevenue !== undefined) && !lead.dealCurrency) {
+  if (discountPercent === undefined) {
+    delete lead.discountPercent;
+  } else {
+    lead.discountPercent = discountPercent;
+  }
+
+  if (revenue === undefined) {
+    delete lead.revenue;
+  } else {
+    lead.revenue = revenue;
+  }
+
+  if ((lead.dealSize !== undefined || lead.expectedRevenue !== undefined || lead.revenue !== undefined) && !lead.dealCurrency) {
     lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
   }
 
@@ -96,6 +114,12 @@ function normalizeLead(raw: Lead): Lead {
   if (!lead.assignedStatus) lead.assignedStatus = lead.assignedTo ? 'accepted' : 'unassigned';
   if (!lead.priorityLevel) lead.priorityLevel = 1;
   if (lead.pendingReason && !lead.pendingWarmthPercent) lead.pendingWarmthPercent = pendingWarmth(lead.pendingReason) || 0;
+  if (lead.status === DEAL_QUOTED_STATUS || lead.status === WON_LEAD_STATUS) {
+    Object.assign(lead, financeDefaultsForLead(lead));
+  }
+  if (lead.status === WON_LEAD_STATUS && !lead.revenue) {
+    lead.revenue = revenueAmount(lead);
+  }
   if (!lead.dealCurrency && (lead.dealSize !== undefined || lead.expectedRevenue !== undefined)) lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
   if (lead.dealSize !== undefined && lead.expectedRevenue === undefined) lead.expectedRevenue = lead.dealSize;
   if (!lead.assignedToName && lead.assignedTo && !lead.assignedTo.includes('-') && !lead.assignedTo.startsWith('uid')) {
@@ -125,7 +149,17 @@ function loadLeads() {
     const raw = localStorage.getItem(LS_LEADS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) store.leads = parsed;
+      if (Array.isArray(parsed) && parsed.length) {
+        if (!localStorage.getItem(LS_FINANCE_DEMO_MIGRATION)) {
+          const existingIds = new Set(parsed.map((lead) => lead?.id).filter(Boolean));
+          const missingDemoLeads = financeDemoSeedLeads.filter((lead) => !existingIds.has(lead.id));
+          store.leads = [...missingDemoLeads, ...parsed];
+          localStorage.setItem(LS_FINANCE_DEMO_MIGRATION, '1');
+          if (missingDemoLeads.length) persistLeads();
+        } else {
+          store.leads = parsed;
+        }
+      }
     }
   } catch {}
 }
@@ -146,23 +180,35 @@ function loadActivities() {
 
 async function writeFirestoreLead(lead: Lead) {
   if (!USE_FIREBASE) return;
-  await setDoc(doc(db!, COL_LEADS, lead.id), stripUndefined(lead));
+  try {
+    await setDoc(doc(db!, COL_LEADS, lead.id), stripUndefined(lead));
+  } catch (error) {
+    console.warn('[Leads] Firestore lead write failed, keeping local:', error);
+  }
 }
 
 async function writeFirestoreActivity(activity: LeadActivity) {
   if (!USE_FIREBASE) return;
-  await setDoc(doc(db!, COL_ACTIVITIES, activity.id), stripUndefined(activity));
+  try {
+    await setDoc(doc(db!, COL_ACTIVITIES, activity.id), stripUndefined(activity));
+  } catch (error) {
+    console.warn('[Leads] Firestore activity write failed, keeping local:', error);
+  }
 }
 
 async function writeAuditLog(data: Record<string, unknown>) {
   if (!USE_FIREBASE) return;
   const id = `audit-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  await setDoc(doc(db!, COL_AUDIT_LOGS, id), stripUndefined({
-    id,
-    createdAt: now(),
-    createdAtMs: Date.now(),
-    ...data,
-  }));
+  try {
+    await setDoc(doc(db!, COL_AUDIT_LOGS, id), stripUndefined({
+      id,
+      createdAt: now(),
+      createdAtMs: Date.now(),
+      ...data,
+    }));
+  } catch (error) {
+    console.warn('[Leads] Firestore audit write failed, keeping local:', error);
+  }
 }
 
 function returnedLead(lead: Lead): Lead {
@@ -317,10 +363,19 @@ export const leadService = {
       const mergedForValidation = normalizeLead({ ...(prev || {}), ...patch } as Lead);
       validateLostReason(mergedForValidation);
       validatePendingReason(mergedForValidation);
+      if (mergedForValidation.status === DEAL_QUOTED_STATUS) {
+        Object.assign(patch, financeDefaultsForLead(mergedForValidation), { revenue: undefined, revenueAt: undefined });
+      }
       if (mergedForValidation.status === WON_LEAD_STATUS) {
         patch.wonAt = lead.wonAt || prev?.wonAt || timestamp;
+        Object.assign(patch, financeDefaultsForLead(mergedForValidation), {
+          revenue: revenueAmount(mergedForValidation),
+          revenueAt: mergedForValidation.revenueAt || timestamp,
+        });
       } else if (statusChanged && prev?.status === WON_LEAD_STATUS) {
         patch.wonAt = '';
+        patch.revenue = undefined;
+        patch.revenueAt = undefined;
       }
       if (assignmentChanged) {
         if (lead.assignedTo) {
@@ -383,7 +438,10 @@ export const leadService = {
         dealCurrency: lead.dealCurrency || DEFAULT_DEAL_CURRENCY,
         dealPackage: lead.dealPackage || '',
         dealNote: lead.dealNote || '',
+        discountPercent: lead.discountPercent,
         expectedRevenue: lead.expectedRevenue,
+        revenue: lead.revenue,
+        revenueAt: lead.revenueAt || (lead.status === WON_LEAD_STATUS ? timestamp : ''),
         expectedCloseDate: lead.expectedCloseDate || '',
         enrollmentType: lead.enrollmentType || 'new',
         wonAt: lead.status === WON_LEAD_STATUS ? (lead.wonAt || timestamp) : '',
