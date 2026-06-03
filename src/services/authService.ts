@@ -12,6 +12,12 @@ import { adminEmails, auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import type { AdminUser } from '@/types/user';
 
 const KEY = 'metta_internal_admin';
+const SESSION_CACHE_KEYS = [
+  KEY,
+  'metta_leads',
+  'metta_lead_activities',
+  'metta_appointments',
+];
 
 function persistUser(user: AdminUser) {
   localStorage.setItem(KEY, JSON.stringify(user));
@@ -132,6 +138,6 @@ export function currentUser() {
 }
 
 export async function logout() {
-  localStorage.removeItem(KEY);
+  SESSION_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
   if (isFirebaseConfigured && auth) await signOut(auth).catch(() => {});
 }

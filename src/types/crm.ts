@@ -1,7 +1,8 @@
-import type { COURSE_OPTIONS, leadSources, leadStatuses } from '@/lib/constants';
+import type { COURSE_OPTIONS, leadSources, leadStatuses, lostReasons } from '@/lib/constants';
 
 export type LeadStatus = (typeof leadStatuses)[number];
 export type LeadSource = (typeof leadSources)[number];
+export type LostReason = (typeof lostReasons)[number] | string;
 /** Tên khóa tự do (lấy động từ CMS programs hoặc COURSE_OPTIONS fallback). */
 export type InterestedCourse = string;
 
@@ -35,6 +36,16 @@ export interface Lead {
   statusUpdatedAtMs?: number;
   followUpDate?: string;
   consultationDate?: string;
+  dealSize?: number;
+  dealCurrency?: string;
+  dealPackage?: string;
+  dealNote?: string;
+  expectedRevenue?: number;
+  expectedCloseDate?: string;
+  enrollmentType?: 'new' | 'upsell' | 'renewal' | string;
+  wonAt?: string;
+  lostReason?: LostReason;
+  lostNote?: string;
   initialNote: string;
   createdAt: string;
   updatedAt: string;

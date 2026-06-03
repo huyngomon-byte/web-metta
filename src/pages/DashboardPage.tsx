@@ -3,6 +3,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarCheck,
+  CircleDollarSign,
   Clock,
   ClipboardList,
   Phone,
@@ -28,7 +29,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
-import { leadSources, leadStatuses, STAFF_OPTIONS } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadSources, leadStatuses, STAFF_OPTIONS } from '@/lib/constants';
+import { formatCurrency } from '@/lib/utils';
 import { useCourseOptions } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import { appointmentService } from '@/services/appointmentService';
@@ -45,12 +47,15 @@ const STATUS_COLORS: Record<string, string> = {
   'Đã hẹn tư vấn': '#8B5CF6',
   'Đã tư vấn/Đặt lịch test': '#6366F1',
   'Đã test/Học thử': '#F97316',
-  'Đã đăng ký học': '#16A34A',
-  'Mất lead': '#EF4444',
+  [DEAL_QUOTED_STATUS]: '#EA580C',
+  [WON_LEAD_STATUS]: '#16A34A',
+  [LOST_LEAD_STATUS]: '#EF4444',
 };
 
 const COURSE_COLORS = ['#3B82F6', '#06B6D4', '#8B5CF6', '#F59E0B', '#EC4899', '#16A34A'];
 const SOURCE_COLORS = ['#1267AE', '#16A9D8', '#F45A0A', '#16A34A', '#F59E0B', '#DC2626', '#8B5CF6', '#EC4899', '#6366F1', '#64748b'];
+const FOLLOW_UP_OPEN_STATUSES: readonly string[] = [leadStatuses[0], leadStatuses[1], leadStatuses[2]];
+const UNCONTACTED_STATUSES: readonly string[] = [leadStatuses[0], leadStatuses[2]];
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
 
@@ -66,7 +71,11 @@ function formatVN(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-function isConverted(l: Lead) { return Boolean(l.convertedToStudentId || l.status === 'Đã đăng ký học'); }
+function isConverted(l: Lead) { return Boolean(l.convertedToStudentId || l.status === WON_LEAD_STATUS); }
+
+function dealAmount(l: Lead) {
+  return Number(l.expectedRevenue ?? l.dealSize ?? 0) || 0;
+}
 
 function inRange(dateStr: string, from: string, to: string) {
   if (!dateStr) return false;
@@ -168,19 +177,22 @@ export default function DashboardPage() {
   const kpi = useMemo(() => {
     const total = rangeLeads.length;
     const newToday = leads.filter((l) => l.createdAt?.startsWith(today)).length;
-    const untouched = leads.filter((l) => l.status === 'Lead mới').length;
+    const untouched = leads.filter((l) => l.status === leadStatuses[0]).length;
     const overdueFollowUp = leads.filter((l) => {
       if (!l.followUpDate) return false;
-      return l.followUpDate.slice(0, 10) < today && ['Lead mới', 'Đã liên hệ', 'Chưa nghe máy'].includes(l.status);
+      return l.followUpDate.slice(0, 10) < today && FOLLOW_UP_OPEN_STATUSES.includes(l.status);
     }).length;
     const followUpToday = leads.filter((l) => l.followUpDate?.startsWith(today)).length;
-    const contacted = rangeLeads.filter((l) => !['Lead mới', 'Chưa nghe máy'].includes(l.status)).length;
+    const contacted = rangeLeads.filter((l) => !UNCONTACTED_STATUSES.includes(l.status)).length;
     const contactRate = total ? Math.round((contacted / total) * 100) : 0;
-    const ttStatuses = ['Đã tư vấn/Đặt lịch test', 'Đã test/Học thử', 'Đã đăng ký học'];
+    const ttStatuses = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
     const testTrial = rangeLeads.filter((l) => ttStatuses.includes(l.status)).length;
     const testTrialRate = total ? Math.round((testTrial / total) * 100) : 0;
     const converted = rangeLeads.filter(isConverted).length;
-    const lost = rangeLeads.filter((l) => l.status === 'Mất lead').length;
+    const lost = rangeLeads.filter((l) => l.status === LOST_LEAD_STATUS).length;
+    const expectedRevenue = rangeLeads
+      .filter((l) => l.status === DEAL_QUOTED_STATUS)
+      .reduce((sum, lead) => sum + dealAmount(lead), 0);
     const convRate = total ? Math.round((converted / total) * 100) : 0;
     const lostRate = total ? Math.round((lost / total) * 100) : 0;
     // trend vs previous period
@@ -189,7 +201,7 @@ export default function DashboardPage() {
     const pFrom = daysAgo(days * 2 - 1 + off), pTo = daysAgo(days + off);
     const prev = leads.filter((l) => inRange(l.createdAt, pFrom, pTo)).length;
     const trend = prev ? Math.round(((total - prev) / prev) * 100) : 0;
-    return { total, newToday, untouched, overdueFollowUp, followUpToday, contacted, contactRate, testTrial, testTrialRate, converted, lost, convRate, lostRate, trend };
+    return { total, newToday, untouched, overdueFollowUp, followUpToday, contacted, contactRate, testTrial, testTrialRate, converted, lost, expectedRevenue, convRate, lostRate, trend };
   }, [rangeLeads, leads, today, dateFrom, dateTo]);
 
   /* ── PIC table ── */
@@ -200,14 +212,14 @@ export default function DashboardPage() {
       ...rangeLeads.map((l) => l.assignedTo).filter(isNonEmptyString),
       ...rangeLeads.map((l) => l.failedAssignedTo).filter(isNonEmptyString),
     ]);
-    const cStatuses = ['Đã liên hệ', 'Đã hẹn tư vấn', 'Đã tư vấn/Đặt lịch test', 'Đã test/Học thử', 'Đã đăng ký học', 'Mất lead'];
-    const tStatuses = ['Đã tư vấn/Đặt lịch test', 'Đã test/Học thử', 'Đã đăng ký học'];
+    const cStatuses = [leadStatuses[1], leadStatuses[3], leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS, LOST_LEAD_STATUS];
+    const tStatuses = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
     return Array.from(pics).map((pic) => {
       const pl = rangeLeads.filter((l) => l.assignedTo === pic);
       const returned = rangeLeads.filter((l) => l.failedAssignedTo === pic || (l.assignedTo === pic && l.assignedStatus === 'returned')).length;
       const t = pl.length, c = pl.filter((l) => cStatuses.includes(l.status)).length;
       const tt = pl.filter((l) => tStatuses.includes(l.status)).length;
-      const cv = pl.filter(isConverted).length, lo = pl.filter((l) => l.status === 'Mất lead').length;
+      const cv = pl.filter(isConverted).length, lo = pl.filter((l) => l.status === LOST_LEAD_STATUS).length;
       return { id: pic, name: salesLabel(pic), total: t, contacted: c, cRate: t ? Math.round((c / t) * 100) : 0, testTrial: tt, converted: cv, cvRate: t ? Math.round((cv / t) * 100) : 0, lost: lo, returned, pending: t - cv - lo };
     }).filter((d) => d.total > 0 || d.returned > 0).sort((a, b) => (b.total + b.returned) - (a.total + a.returned));
   }, [rangeLeads, salesLabel, users]);
@@ -272,7 +284,7 @@ export default function DashboardPage() {
     }
 
     // 2. No PIC assigned
-    const noPic = leads.filter((l) => !l.assignedTo && l.status !== 'Mất lead');
+    const noPic = leads.filter((l) => !l.assignedTo && l.status !== LOST_LEAD_STATUS);
     if (noPic.length > 0) {
       items.push({ type: 'warning', icon: '👤', title: `${noPic.length} lead chưa có PIC`, leads: noPic.map((l) => ({ id: l.id, name: l.fullName, phone: l.phone, pic: '' })) });
     }
@@ -280,7 +292,7 @@ export default function DashboardPage() {
     // 3. Overdue follow-up
     const overdue = leads.filter((l) => {
       if (!l.followUpDate) return false;
-      return l.followUpDate.slice(0, 10) < today && ['Lead mới', 'Đã liên hệ', 'Chưa nghe máy'].includes(l.status);
+      return l.followUpDate.slice(0, 10) < today && FOLLOW_UP_OPEN_STATUSES.includes(l.status);
     });
     if (overdue.length > 0) {
       items.push({ type: 'danger', icon: '⏰', title: `${overdue.length} lead quá hạn follow-up`, leads: overdue.map((l) => ({ id: l.id, name: l.fullName, phone: l.phone, pic: l.assignedTo })) });
@@ -289,7 +301,7 @@ export default function DashboardPage() {
     // 4. Forgotten leads (no update > 3 days, still active)
     const threeDaysAgo = daysAgo(3);
     const forgotten = leads.filter((l) => {
-      if (['Đã đăng ký học', 'Mất lead'].includes(l.status)) return false;
+      if ([WON_LEAD_STATUS, LOST_LEAD_STATUS].includes(l.status)) return false;
       return l.updatedAt.slice(0, 10) < threeDaysAgo;
     });
     if (forgotten.length > 0) {
@@ -312,7 +324,7 @@ export default function DashboardPage() {
   const tasks = useMemo(() => [
     ...leads.filter((l) => l.followUpDate?.startsWith(today)).map((l) => ({ type: 'follow-up' as const, title: l.fullName, detail: l.phone, pic: l.assignedTo })),
     ...appointments.filter((a) => a.startTime.startsWith(today) && a.status === 'upcoming').map((a) => ({ type: 'appointment' as const, title: a.title, detail: a.startTime.slice(11, 16), pic: a.assignedTo })),
-    ...leads.filter((l) => l.status === 'Chưa nghe máy' && l.updatedAt < daysAgo(1)).map((l) => ({ type: 'retry' as const, title: l.fullName, detail: l.phone, pic: l.assignedTo })),
+    ...leads.filter((l) => l.status === leadStatuses[2] && l.updatedAt < daysAgo(1)).map((l) => ({ type: 'retry' as const, title: l.fullName, detail: l.phone, pic: l.assignedTo })),
   ], [leads, appointments, today]);
 
   /* ── Recent leads ── */
@@ -385,12 +397,13 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-3 grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
         <KpiCard label="Lead mới hôm nay" value={kpi.newToday} icon={UserPlus} color="bg-blue-500" trend={kpi.trend} sub="Từ ads / form" />
         <KpiCard label="Chưa xử lý" value={kpi.untouched} icon={PhoneOff} color="bg-orange-500" sub="Chưa ai gọi" alert={kpi.untouched > 0} />
         <KpiCard label="Quá hạn follow-up" value={kpi.overdueFollowUp} icon={AlertTriangle} color="bg-red-500" sub={`${kpi.followUpToday} gọi hôm nay`} alert={kpi.overdueFollowUp > 0} />
         <KpiCard label="Liên hệ thành công" value={`${kpi.contactRate}%`} icon={Phone} color="bg-cyan-500" sub={`${kpi.contacted}/${kpi.total} lead`} />
         <KpiCard label="Test / Học thử" value={`${kpi.testTrialRate}%`} icon={ClipboardList} color="bg-violet-500" sub={`${kpi.testTrial} lead`} />
+        <KpiCard label="Expected revenue" value={formatCurrency(kpi.expectedRevenue)} icon={CircleDollarSign} color="bg-orange-500" sub={DEAL_QUOTED_STATUS} />
         <KpiCard label="Đã chuyển đổi" value={kpi.converted} icon={UserCheck} color="bg-emerald-500" sub={`Tỷ lệ ${kpi.convRate}%`} />
         <KpiCard label="Mất lead" value={kpi.lost} icon={AlertTriangle} color="bg-red-400" sub={`Tỷ lệ ${kpi.lostRate}%`} />
       </div>

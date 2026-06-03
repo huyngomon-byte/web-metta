@@ -87,6 +87,16 @@ Admin:
 - `api/admin-users.ts`: admin-only user create/update/disable via Firebase Admin SDK.
 - `api/public-lead-submit.ts`: receives public lead submissions, validates input, applies honeypot + IP rate limit, writes leads through Firebase Admin SDK, and creates pending CAPI logs.
 - `api/capi-send-event.ts`: sends server-side Meta Conversions API events using server-only environment variables and logs results to Firestore.
+- `api/cron-return-expired-leads.ts`: returns active assigned leads when the 24h status-update window expires.
+- `api/cron-overdue-appointments.ts`: marks upcoming appointments as overdue after their start time passes.
+
+## CRM Pipeline Notes
+
+- Pipeline includes `Đã báo phí/Chờ chốt` between `Đã test/Học thử` and `Đã đăng ký học`.
+- Finance/enrollment fields are stored on leads: `dealSize`, `dealCurrency`, `dealPackage`, `dealNote`, `expectedRevenue`, and `expectedCloseDate`.
+- `expectedRevenue` is copied from the sales-entered `dealSize`. There is no default probability mapping in this implementation.
+- Moving a lead to `Mất lead` requires `lostReason`.
+- Appointment statuses are `upcoming`, `done`, `cancelled`, and `overdue`.
 
 ## Environment
 
@@ -103,6 +113,7 @@ Server-only variables must not use `VITE_`:
 - `ADMIN_PASSWORD`
 - `ADMIN_EMAILS`
 - `REQUIRE_APP_CHECK`
+- `CRON_SECRET`
 - `META_PIXEL_ID`
 - `META_ACCESS_TOKEN`
 - `META_TEST_EVENT_CODE`

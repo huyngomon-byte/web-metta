@@ -72,6 +72,23 @@ async function deleteFirestore(id: string) {
   await deleteDoc(doc(db!, COL, id));
 }
 
+async function markOverdueAppointments() {
+  const timestamp = now();
+  const overdue = store.appointments.filter((item) => {
+    if (item.status !== 'upcoming') return false;
+    const startMs = new Date(item.startTime).getTime();
+    return Number.isFinite(startMs) && startMs < Date.now();
+  });
+  if (!overdue.length) return;
+
+  const overdueIds = new Set(overdue.map((item) => item.id));
+  store.appointments = store.appointments.map((item) =>
+    overdueIds.has(item.id) ? { ...item, status: 'overdue', updatedAt: timestamp } : item,
+  );
+  persist();
+  await Promise.all(store.appointments.filter((item) => overdueIds.has(item.id)).map(writeFirestore));
+}
+
 export const appointmentService = {
   getAppointments: async () => {
     const user = currentUser();
@@ -86,6 +103,7 @@ export const appointmentService = {
         const snap = await getDocs(appointmentQuery);
         const firestoreItems = snap.docs.map((item) => item.data() as Appointment);
         store.appointments = firestoreItems.length ? mergeAppointments(localItems, firestoreItems) : [];
+        await markOverdueAppointments();
         persist();
         const visibleItems = canViewAllLeads(user)
           ? store.appointments
@@ -96,6 +114,7 @@ export const appointmentService = {
       }
     }
 
+    await markOverdueAppointments();
     return delay(canViewAllLeads(user) ? store.appointments : store.appointments.filter((item) => item.assignedTo === user?.id));
   },
 
@@ -130,6 +149,19 @@ export const appointmentService = {
     persist();
     await writeFirestore(saved);
     return delay(store.appointments);
+  },
+
+  updateStatus: async (id: string, status: Appointment['status']) => {
+    await appointmentService.getAppointments();
+    const timestamp = now();
+    store.appointments = store.appointments.map((item) =>
+      item.id === id ? { ...item, status, updatedAt: timestamp } : item,
+    );
+    const saved = store.appointments.find((item) => item.id === id);
+    if (!saved) throw new Error('Không tìm thấy lịch hẹn.');
+    persist();
+    await writeFirestore(saved);
+    return delay(saved);
   },
 
   getByLead: async (leadId: string) => {

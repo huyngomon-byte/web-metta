@@ -15,6 +15,18 @@ export function formatDate(value?: string | number | Date, includeTime = false) 
   }).format(date);
 }
 
+export function formatCurrency(value?: string | number, currency = 'VND') {
+  const amount = typeof value === 'number'
+    ? value
+    : Number(String(value || '').replace(/[^\d.-]/g, ''));
+  if (!Number.isFinite(amount) || amount <= 0) return '-';
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 export function slugify(value: string) {
   return value
     .normalize('NFD')

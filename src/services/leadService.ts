@@ -10,6 +10,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS } from '@/lib/constants';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
 import { currentUser } from '@/services/authService';
@@ -46,9 +47,43 @@ function normalizeCourse(v?: string): string {
   return (v && COURSE_MIGRATION[v]) ? COURSE_MIGRATION[v] : (v || '');
 }
 
+function parseMoney(value: unknown) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : undefined;
+  const parsed = Number(String(value).replace(/[^\d.-]/g, ''));
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function normalizeDealFields<T extends Partial<Lead>>(input: T): T {
+  const lead = { ...input } as T & Partial<Lead>;
+  const dealSize = parseMoney(lead.dealSize);
+  const expectedRevenue = parseMoney(lead.expectedRevenue);
+
+  if (dealSize === undefined) {
+    delete lead.dealSize;
+  } else {
+    lead.dealSize = dealSize;
+  }
+
+  if (expectedRevenue === undefined) {
+    if (dealSize !== undefined) lead.expectedRevenue = dealSize;
+    else delete lead.expectedRevenue;
+  } else {
+    lead.expectedRevenue = expectedRevenue;
+  }
+
+  if ((lead.dealSize !== undefined || lead.expectedRevenue !== undefined) && !lead.dealCurrency) {
+    lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
+  }
+
+  return lead as T;
+}
+
 function normalizeLead(raw: Lead): Lead {
   const lead = { ...raw, interestedCourse: normalizeCourse(raw.interestedCourse) as InterestedCourse | '' };
   if (!lead.assignedStatus) lead.assignedStatus = lead.assignedTo ? 'accepted' : 'unassigned';
+  if (!lead.dealCurrency && (lead.dealSize !== undefined || lead.expectedRevenue !== undefined)) lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
+  if (lead.dealSize !== undefined && lead.expectedRevenue === undefined) lead.expectedRevenue = lead.dealSize;
   if (!lead.assignedToName && lead.assignedTo && !lead.assignedTo.includes('-') && !lead.assignedTo.startsWith('uid')) {
     lead.assignedToName = lead.assignedTo;
   }
@@ -130,6 +165,12 @@ function returnedLead(lead: Lead): Lead {
     assignedStatus: 'returned',
     updatedAt: timestamp,
   };
+}
+
+function validateLostReason(lead: Partial<Lead>) {
+  if (lead.status !== LOST_LEAD_STATUS) return;
+  if (String(lead.lostReason || '').trim()) return;
+  throw new Error('Vui lòng chọn lý do mất lead trước khi chuyển trạng thái Mất lead.');
 }
 
 async function expireOverdueAssignments(user: AdminUser | null) {
@@ -220,21 +261,55 @@ export const leadService = {
   saveLead: async (lead: Partial<Lead>) => {
     const user = currentUser();
     const timestamp = now();
+    const nowMs = Date.now();
     if (lead.interestedCourse) lead = { ...lead, interestedCourse: normalizeCourse(lead.interestedCourse) as InterestedCourse | '' };
+    lead = normalizeDealFields(lead);
 
     if (lead.id) {
       const prev = store.leads.find((item) => item.id === lead.id);
       if (prev && !canViewLead(user, prev)) throw new Error('Bạn không có quyền cập nhật lead này.');
       const statusChanged = prev && lead.status && lead.status !== prev.status;
+      const assignmentChanged = Boolean(
+        prev &&
+        canViewAllLeads(user) &&
+        lead.assignedTo !== undefined &&
+        lead.assignedTo !== prev.assignedTo,
+      );
       const patch: Partial<Lead> = {
         ...lead,
         updatedAt: timestamp,
         ...(statusChanged ? {
           statusUpdatedAt: timestamp,
-          statusUpdatedAtMs: Date.now(),
+          statusUpdatedAtMs: nowMs,
           assignedStatus: prev?.assignedTo ? 'accepted' : prev?.assignedStatus,
         } : {}),
       };
+      const mergedForValidation = normalizeLead({ ...(prev || {}), ...patch } as Lead);
+      validateLostReason(mergedForValidation);
+      if (mergedForValidation.status === WON_LEAD_STATUS) {
+        patch.wonAt = lead.wonAt || prev?.wonAt || timestamp;
+      } else if (statusChanged && prev?.status === WON_LEAD_STATUS) {
+        patch.wonAt = '';
+      }
+      if (assignmentChanged) {
+        if (lead.assignedTo) {
+          patch.assignedBy = lead.assignedBy || user?.id || prev?.assignedBy || '';
+          patch.assignedAt = timestamp;
+          patch.assignedAtMs = nowMs;
+          patch.assignedExpiresAtMs = nowMs + DAY_MS;
+          patch.assignedStatus = 'active';
+          patch.failedReason = '';
+          patch.failedAt = '';
+          patch.failedAtMs = undefined;
+        } else {
+          patch.assignedToName = '';
+          patch.assignedBy = '';
+          patch.assignedAt = '';
+          patch.assignedAtMs = undefined;
+          patch.assignedExpiresAtMs = undefined;
+          patch.assignedStatus = 'unassigned';
+        }
+      }
       if (!canViewAllLeads(user)) {
         delete patch.assignedTo;
         delete patch.assignedToName;
@@ -246,7 +321,7 @@ export const leadService = {
       store.leads = store.leads.map((item) => (item.id === lead.id ? normalizeLead({ ...item, ...patch } as Lead) : item));
     } else {
       if (user?.role === 'sales') throw new Error('Sales không được tạo lead trực tiếp.');
-      store.leads.unshift(normalizeLead({
+      const draftForValidation = normalizeLead({
         id: `lead-${Date.now()}`,
         fullName: lead.fullName || '',
         phone: lead.phone || '',
@@ -262,13 +337,31 @@ export const leadService = {
         status: lead.status || 'Lead mới',
         assignedTo: lead.assignedTo || '',
         assignedToName: lead.assignedToName || '',
+        assignedBy: lead.assignedBy || '',
         assignedStatus: lead.assignedTo ? 'active' : 'unassigned',
+        assignedAt: lead.assignedTo ? (lead.assignedAt || timestamp) : '',
+        assignedAtMs: lead.assignedTo ? (lead.assignedAtMs || nowMs) : undefined,
+        assignedExpiresAtMs: lead.assignedTo ? (lead.assignedExpiresAtMs || nowMs + DAY_MS) : undefined,
         followUpDate: lead.followUpDate,
         consultationDate: lead.consultationDate,
+        dealSize: lead.dealSize,
+        dealCurrency: lead.dealCurrency || DEFAULT_DEAL_CURRENCY,
+        dealPackage: lead.dealPackage || '',
+        dealNote: lead.dealNote || '',
+        expectedRevenue: lead.expectedRevenue,
+        expectedCloseDate: lead.expectedCloseDate || '',
+        enrollmentType: lead.enrollmentType || 'new',
+        wonAt: lead.status === WON_LEAD_STATUS ? (lead.wonAt || timestamp) : '',
+        lostReason: lead.lostReason || '',
+        lostNote: lead.lostNote || '',
         initialNote: lead.initialNote || '',
         createdAt: timestamp,
         updatedAt: timestamp,
-      } as Lead));
+      } as Lead);
+      validateLostReason(draftForValidation);
+      store.leads.unshift(normalizeLead({
+        ...draftForValidation,
+      }));
     }
     const saved = store.leads.find((item) => item.id === lead.id) || store.leads[0];
     persistLeads();

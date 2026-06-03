@@ -12,9 +12,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseOptions } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
-import { leadSources, leadStatuses } from '@/lib/constants';
+import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadSources, leadStatuses, lostReasons } from '@/lib/constants';
 import { canAssignLead } from '@/lib/permissions';
-import { exportCsv, formatDate } from '@/lib/utils';
+import { exportCsv, formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
 import { leadService } from '@/services/leadService';
 import { userService } from '@/services/userService';
@@ -27,30 +27,6 @@ type LeadDraft = Partial<Lead> & {
   appointmentTime?: string;
   appointmentNote?: string;
 };
-
-const STATUS_LABELS = [
-  'Lead mới',
-  'Đã liên hệ',
-  'Chưa nghe máy',
-  'Đã hẹn tư vấn',
-  'Đã tư vấn/Đặt lịch test',
-  'Đã test/Học thử',
-  'Đã đăng ký học',
-  'Mất lead',
-];
-
-const SOURCE_LABELS = [
-  'Website',
-  'Landing Page',
-  'Facebook Ads',
-  'Instagram Ads',
-  'TikTok Ads',
-  'Google Ads',
-  'Zalo',
-  'Referral',
-  'Walk-in',
-  'Khác',
-];
 
 const APPT_CALLBACK = 'Gọi lại' as Appointment['type'];
 const APPT_CONSULTATION = 'Tư vấn' as Appointment['type'];
@@ -73,6 +49,13 @@ const emptyLead: LeadDraft = {
   status: leadStatuses[0],
   assignedTo: '',
   assignedToName: '',
+  dealCurrency: DEFAULT_DEAL_CURRENCY,
+  dealPackage: '',
+  dealNote: '',
+  expectedCloseDate: '',
+  enrollmentType: 'new',
+  lostReason: '',
+  lostNote: '',
   initialNote: '',
   appointmentKind: '',
   appointmentTime: '',
@@ -86,8 +69,9 @@ const statusTone: Record<number, Parameters<typeof Badge>[0]['tone']> = {
   3: 'orange',
   4: 'purple',
   5: 'amber',
-  6: 'green',
-  7: 'red',
+  6: 'orange',
+  7: 'green',
+  8: 'red',
 };
 
 const columnStyles = [
@@ -97,6 +81,7 @@ const columnStyles = [
   'bg-orange-50/75 border-orange-200/70',
   'bg-violet-50/75 border-violet-200/70',
   'bg-amber-50/75 border-amber-200/70',
+  'bg-orange-50/75 border-orange-200/70',
   'bg-emerald-50/75 border-emerald-200/70',
   'bg-red-50/75 border-red-200/70',
 ];
@@ -107,12 +92,34 @@ function statusIndex(status: string) {
 }
 
 function statusLabel(status: string) {
-  return STATUS_LABELS[statusIndex(status)] || status;
+  return status;
 }
 
 function sourceLabel(source: string) {
-  const idx = (leadSources as readonly string[]).indexOf(source);
-  return SOURCE_LABELS[idx] || source;
+  return source;
+}
+
+function numericInputValue(value?: number) {
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function parseMoneyInput(value: string) {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function dealValue(lead: Partial<Lead>) {
+  return lead.expectedRevenue ?? lead.dealSize;
+}
+
+function buildLostReasonPatch(lead: Lead, patch: Partial<Lead>) {
+  const nextStatus = patch.status || lead.status;
+  if (nextStatus !== LOST_LEAD_STATUS) return patch;
+  if (String(patch.lostReason || lead.lostReason || '').trim()) return patch;
+  const reason = window.prompt('Nhập lý do mất lead trước khi chuyển trạng thái:');
+  if (!reason?.trim()) return null;
+  return { ...patch, lostReason: reason.trim() };
 }
 
 function toDraft(lead: Lead): LeadDraft {
@@ -207,6 +214,10 @@ export default function LeadsPage() {
       setError('Vui lòng chọn ngày giờ lịch hẹn.');
       return;
     }
+    if (editing.status === LOST_LEAD_STATUS && !String(editing.lostReason || '').trim()) {
+      setError('Vui lòng chọn lý do mất lead.');
+      return;
+    }
 
     const selectedSales = salesOptions.find((sales) => sales.id === editing.assignedTo);
     const payload: LeadDraft = {
@@ -221,7 +232,7 @@ export default function LeadsPage() {
     void appointmentNote;
 
     try {
-      const savedLeads = await leadService.saveLead(leadPayload);
+      const savedLeads = await leadService.saveLead(leadPayload as Partial<Lead>);
       const savedLead =
         savedLeads.find((lead) => payload.id && lead.id === payload.id) ||
         savedLeads.find((lead) => lead.fullName === payload.fullName && lead.phone === payload.phone);
@@ -487,6 +498,45 @@ function LeadForm({
           <Textarea className="md:col-span-3" placeholder="Note appointment hiển thị trong Appointments" value={value.appointmentNote || ''} onChange={(event) => set('appointmentNote', event.target.value)} />
         </FormSection>
 
+        <FormSection title="Finance / enrollment">
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Deal size</label>
+            <Input
+              type="number"
+              min="0"
+              step="100000"
+              placeholder="VD: 12000000"
+              value={numericInputValue(value.dealSize)}
+              onChange={(event) => setValue({ ...value, dealSize: parseMoneyInput(event.target.value), expectedRevenue: parseMoneyInput(event.target.value), dealCurrency: value.dealCurrency || DEFAULT_DEAL_CURRENCY })}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Currency</label>
+            <Select value={value.dealCurrency || DEFAULT_DEAL_CURRENCY} onChange={(event) => set('dealCurrency', event.target.value)}>
+              <option value="VND">VND</option>
+              <option value="USD">USD</option>
+            </Select>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Expected revenue</label>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
+              {formatCurrency(dealValue(value), value.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+            </div>
+          </div>
+          <Input placeholder="Gói học / học phí dự kiến" value={value.dealPackage || ''} onChange={(event) => set('dealPackage', event.target.value)} />
+          <Input type="date" value={value.expectedCloseDate || ''} onChange={(event) => set('expectedCloseDate', event.target.value)} />
+          {value.status === LOST_LEAD_STATUS && (
+            <Select value={value.lostReason || ''} onChange={(event) => set('lostReason', event.target.value)}>
+              <option value="">Chọn lý do mất lead</option>
+              {lostReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+            </Select>
+          )}
+          <Textarea className="md:col-span-3" placeholder="Note deal / báo phí / điều kiện chốt" value={value.dealNote || ''} onChange={(event) => set('dealNote', event.target.value)} />
+          {value.status === LOST_LEAD_STATUS && (
+            <Textarea className="md:col-span-3" placeholder="Ghi chú thêm về lý do mất lead" value={value.lostNote || ''} onChange={(event) => set('lostNote', event.target.value)} />
+          )}
+        </FormSection>
+
         <div className="flex gap-2">
           <Button onClick={onSave}><Save /> Lưu lead</Button>
           <Button variant="outline" onClick={onCancel}>Hủy</Button>
@@ -502,7 +552,7 @@ function LeadsTable({ leads, canAssign, onEdit, onDelete }: { leads: Lead[]; can
       <CardContent className="p-0">
         <Table>
           <THead>
-            <TR><TH>Họ tên</TH><TH>SĐT</TH><TH>Email</TH><TH>Khóa quan tâm</TH><TH>Trạng thái</TH><TH>Nguồn</TH><TH>Người phụ trách</TH><TH>Follow-up</TH><TH>Ngày tạo</TH><TH>Action</TH></TR>
+            <TR><TH>Họ tên</TH><TH>SĐT</TH><TH>Email</TH><TH>Khóa quan tâm</TH><TH>Trạng thái</TH><TH>Deal</TH><TH>Nguồn</TH><TH>Người phụ trách</TH><TH>Follow-up</TH><TH>Ngày tạo</TH><TH>Action</TH></TR>
           </THead>
           <TBody>
             {leads.map((lead) => (
@@ -512,6 +562,7 @@ function LeadsTable({ leads, canAssign, onEdit, onDelete }: { leads: Lead[]; can
                 <TD>{lead.email}</TD>
                 <TD>{lead.interestedCourse}</TD>
                 <TD><Badge tone={statusTone[statusIndex(lead.status)]}>{statusLabel(lead.status)}</Badge></TD>
+                <TD className="font-semibold text-slate-800">{formatCurrency(dealValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}</TD>
                 <TD>{sourceLabel(lead.source)}</TD>
                 <TD>{lead.assignedToName || '-'}</TD>
                 <TD>{formatDate(lead.followUpDate, true)}</TD>
@@ -565,8 +616,10 @@ function Kanban({ leads, salesOptions, canAssign, refresh }: { leads: Lead[]; sa
   }, [leads]);
 
   async function updateLead(lead: Lead, patch: Partial<Lead>) {
-    await leadService.saveLead({ ...lead, ...patch });
-    await leadService.addActivity({ leadId: lead.id, type: 'update', content: `Cập nhật ${Object.keys(patch).join(', ')}` });
+    const confirmedPatch = buildLostReasonPatch(lead, patch);
+    if (!confirmedPatch) return;
+    await leadService.saveLead({ ...lead, ...confirmedPatch });
+    await leadService.addActivity({ leadId: lead.id, type: 'update', content: `Cập nhật ${Object.keys(confirmedPatch).join(', ')}` });
     refresh();
   }
 
@@ -709,8 +762,13 @@ function LeadKanbanCard({
   }
 
   function commit(patch: Partial<Lead>) {
-    setDraft({ ...draft, ...patch });
-    void onSave(lead, patch);
+    const confirmedPatch = buildLostReasonPatch(lead, patch);
+    if (!confirmedPatch) {
+      setDraft(lead);
+      return;
+    }
+    setDraft({ ...draft, ...confirmedPatch });
+    void onSave(lead, confirmedPatch);
   }
 
   function commitText(key: keyof Lead) {
@@ -793,6 +851,7 @@ function LeadKanbanCard({
           <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{statusLabel(draft.status)}</span>
           {draft.interestedCourse && <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{draft.interestedCourse}</span>}
           {draft.source && <span className="rounded bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">{sourceLabel(draft.source)}</span>}
+          {dealValue(draft) ? <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{formatCurrency(dealValue(draft), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}</span> : null}
         </div>
 
         {/* Ghi chú preview khi thu lại */}
@@ -820,6 +879,25 @@ function LeadKanbanCard({
               {courseOptions.map((course) => <option key={course} value={course}>{course}</option>)}
             </Select>
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              type="number"
+              min="0"
+              step="100000"
+              value={numericInputValue(draft.dealSize)}
+              placeholder="Deal size"
+              onChange={(event) => setDraft({ ...draft, dealSize: parseMoneyInput(event.target.value), expectedRevenue: parseMoneyInput(event.target.value), dealCurrency: draft.dealCurrency || DEFAULT_DEAL_CURRENCY })}
+              onBlur={() => {
+                if (draft.dealSize !== lead.dealSize) commit({ dealSize: draft.dealSize, expectedRevenue: draft.dealSize, dealCurrency: draft.dealCurrency || DEFAULT_DEAL_CURRENCY });
+              }}
+            />
+            <Input value={draft.dealPackage || ''} placeholder="Gói học" onChange={(event) => setDraft({ ...draft, dealPackage: event.target.value })} onBlur={() => commitText('dealPackage')} />
+          </div>
+          <Input
+            type="date"
+            value={draft.expectedCloseDate || ''}
+            onChange={(event) => commit({ expectedCloseDate: event.target.value })}
+          />
           <Select
             value={draft.assignedTo || ''}
             disabled={!canAssign}
@@ -839,6 +917,12 @@ function LeadKanbanCard({
               {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
             </Select>
           </div>
+          {draft.status === LOST_LEAD_STATUS && (
+            <Select value={draft.lostReason || ''} onChange={(event) => commit({ lostReason: event.target.value })}>
+              <option value="">Chọn lý do mất lead</option>
+              {lostReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+            </Select>
+          )}
           {/* Loại lịch — full width để hiện đủ chữ */}
           <Select
             value={appointmentKind}
@@ -879,6 +963,13 @@ function LeadKanbanCard({
             value={draft.initialNote || ''}
             onChange={(event) => setDraft({ ...draft, initialNote: event.target.value })}
             onBlur={() => commitText('initialNote')}
+          />
+          <Textarea
+            rows={2}
+            placeholder="Note deal / báo phí..."
+            value={draft.dealNote || ''}
+            onChange={(event) => setDraft({ ...draft, dealNote: event.target.value })}
+            onBlur={() => commitText('dealNote')}
           />
           <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
             <span className="text-[10px] text-slate-400">

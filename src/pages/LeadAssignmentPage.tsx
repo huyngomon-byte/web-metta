@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { useAuth } from '@/hooks/useAuth';
-import { leadStatuses } from '@/lib/constants';
+import { LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } from '@/lib/constants';
 import { canDeleteLead } from '@/lib/permissions';
 import { formatDate } from '@/lib/utils';
 import { leadService } from '@/services/leadService';
@@ -23,20 +23,8 @@ const groupTabs: { key: GroupKey; title: string }[] = [
   { key: 'assigned', title: 'Đã phân sale' },
 ];
 
-const STATUS_LABELS = [
-  'Lead mới',
-  'Đã liên hệ',
-  'Chưa nghe máy',
-  'Đã hẹn tư vấn',
-  'Đã tư vấn/Đặt lịch test',
-  'Đã test/Học thử',
-  'Đã đăng ký học',
-  'Mất lead',
-];
-
 function statusLabel(status: string) {
-  const idx = (leadStatuses as readonly string[]).indexOf(status);
-  return idx >= 0 ? STATUS_LABELS[idx] : status;
+  return status;
 }
 
 function groupLead(lead: Lead): GroupKey {
@@ -86,8 +74,8 @@ export default function LeadAssignmentPage() {
     const assigned = leads.filter((lead) => lead.assignedTo === sales.id);
     const returned = leads.filter((lead) => lead.failedAssignedTo === sales.id || (lead.assignedTo === sales.id && lead.assignedStatus === 'returned'));
     const contacted = assigned.filter((lead) => lead.status !== leadStatuses[0] && lead.status !== leadStatuses[2]).length;
-    const converted = assigned.filter((lead) => lead.status === leadStatuses[6] || lead.convertedToStudentId).length;
-    const lost = assigned.filter((lead) => lead.status === leadStatuses[7]).length;
+    const converted = assigned.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).length;
+    const lost = assigned.filter((lead) => lead.status === LOST_LEAD_STATUS).length;
     return {
       id: sales.id,
       name: sales.fullName,

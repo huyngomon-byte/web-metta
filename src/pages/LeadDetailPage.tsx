@@ -10,9 +10,9 @@ import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseOptions } from '@/hooks/useCms';
-import { leadSources, leadStatuses } from '@/lib/constants';
+import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadSources, leadStatuses, lostReasons } from '@/lib/constants';
 import { canAssignLead } from '@/lib/permissions';
-import { formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
 import { leadService } from '@/services/leadService';
 import { userService } from '@/services/userService';
@@ -22,46 +22,37 @@ import type { AdminUser } from '@/types/user';
 type AppointmentKind = '' | Appointment['type'];
 type LeadDetailDraft = Lead & { appointmentKind?: AppointmentKind; appointmentTime?: string; appointmentNote?: string };
 
-const STATUS_LABELS = [
-  'Lead mới',
-  'Đã liên hệ',
-  'Chưa nghe máy',
-  'Đã hẹn tư vấn',
-  'Đã tư vấn/Đặt lịch test',
-  'Đã test/Học thử',
-  'Đã đăng ký học',
-  'Mất lead',
-];
-
-const SOURCE_LABELS = [
-  'Website',
-  'Landing Page',
-  'Facebook Ads',
-  'Instagram Ads',
-  'TikTok Ads',
-  'Google Ads',
-  'Zalo',
-  'Referral',
-  'Walk-in',
-  'Khác',
-];
-
 const APPT_CALLBACK = 'Gọi lại' as Appointment['type'];
 const APPT_CONSULTATION = 'Tư vấn' as Appointment['type'];
 const APPT_TEST = 'Test đầu vào' as Appointment['type'];
 
-function statusIndex(status: string) {
-  const idx = (leadStatuses as readonly string[]).indexOf(status);
-  return idx >= 0 ? idx : 0;
-}
-
 function statusLabel(status: string) {
-  return STATUS_LABELS[statusIndex(status)] || status;
+  return status;
 }
 
 function sourceLabel(source: string) {
-  const idx = (leadSources as readonly string[]).indexOf(source);
-  return SOURCE_LABELS[idx] || source;
+  return source;
+}
+
+function numericInputValue(value?: number) {
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function parseMoneyInput(value: string) {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function dealValue(lead: Partial<Lead>) {
+  return lead.expectedRevenue ?? lead.dealSize;
+}
+
+function appointmentStatusLabel(status: Appointment['status']) {
+  if (status === 'done') return 'Hoàn thành';
+  if (status === 'cancelled') return 'Đã hủy';
+  if (status === 'overdue') return 'Quá hạn';
+  return 'Sắp diễn ra';
 }
 
 function toDetailDraft(lead: Lead): LeadDetailDraft {
@@ -122,6 +113,10 @@ export default function LeadDetailPage() {
       setError('Vui lòng chọn ngày giờ lịch hẹn.');
       return;
     }
+    if (currentLead.status === LOST_LEAD_STATUS && !String(currentLead.lostReason || '').trim()) {
+      setError('Vui lòng chọn lý do mất lead.');
+      return;
+    }
 
     const selectedSales = salesOptions.find((sales) => sales.id === currentLead.assignedTo);
     const normalizedLead: LeadDetailDraft = {
@@ -137,7 +132,7 @@ export default function LeadDetailPage() {
 
     setSaving(true);
     try {
-      const savedLeads = await leadService.saveLead(leadPayload);
+      const savedLeads = await leadService.saveLead(leadPayload as Partial<Lead>);
       const savedLead = savedLeads.find((item) => item.id === id) || leadPayload;
 
       if (normalizedLead.appointmentKind && normalizedLead.appointmentTime) {
@@ -178,6 +173,12 @@ export default function LeadDetailPage() {
     cancelled: 'red',
     overdue: 'orange',
   };
+
+  async function updateAppointmentStatus(appointment: Appointment, status: Appointment['status']) {
+    if (appointment.status === status) return;
+    await appointmentService.updateStatus(appointment.id, status);
+    setAppointments((current) => current.map((item) => item.id === appointment.id ? { ...item, status } : item));
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -292,6 +293,51 @@ export default function LeadDetailPage() {
               <Textarea className="md:col-span-3" value={lead.appointmentNote || ''} onChange={(event) => set('appointmentNote', event.target.value)} placeholder="Note appointment hiển thị trong Appointments" />
             </FormSection>
 
+            <FormSection title="Finance / enrollment">
+              <Field label="Deal size">
+                <Input
+                  type="number"
+                  min="0"
+                  step="100000"
+                  value={numericInputValue(lead.dealSize)}
+                  onChange={(event) => {
+                    const amount = parseMoneyInput(event.target.value);
+                    setLead({ ...lead, dealSize: amount, expectedRevenue: amount, dealCurrency: lead.dealCurrency || DEFAULT_DEAL_CURRENCY });
+                  }}
+                  placeholder="VD: 12000000"
+                />
+              </Field>
+              <Field label="Currency">
+                <Select value={lead.dealCurrency || DEFAULT_DEAL_CURRENCY} onChange={(event) => set('dealCurrency', event.target.value)}>
+                  <option value="VND">VND</option>
+                  <option value="USD">USD</option>
+                </Select>
+              </Field>
+              <Field label="Expected revenue">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
+                  {formatCurrency(dealValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                </div>
+              </Field>
+              <Field label="Gói học / báo phí">
+                <Input value={lead.dealPackage || ''} onChange={(event) => set('dealPackage', event.target.value)} />
+              </Field>
+              <Field label="Ngày dự kiến chốt">
+                <Input type="date" value={lead.expectedCloseDate || ''} onChange={(event) => set('expectedCloseDate', event.target.value)} />
+              </Field>
+              {lead.status === LOST_LEAD_STATUS && (
+                <Field label="Lý do mất lead">
+                  <Select value={lead.lostReason || ''} onChange={(event) => set('lostReason', event.target.value)}>
+                    <option value="">Chọn lý do mất lead</option>
+                    {lostReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
+                  </Select>
+                </Field>
+              )}
+              <Textarea className="md:col-span-3" value={lead.dealNote || ''} onChange={(event) => set('dealNote', event.target.value)} placeholder="Note deal / báo phí / điều kiện chốt" />
+              {lead.status === LOST_LEAD_STATUS && (
+                <Textarea className="md:col-span-3" value={lead.lostNote || ''} onChange={(event) => set('lostNote', event.target.value)} placeholder="Ghi chú thêm về lý do mất lead" />
+              )}
+            </FormSection>
+
             <Button className="w-fit" onClick={save} disabled={saving}><Save /> {saving ? 'Đang lưu...' : 'Lưu lead'}</Button>
           </CardContent>
         </Card>
@@ -322,7 +368,19 @@ export default function LeadDetailPage() {
               <div key={appointment.id} className="flex flex-col gap-1 rounded-lg border border-slate-100 bg-slate-50 p-4">
                 <div className="flex items-center justify-between">
                   <span className="font-semibold text-slate-900">{appointment.title}</span>
-                  <Badge tone={apptStatusColor[appointment.status] || 'blue'}>{appointment.status}</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone={apptStatusColor[appointment.status] || 'blue'}>{appointmentStatusLabel(appointment.status)}</Badge>
+                    <Select
+                      className="w-36"
+                      value={appointment.status}
+                      onChange={(event) => void updateAppointmentStatus(appointment, event.target.value as Appointment['status'])}
+                    >
+                      <option value="upcoming">Sắp diễn ra</option>
+                      <option value="done">Hoàn thành</option>
+                      <option value="cancelled">Đã hủy</option>
+                      <option value="overdue">Quá hạn</option>
+                    </Select>
+                  </div>
                 </div>
                 <p className="text-sm text-slate-600">{formatDate(appointment.startTime, true)}</p>
                 {appointment.assignedTo && <p className="text-sm text-slate-500">PIC: {appointment.assignedToName || appointment.assignedTo}</p>}

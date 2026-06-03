@@ -3,6 +3,7 @@ import type { ClassItem, ClassSession, ClassStudent, Course, Student } from '@/t
 import type { CmsPage, MediaItem, PageSection, ProgramCms, SiteSettings } from '@/types/cms';
 import type { Appointment, Lead, LeadActivity } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS } from '@/lib/constants';
 
 const now = '2026-05-26T09:00:00+07:00';
 
@@ -604,8 +605,8 @@ export const leads: Lead[] = [
   { id: 'lead-1', fullName: 'Nguyễn Hoàng Anh', phone: '0901234567', email: 'anh@example.com', contactType: 'parent', age: '8', school: 'Tiểu học Nguyễn Du', currentClass: 'Lớp 3', interestedCourse: 'METTA Young Learner', currentLevel: 'Beginner', targetGoal: 'Tự tin giao tiếp', source: 'Website', status: 'Lead mới', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T15:00:00+07:00', consultationDate: '2026-05-27T09:00:00+07:00', initialNote: 'Muốn con phản xạ tốt hơn.', createdAt: '2026-05-26T08:10:00+07:00', updatedAt: now },
   { id: 'lead-2', fullName: 'Trần Minh Khoa', phone: '0912345678', email: 'khoa@example.com', contactType: 'student', age: '7', school: 'Tiểu học Lê Lợi', currentClass: 'Lớp 2', interestedCourse: 'METTA on Phonics', currentLevel: 'Starter', targetGoal: 'Phát âm chuẩn', source: 'Facebook Ads', status: 'Đã hẹn tư vấn', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T16:30:00+07:00', consultationDate: '2026-05-28T18:00:00+07:00', initialNote: 'Quan tâm Phonics.', createdAt: '2026-05-25T10:20:00+07:00', updatedAt: now },
   { id: 'lead-3', fullName: 'Lê Thu Hà', phone: '0987654321', email: 'ha@example.com', contactType: 'parent', age: '5', school: 'Mầm non Hoa Sen', currentClass: 'Lá', interestedCourse: 'METTA Kiddies', currentLevel: 'Starter', targetGoal: 'Làm quen tiếng Anh', source: 'Landing Page', status: 'Đã liên hệ', assignedTo: 'Ms. Linh', followUpDate: '2026-05-27T10:00:00+07:00', initialNote: 'Cần lớp cuối tuần.', createdAt: '2026-05-24T14:10:00+07:00', updatedAt: now },
-  { id: 'lead-4', fullName: 'Phạm Gia Bảo', phone: '0933333333', email: 'bao@example.com', contactType: 'parent', age: '10', school: 'Tiểu học Trần Phú', currentClass: 'Lớp 5', interestedCourse: 'METTA Young Learner', currentLevel: 'A1', targetGoal: 'Tăng phản xạ', source: 'Zalo', status: 'Đã tư vấn/Đặt lịch test', assignedTo: 'Ms. Linh', consultationDate: '2026-05-26T11:00:00+07:00', initialNote: 'Đã tư vấn lớp TN-01.', createdAt: '2026-05-23T09:00:00+07:00', updatedAt: now },
-  { id: 'lead-5', fullName: 'Đặng Quỳnh Như', phone: '0977777777', email: 'nhu@example.com', contactType: 'student', age: '6', school: 'Tiểu học Gia Định', currentClass: 'Lớp 1', interestedCourse: 'METTA on Phonics', currentLevel: 'Beginner', targetGoal: 'Ghép âm tốt', source: 'Referral', status: 'Đã đăng ký học', assignedTo: 'Ms. Linh', initialNote: 'Đã chuyển đổi học sinh.', createdAt: '2026-05-20T17:00:00+07:00', updatedAt: now, convertedToStudentId: 'stu-1' },
+  { id: 'lead-4', fullName: 'Phạm Gia Bảo', phone: '0933333333', email: 'bao@example.com', contactType: 'parent', age: '10', school: 'Tiểu học Trần Phú', currentClass: 'Lớp 5', interestedCourse: 'METTA Young Learner', currentLevel: 'A1', targetGoal: 'Tăng phản xạ', source: 'Zalo', status: DEAL_QUOTED_STATUS, assignedTo: 'Ms. Linh', consultationDate: '2026-05-26T11:00:00+07:00', dealSize: 12800000, dealCurrency: DEFAULT_DEAL_CURRENCY, dealPackage: 'Young Learner 48 buổi', expectedRevenue: 12800000, expectedCloseDate: '2026-05-31', dealNote: 'Đã báo phí trọn khóa, phụ huynh đang cân nhắc lịch học.', initialNote: 'Đã tư vấn lớp TN-01.', createdAt: '2026-05-23T09:00:00+07:00', updatedAt: now },
+  { id: 'lead-5', fullName: 'Đặng Quỳnh Như', phone: '0977777777', email: 'nhu@example.com', contactType: 'student', age: '6', school: 'Tiểu học Gia Định', currentClass: 'Lớp 1', interestedCourse: 'METTA on Phonics', currentLevel: 'Beginner', targetGoal: 'Ghép âm tốt', source: 'Referral', status: WON_LEAD_STATUS, assignedTo: 'Ms. Linh', dealSize: 9600000, dealCurrency: DEFAULT_DEAL_CURRENCY, dealPackage: 'Phonics 36 buổi', expectedRevenue: 9600000, wonAt: '2026-05-20T17:30:00+07:00', initialNote: 'Đã chuyển đổi học sinh.', createdAt: '2026-05-20T17:00:00+07:00', updatedAt: now, convertedToStudentId: 'stu-1' },
   ...Array.from({ length: 5 }, (_, i) => ({
     id: `lead-x${i}`,
     fullName: `Lead mẫu ${i + 1}`,
@@ -619,7 +620,8 @@ export const leads: Lead[] = [
     currentLevel: 'Starter',
     targetGoal: 'Tăng phản xạ',
     source: ['Website', 'Landing Page', 'Facebook Ads', 'Zalo', 'Khác'][i] as Lead['source'],
-    status: ['Chưa nghe máy', 'Đã test/Học thử', 'Mất lead', 'Lead mới', 'Đã liên hệ'][i] as Lead['status'],
+    status: ['Chưa nghe máy', 'Đã test/Học thử', LOST_LEAD_STATUS, 'Lead mới', 'Đã liên hệ'][i] as Lead['status'],
+    lostReason: i === 2 ? 'Không liên lạc được' : '',
     assignedTo: i % 2 ? 'Teacher An' : 'Ms. Linh',
     followUpDate: `2026-05-${26 + (i % 3)}T10:00:00+07:00`,
     initialNote: 'Seed lead cho CRM.',

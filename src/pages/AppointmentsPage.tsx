@@ -14,6 +14,7 @@ import type { Appointment } from '@/types/crm';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const TYPE_FILTERS = ['Gọi lại', 'Tư vấn', 'Test đầu vào'] as Appointment['type'][];
+const STATUS_FILTERS: Appointment['status'][] = ['upcoming', 'done', 'cancelled', 'overdue'];
 
 function localDateKey(value: Date) {
   const year = value.getFullYear();
@@ -94,11 +95,18 @@ function statusTone(status: Appointment['status']): Parameters<typeof Badge>[0][
   return 'orange';
 }
 
+function statusLabel(status: Appointment['status']) {
+  if (status === 'done') return 'Hoàn thành';
+  if (status === 'cancelled') return 'Đã hủy';
+  if (status === 'overdue') return 'Quá hạn';
+  return 'Sắp diễn ra';
+}
+
 export default function AppointmentsPage() {
   const [items, setItems] = useState<Appointment[]>([]);
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [month, setMonth] = useState(() => new Date());
-  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', assignedTo: '', type: '' });
+  const [filters, setFilters] = useState({ dateFrom: '', dateTo: '', assignedTo: '', type: '', status: '' });
 
   async function refresh() {
     const appointments = await appointmentService.getAppointments();
@@ -120,6 +128,7 @@ export default function AppointmentsPage() {
     if (filters.dateTo) result = result.filter((item) => item.startTime.slice(0, 10) <= filters.dateTo);
     if (filters.assignedTo) result = result.filter((item) => item.assignedTo === filters.assignedTo);
     if (filters.type) result = result.filter((item) => appointmentTypeLabel(item.type) === filters.type);
+    if (filters.status) result = result.filter((item) => item.status === filters.status);
     return result.sort((a, b) => a.startTime.localeCompare(b.startTime));
   }, [filters, items]);
 
@@ -135,6 +144,12 @@ export default function AppointmentsPage() {
 
   function moveMonth(step: number) {
     setMonth((current) => new Date(current.getFullYear(), current.getMonth() + step, 1));
+  }
+
+  async function updateStatus(appointment: Appointment, status: Appointment['status']) {
+    if (appointment.status === status) return;
+    const saved = await appointmentService.updateStatus(appointment.id, status);
+    setItems((current) => current.map((item) => item.id === saved.id ? saved : item));
   }
 
   return (
@@ -173,7 +188,11 @@ export default function AppointmentsPage() {
               <option value="">Tất cả loại lịch</option>
               {TYPE_FILTERS.map((type) => <option key={type} value={type}>{type}</option>)}
             </Select>
-            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50" onClick={() => setFilters({ dateFrom: '', dateTo: '', assignedTo: '', type: '' })}>
+            <Select className="w-44" value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+              <option value="">Tất cả trạng thái</option>
+              {STATUS_FILTERS.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+            </Select>
+            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50" onClick={() => setFilters({ dateFrom: '', dateTo: '', assignedTo: '', type: '', status: '' })}>
               Xóa filter
             </button>
           </div>
@@ -272,7 +291,18 @@ export default function AppointmentsPage() {
                       <TD><Badge tone={typeTone(appointment.type)}>{appointmentTypeLabel(appointment.type)}</Badge></TD>
                       <TD>{formatDate(appointment.startTime, true)}</TD>
                       <TD>{appointment.assignedToName || appointment.assignedTo}</TD>
-                      <TD><Badge tone={statusTone(appointment.status)}>{appointment.status}</Badge></TD>
+                      <TD>
+                        <div className="flex min-w-40 items-center gap-2">
+                          <Badge tone={statusTone(appointment.status)}>{statusLabel(appointment.status)}</Badge>
+                          <Select
+                            className="w-32"
+                            value={appointment.status}
+                            onChange={(event) => void updateStatus(appointment, event.target.value as Appointment['status'])}
+                          >
+                            {STATUS_FILTERS.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
+                          </Select>
+                        </div>
+                      </TD>
                       <TD>{appointment.notes}</TD>
                     </TR>
                   ))}

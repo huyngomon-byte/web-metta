@@ -145,6 +145,11 @@ export const PUBLIC_PROGRAMS = [
   },
 ] as const;
 
+export const DEAL_QUOTED_STATUS = 'Đã báo phí/Chờ chốt';
+export const WON_LEAD_STATUS = 'Đã đăng ký học';
+export const LOST_LEAD_STATUS = 'Mất lead';
+export const DEFAULT_DEAL_CURRENCY = 'VND';
+
 export const leadStatuses = [
   'Lead mới',
   'Đã liên hệ',
@@ -152,8 +157,18 @@ export const leadStatuses = [
   'Đã hẹn tư vấn',
   'Đã tư vấn/Đặt lịch test',
   'Đã test/Học thử',
-  'Đã đăng ký học',
-  'Mất lead',
+  DEAL_QUOTED_STATUS,
+  WON_LEAD_STATUS,
+  LOST_LEAD_STATUS,
+] as const;
+
+export const lostReasons = [
+  'Không liên lạc được',
+  'Không phù hợp học phí',
+  'Chưa sẵn sàng',
+  'Chọn trung tâm khác',
+  'Không phù hợp lịch học',
+  'Khác',
 ] as const;
 
 export const leadSources = [
