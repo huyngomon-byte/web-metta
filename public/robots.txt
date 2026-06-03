@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://metta-academy.gg99.vn/sitemap.xml

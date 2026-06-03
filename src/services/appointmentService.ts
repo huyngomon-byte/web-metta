@@ -1,0 +1,219 @@
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { canViewAllLeads } from '@/lib/permissions';
+import { currentUser } from '@/services/authService';
+import { delay, store } from '@/services/store';
+import type { Appointment } from '@/types/crm';
+
+const now = () => new Date().toISOString();
+const USE_FIREBASE = isFirebaseConfigured && !!db;
+const COL = 'appointments';
+const LS_KEY = 'metta_appointments';
+
+function persist() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(store.appointments)); } catch {}
+}
+
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) store.appointments = parsed;
+  } catch {}
+}
+
+function addMinutes(value: string, minutes: number) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  date.setMinutes(date.getMinutes() + minutes);
+  return date.toISOString();
+}
+
+function mergeAppointments(localItems: Appointment[], firestoreItems: Appointment[]) {
+  const map = new Map<string, Appointment>();
+  localItems.forEach((item) => map.set(item.id, item));
+  firestoreItems.forEach((item) => map.set(item.id, item));
+  return Array.from(map.values()).sort((a, b) => b.startTime.localeCompare(a.startTime));
+}
+
+function defaultDuration(type: Appointment['type']) {
+  if (type === 'Gọi lại') return 20;
+  if (type === 'Tư vấn' || type === 'Test đầu vào') return 45;
+  return 30;
+}
+
+function appointmentTypeKey(type: string) {
+  if (type === 'Gọi lại' || type.includes('Gá')) return 'callback';
+  if (type === 'Tư vấn' || type.includes('TÆ')) return 'consultation';
+  if (type === 'Test đầu vào' || type.toLowerCase().includes('test')) return 'test';
+  return type;
+}
+
+async function writeFirestore(appointment: Appointment) {
+  if (!USE_FIREBASE) return;
+  const cleanAppointment = Object.fromEntries(
+    Object.entries(appointment).filter(([, value]) => value !== undefined),
+  ) as Appointment;
+  await setDoc(doc(db!, COL, appointment.id), cleanAppointment);
+}
+
+async function deleteFirestore(id: string) {
+  if (!USE_FIREBASE) return;
+  await deleteDoc(doc(db!, COL, id));
+}
+
+export const appointmentService = {
+  getAppointments: async () => {
+    const user = currentUser();
+    loadLocal();
+    const localItems = [...store.appointments];
+
+    if (USE_FIREBASE) {
+      try {
+        const appointmentQuery = user?.role === 'sales'
+          ? query(collection(db!, COL), where('assignedTo', '==', user.id))
+          : query(collection(db!, COL), orderBy('startTime', 'desc'));
+        const snap = await getDocs(appointmentQuery);
+        const firestoreItems = snap.docs.map((item) => item.data() as Appointment);
+        store.appointments = firestoreItems.length ? mergeAppointments(localItems, firestoreItems) : [];
+        persist();
+        const visibleItems = canViewAllLeads(user)
+          ? store.appointments
+          : store.appointments.filter((item) => item.assignedTo === user?.id);
+        return delay(visibleItems);
+      } catch (error) {
+        console.warn('[Appointments] Firestore read failed, using local cache:', error);
+      }
+    }
+
+    return delay(canViewAllLeads(user) ? store.appointments : store.appointments.filter((item) => item.assignedTo === user?.id));
+  },
+
+  saveAppointment: async (appointment: Partial<Appointment>) => {
+    const timestamp = now();
+    let saved: Appointment;
+
+    if (appointment.id) {
+      store.appointments = store.appointments.map((item) =>
+        item.id === appointment.id ? { ...item, ...appointment, updatedAt: timestamp } : item,
+      );
+      saved = store.appointments.find((item) => item.id === appointment.id)!;
+    } else {
+      saved = {
+        id: `ap-${Date.now()}`,
+        title: appointment.title || '',
+        type: appointment.type || 'Tư vấn',
+        startTime: appointment.startTime || timestamp,
+        endTime: appointment.endTime || timestamp,
+        assignedTo: appointment.assignedTo || '',
+        assignedToName: appointment.assignedToName || '',
+        status: appointment.status || 'upcoming',
+        notes: appointment.notes || '',
+        leadId: appointment.leadId,
+        studentId: appointment.studentId,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      store.appointments.unshift(saved);
+    }
+
+    persist();
+    await writeFirestore(saved);
+    return delay(store.appointments);
+  },
+
+  getByLead: async (leadId: string) => {
+    await appointmentService.getAppointments();
+    return delay(store.appointments.filter((item) => item.leadId === leadId));
+  },
+
+  deleteLeadAppointmentType: async (leadId: string, type: Appointment['type']) => {
+    await appointmentService.getAppointments();
+    const targetType = appointmentTypeKey(type);
+    const targets = store.appointments.filter((item) => item.leadId === leadId && appointmentTypeKey(item.type) === targetType);
+    store.appointments = store.appointments.filter((item) => !(item.leadId === leadId && appointmentTypeKey(item.type) === targetType));
+    persist();
+    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
+    return delay(store.appointments);
+  },
+
+  /** Xóa toàn bộ lịch hẹn liên quan đến một lead — gọi khi xóa lead để giữ data sync. */
+  deleteAllForLead: async (leadId: string) => {
+    await appointmentService.getAppointments();
+    const targets = store.appointments.filter((item) => item.leadId === leadId);
+    store.appointments = store.appointments.filter((item) => item.leadId !== leadId);
+    persist();
+    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
+    return delay(store.appointments);
+  },
+
+  deleteOtherForLead: async (leadId: string, keepId: string) => {
+    await appointmentService.getAppointments();
+    const targets = store.appointments.filter((item) => item.leadId === leadId && item.id !== keepId);
+    store.appointments = store.appointments.filter((item) => !(item.leadId === leadId && item.id !== keepId));
+    persist();
+    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
+    return delay(store.appointments);
+  },
+
+  upsertLeadAppointment: async (data: {
+    leadId: string;
+    leadName: string;
+    phone?: string;
+    type: Appointment['type'];
+    startTime: string;
+    assignedTo?: string;
+    assignedToName?: string;
+    notes?: string;
+  }) => {
+    await appointmentService.getAppointments();
+    const timestamp = now();
+    const title = data.phone ? `${data.leadName} - ${data.phone}` : data.leadName;
+    const existing = store.appointments.find((item) => item.leadId === data.leadId && appointmentTypeKey(item.type) === appointmentTypeKey(data.type));
+    const appointment: Appointment = {
+      id: existing?.id || `ap-${Date.now()}`,
+      leadId: data.leadId,
+      studentId: existing?.studentId,
+      title,
+      type: data.type,
+      startTime: data.startTime,
+      endTime: addMinutes(data.startTime, defaultDuration(data.type)),
+      assignedTo: data.assignedTo || '',
+      assignedToName: data.assignedToName || '',
+      status: existing?.status || 'upcoming',
+      notes: data.notes || '',
+      createdAt: existing?.createdAt || timestamp,
+      updatedAt: timestamp,
+    };
+
+    if (existing) {
+      store.appointments = store.appointments.map((item) => (item.id === existing.id ? appointment : item));
+    } else {
+      store.appointments.unshift(appointment);
+    }
+
+    persist();
+    await writeFirestore(appointment);
+    return delay(appointment);
+  },
+
+  upsertConsultationForLead: async (data: {
+    leadId: string;
+    leadName: string;
+    phone?: string;
+    startTime: string;
+    assignedTo?: string;
+    assignedToName?: string;
+    notes?: string;
+  }) => appointmentService.upsertLeadAppointment({ ...data, type: 'Tư vấn' }),
+};
