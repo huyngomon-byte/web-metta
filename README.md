@@ -93,10 +93,14 @@ Admin:
 ## CRM Pipeline Notes
 
 - Pipeline includes `Đã báo phí/Chờ chốt` between `Đã test/Học thử` and `Đã đăng ký học`.
+- Leads store both `parentName` and `studentName`; `fullName` is kept as a compatibility display name.
+- Lead source priority is configurable in Leads via `Source priority`; priority levels are P1-P5, with P5 handled first on Kanban.
+- Kanban sorts each status column by source priority first, then created time.
 - Finance/enrollment fields are stored on leads: `dealSize`, `dealCurrency`, `dealPackage`, `dealNote`, `expectedRevenue`, and `expectedCloseDate`.
 - `expectedRevenue` is copied from the sales-entered `dealSize`. There is no default probability mapping in this implementation.
 - Moving a lead to `Mất lead` requires `lostReason`.
 - Appointment statuses are `upcoming`, `done`, `cancelled`, and `overdue`.
+- Local seed data includes 10 demo priority leads (`lead-demo-priority-*`) for UI review.
 
 ## Environment
 

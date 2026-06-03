@@ -14,6 +14,7 @@ import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS } from '@/lib/
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
 import { currentUser } from '@/services/authService';
+import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { delay, store } from '@/services/store';
 import type { InterestedCourse, Lead, LeadActivity } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
@@ -45,6 +46,10 @@ const COURSE_MIGRATION: Record<string, InterestedCourse> = {
 
 function normalizeCourse(v?: string): string {
   return (v && COURSE_MIGRATION[v]) ? COURSE_MIGRATION[v] : (v || '');
+}
+
+function leadDisplayName(lead: Partial<Lead>) {
+  return String(lead.studentName || lead.parentName || lead.fullName || '').trim();
 }
 
 function parseMoney(value: unknown) {
@@ -81,7 +86,11 @@ function normalizeDealFields<T extends Partial<Lead>>(input: T): T {
 
 function normalizeLead(raw: Lead): Lead {
   const lead = { ...raw, interestedCourse: normalizeCourse(raw.interestedCourse) as InterestedCourse | '' };
+  if (!lead.studentName && lead.contactType === 'student' && lead.fullName) lead.studentName = lead.fullName;
+  if (!lead.parentName && lead.contactType !== 'student' && lead.fullName) lead.parentName = lead.fullName;
+  if (!lead.fullName) lead.fullName = leadDisplayName(lead);
   if (!lead.assignedStatus) lead.assignedStatus = lead.assignedTo ? 'accepted' : 'unassigned';
+  if (!lead.priorityLevel) lead.priorityLevel = 1;
   if (!lead.dealCurrency && (lead.dealSize !== undefined || lead.expectedRevenue !== undefined)) lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
   if (lead.dealSize !== undefined && lead.expectedRevenue === undefined) lead.expectedRevenue = lead.dealSize;
   if (!lead.assignedToName && lead.assignedTo && !lead.assignedTo.includes('-') && !lead.assignedTo.startsWith('uid')) {
@@ -262,8 +271,16 @@ export const leadService = {
     const user = currentUser();
     const timestamp = now();
     const nowMs = Date.now();
+    const sourceConfigs = await sourceConfigService.getConfigs();
     if (lead.interestedCourse) lead = { ...lead, interestedCourse: normalizeCourse(lead.interestedCourse) as InterestedCourse | '' };
     lead = normalizeDealFields(lead);
+    const displayName = leadDisplayName(lead);
+    const leadSource = lead.source || 'Website';
+    lead = {
+      ...lead,
+      ...(displayName ? { fullName: displayName } : {}),
+      ...((lead.source || !lead.id) ? { priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel) } : {}),
+    };
 
     if (lead.id) {
       const prev = store.leads.find((item) => item.id === lead.id);
@@ -324,6 +341,8 @@ export const leadService = {
       const draftForValidation = normalizeLead({
         id: `lead-${Date.now()}`,
         fullName: lead.fullName || '',
+        parentName: lead.parentName || '',
+        studentName: lead.studentName || '',
         phone: lead.phone || '',
         email: lead.email || '',
         contactType: lead.contactType || 'parent',
@@ -333,7 +352,8 @@ export const leadService = {
         interestedCourse: lead.interestedCourse || '',
         currentLevel: lead.currentLevel || '',
         targetGoal: lead.targetGoal || '',
-        source: lead.source || 'Website',
+        source: leadSource,
+        priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel),
         status: lead.status || 'Lead mới',
         assignedTo: lead.assignedTo || '',
         assignedToName: lead.assignedToName || '',
@@ -416,12 +436,14 @@ export const leadService = {
   },
 
   publicSubmit: async (lead: PublicLeadSubmitInput, formId = 'consultation-form') => {
-    if (!lead.fullName || !lead.phone) throw new Error('Thiếu họ tên hoặc số điện thoại.');
+    const displayName = leadDisplayName(lead);
+    if (!displayName || !lead.phone) throw new Error('Thiếu họ tên hoặc số điện thoại.');
     const response = await fetch('/api/public-lead-submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...lead,
+        fullName: displayName,
         formId,
         sourceUrl: lead.sourceUrl || window.location.href,
         pageSlug: lead.pageSlug || window.location.pathname.replace(/^\/+/, ''),

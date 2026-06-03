@@ -601,7 +601,65 @@ export const classSessions: ClassSession[] = classes.flatMap((classItem, classIn
   }))
 );
 
+const demoLeadSources = [
+  ['Meta Lead Form', 5],
+  ['Referral', 5],
+  ['Website', 4],
+  ['Meta Ads', 4],
+  ['Zalo OA', 4],
+  ['Sales input', 3],
+  ['TikTok Ads', 3],
+  ['Walk-in', 3],
+  ['Instagram Ads', 3],
+  ['Khác', 1],
+] as const;
+
+const demoLeadNames = [
+  ['Chị Hạnh Nguyễn', 'Bé Bảo An'],
+  ['Anh Minh Trần', 'Minh Khang'],
+  ['Chị Thu Hà', 'Gia Linh'],
+  ['Anh Quốc Bảo', 'Bảo Châu'],
+  ['Chị Mai Anh', 'Tuệ Lâm'],
+  ['Chị Ngọc Diệp', 'Khánh An'],
+  ['Anh Hải Nam', 'Nhật Minh'],
+  ['Chị Phương Thảo', 'Hoàng Phúc'],
+  ['Anh Đức Huy', 'Quỳnh Anh'],
+  ['Chị Thanh Vân', 'Minh Quân'],
+] as const;
+
+const demoPriorityLeads: Lead[] = demoLeadNames.map(([parentName, studentName], index) => {
+  const [source, priorityLevel] = demoLeadSources[index];
+  const course = courseCycle[index % courseCycle.length];
+  const statusCycle = ['Lead mới', 'Đã liên hệ', 'Đã hẹn tư vấn', 'Đã tư vấn/Đặt lịch test', 'Đã test/Học thử'] as Lead['status'][];
+  return {
+    id: `lead-demo-priority-${index + 1}`,
+    fullName: studentName,
+    parentName,
+    studentName,
+    phone: `0988${String(100000 + index * 137).slice(0, 6)}`,
+    email: `demo-lead-${index + 1}@example.com`,
+    contactType: 'parent',
+    age: `${5 + (index % 7)}`,
+    school: index % 2 ? 'Tiểu học Nguyễn Du' : 'Trường quốc tế Việt Úc',
+    currentClass: index % 3 === 0 ? 'Mẫu giáo lớn' : `Lớp ${1 + (index % 5)}`,
+    interestedCourse: course,
+    currentLevel: '',
+    targetGoal: '',
+    source,
+    priorityLevel,
+    status: statusCycle[index % statusCycle.length],
+    assignedTo: index % 2 ? 'Teacher An' : 'Ms. Linh',
+    assignedToName: index % 2 ? 'Teacher An' : 'Ms. Linh',
+    followUpDate: `2026-06-${String(3 + (index % 8)).padStart(2, '0')}T${String(9 + (index % 7)).padStart(2, '0')}:30:00+07:00`,
+    consultationDate: index % 3 === 0 ? `2026-06-${String(4 + index).padStart(2, '0')}T17:30:00+07:00` : '',
+    initialNote: `Demo lead ưu tiên P${priorityLevel} từ ${source}.`,
+    createdAt: `2026-06-${String(1 + index).padStart(2, '0')}T0${8 + (index % 2)}:00:00+07:00`,
+    updatedAt: now,
+  };
+});
+
 export const leads: Lead[] = [
+  ...demoPriorityLeads,
   { id: 'lead-1', fullName: 'Nguyễn Hoàng Anh', phone: '0901234567', email: 'anh@example.com', contactType: 'parent', age: '8', school: 'Tiểu học Nguyễn Du', currentClass: 'Lớp 3', interestedCourse: 'METTA Young Learner', currentLevel: 'Beginner', targetGoal: 'Tự tin giao tiếp', source: 'Website', status: 'Lead mới', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T15:00:00+07:00', consultationDate: '2026-05-27T09:00:00+07:00', initialNote: 'Muốn con phản xạ tốt hơn.', createdAt: '2026-05-26T08:10:00+07:00', updatedAt: now },
   { id: 'lead-2', fullName: 'Trần Minh Khoa', phone: '0912345678', email: 'khoa@example.com', contactType: 'student', age: '7', school: 'Tiểu học Lê Lợi', currentClass: 'Lớp 2', interestedCourse: 'METTA on Phonics', currentLevel: 'Starter', targetGoal: 'Phát âm chuẩn', source: 'Facebook Ads', status: 'Đã hẹn tư vấn', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T16:30:00+07:00', consultationDate: '2026-05-28T18:00:00+07:00', initialNote: 'Quan tâm Phonics.', createdAt: '2026-05-25T10:20:00+07:00', updatedAt: now },
   { id: 'lead-3', fullName: 'Lê Thu Hà', phone: '0987654321', email: 'ha@example.com', contactType: 'parent', age: '5', school: 'Mầm non Hoa Sen', currentClass: 'Lá', interestedCourse: 'METTA Kiddies', currentLevel: 'Starter', targetGoal: 'Làm quen tiếng Anh', source: 'Landing Page', status: 'Đã liên hệ', assignedTo: 'Ms. Linh', followUpDate: '2026-05-27T10:00:00+07:00', initialNote: 'Cần lớp cuối tuần.', createdAt: '2026-05-24T14:10:00+07:00', updatedAt: now },

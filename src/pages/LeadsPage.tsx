@@ -17,8 +17,9 @@ import { canAssignLead } from '@/lib/permissions';
 import { exportCsv, formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
 import { leadService } from '@/services/leadService';
+import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { userService } from '@/services/userService';
-import type { Appointment, Lead } from '@/types/crm';
+import type { Appointment, Lead, LeadPriorityLevel, LeadSourceConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 type AppointmentKind = '' | Appointment['type'];
@@ -36,6 +37,8 @@ const CONSULTATION_STATUS = leadStatuses[3];
 
 const emptyLead: LeadDraft = {
   fullName: '',
+  parentName: '',
+  studentName: '',
   phone: '',
   email: '',
   contactType: 'parent',
@@ -46,6 +49,7 @@ const emptyLead: LeadDraft = {
   currentLevel: '',
   targetGoal: '',
   source: leadSources[0],
+  priorityLevel: 1,
   status: leadStatuses[0],
   assignedTo: '',
   assignedToName: '',
@@ -97,6 +101,28 @@ function statusLabel(status: string) {
 
 function sourceLabel(source: string) {
   return source;
+}
+
+function leadDisplayName(lead: Partial<Lead>) {
+  return String(lead.studentName || lead.parentName || lead.fullName || '').trim();
+}
+
+function priorityLabel(level?: number) {
+  const value = Number(level || 1);
+  return `P${value}`;
+}
+
+function priorityTone(level?: number) {
+  const value = Number(level || 1);
+  if (value >= 5) return 'bg-red-50 text-red-700 border-red-200';
+  if (value === 4) return 'bg-orange-50 text-orange-700 border-orange-200';
+  if (value === 3) return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (value === 2) return 'bg-cyan-50 text-cyan-700 border-cyan-200';
+  return 'bg-slate-50 text-slate-600 border-slate-200';
+}
+
+function priorityForLead(configs: LeadSourceConfig[], lead: Partial<Lead>) {
+  return sourcePriority(configs, lead.source, lead.priorityLevel);
 }
 
 function numericInputValue(value?: number) {
@@ -168,16 +194,19 @@ export default function LeadsPage() {
   const { leads, refresh } = useLeads();
   const courseOptions = useCourseOptions();
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [filters, setFilters] = useState({ search: '', status: '', source: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
+  const [sourceConfigs, setSourceConfigs] = useState<LeadSourceConfig[]>([]);
+  const [filters, setFilters] = useState({ search: '', status: '', source: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
   const [view, setView] = useState<'table' | 'kanban'>(searchParams.get('view') === 'table' ? 'table' : 'kanban');
   const [editing, setEditing] = useState<LeadDraft | null>(null);
-  const [quickLead, setQuickLead] = useState({ fullName: '', phone: '', assignedTo: '' });
+  const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', assignedTo: '' });
+  const [showSourceSettings, setShowSourceSettings] = useState(false);
   const [error, setError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const canAssign = canAssignLead(user);
 
   useEffect(() => {
     userService.getUsers().then(setUsers);
+    sourceConfigService.getConfigs().then(setSourceConfigs);
   }, []);
 
   const salesOptions = useMemo(
@@ -186,24 +215,44 @@ export default function LeadsPage() {
   );
 
   const filtered = useMemo(() => leads.filter((lead) => {
-    const haystack = `${lead.fullName} ${lead.phone} ${lead.email}`.toLowerCase();
+    const haystack = `${lead.fullName} ${lead.parentName || ''} ${lead.studentName || ''} ${lead.phone} ${lead.email}`.toLowerCase();
     const createdDate = lead.createdAt?.slice(0, 10) || '';
+    const priority = priorityForLead(sourceConfigs, lead);
     return (
       (!filters.search || haystack.includes(filters.search.toLowerCase())) &&
       (!filters.status || lead.status === filters.status) &&
       (!filters.source || lead.source === filters.source) &&
+      (!filters.priorityLevel || String(priority) === filters.priorityLevel) &&
       (!filters.course || lead.interestedCourse === filters.course) &&
       (!filters.assignedTo || lead.assignedTo === filters.assignedTo) &&
       (!filters.dateFrom || createdDate >= filters.dateFrom) &&
       (!filters.dateTo || createdDate <= filters.dateTo)
     );
-  }), [filters, leads]);
+  }), [filters, leads, sourceConfigs]);
+
+  const sourceOptions = useMemo(() => {
+    const names = new Set([
+      ...sourceConfigs.filter((source) => source.active).map((source) => source.name),
+      ...leads.map((lead) => lead.source).filter(Boolean),
+    ]);
+    return Array.from(names);
+  }, [leads, sourceConfigs]);
+
+  function priorityForSource(source?: string, fallback?: number) {
+    return sourcePriority(sourceConfigs, source, fallback);
+  }
+
+  function newLeadDraft(): LeadDraft {
+    const source = sourceOptions[0] || leadSources[0];
+    return { ...emptyLead, source, priorityLevel: priorityForSource(source) };
+  }
 
   async function saveLead() {
     setError('');
     setSaveMessage('');
-    if (!editing?.fullName || !editing.phone) {
-      setError('Họ tên và số điện thoại là bắt buộc.');
+    const displayName = leadDisplayName(editing || {});
+    if (!displayName || !editing?.phone) {
+      setError('Tên phụ huynh hoặc tên học sinh và số điện thoại là bắt buộc.');
       return;
     }
     if (editing.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editing.email)) {
@@ -222,7 +271,9 @@ export default function LeadsPage() {
     const selectedSales = salesOptions.find((sales) => sales.id === editing.assignedTo);
     const payload: LeadDraft = {
       ...editing,
+      fullName: displayName,
       assignedToName: canAssign ? (selectedSales?.fullName || '') : editing.assignedToName,
+      priorityLevel: priorityForSource(editing.source, editing.priorityLevel),
       followUpDate: editing.appointmentKind === APPT_CALLBACK ? editing.appointmentTime : '',
       consultationDate: editing.appointmentKind === APPT_CONSULTATION || editing.appointmentKind === APPT_TEST ? editing.appointmentTime : '',
     };
@@ -273,19 +324,26 @@ export default function LeadsPage() {
   async function addQuickLead() {
     setError('');
     setSaveMessage('');
-    const fullName = quickLead.fullName.trim();
+    const parentName = quickLead.parentName.trim();
+    const studentName = quickLead.studentName.trim();
+    const fullName = studentName || parentName;
     const phone = quickLead.phone.trim();
     if (!fullName || !phone) {
-      setError('Vui lòng nhập tên lead và số điện thoại.');
+      setError('Vui lòng nhập tên phụ huynh hoặc tên học sinh và số điện thoại.');
       return;
     }
     const selectedSales = salesOptions.find((sales) => sales.id === quickLead.assignedTo);
     const timestamp = new Date().toISOString();
+    const source = sourceOptions[0] || leadSources[0];
     try {
       await leadService.saveLead({
         ...emptyLead,
         fullName,
+        parentName,
+        studentName,
         phone,
+        source,
+        priorityLevel: priorityForSource(source),
         assignedTo: selectedSales?.id || '',
         assignedToName: selectedSales?.fullName || '',
         assignedBy: selectedSales ? user?.id : '',
@@ -293,7 +351,7 @@ export default function LeadsPage() {
         assignedStatus: selectedSales ? 'active' : 'unassigned',
         ...(selectedSales ? { assignedAtMs: Date.now() } : {}),
       });
-      setQuickLead({ fullName: '', phone: '', assignedTo: '' });
+      setQuickLead({ parentName: '', studentName: '', phone: '', assignedTo: '' });
       setSaveMessage('Đã thêm lead mới.');
       refresh();
     } catch (err) {
@@ -320,7 +378,10 @@ export default function LeadsPage() {
           <Button variant="outline" onClick={() => exportCsv('metta-leads.csv', filtered as unknown as Record<string, unknown>[])}>
             <Download /> Export CSV
           </Button>
-          {canAssign && <Button onClick={() => setEditing({ ...emptyLead })}><Plus /> Thêm lead</Button>}
+          {canAssign && <Button variant="outline" onClick={() => setShowSourceSettings((current) => !current)}>
+            Source priority
+          </Button>}
+          {canAssign && <Button onClick={() => setEditing(newLeadDraft())}><Plus /> Thêm lead</Button>}
         </div>
       </div>
 
@@ -328,8 +389,9 @@ export default function LeadsPage() {
         <CardContent className="grid gap-3 p-4 md:grid-cols-6">
           {canAssign && <div className="md:col-span-6">
             <div className="mb-1 text-xs font-bold uppercase text-slate-500">Nhập lead nhanh</div>
-            <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 md:grid-cols-[1fr_1fr_220px_auto]">
-              <Input placeholder="Tên lead" value={quickLead.fullName} onChange={(event) => setQuickLead({ ...quickLead, fullName: event.target.value })} />
+            <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 md:grid-cols-[1fr_1fr_1fr_220px_auto]">
+              <Input placeholder="Tên phụ huynh" value={quickLead.parentName} onChange={(event) => setQuickLead({ ...quickLead, parentName: event.target.value })} />
+              <Input placeholder="Tên học sinh" value={quickLead.studentName} onChange={(event) => setQuickLead({ ...quickLead, studentName: event.target.value })} />
               <Input placeholder="Số điện thoại" value={quickLead.phone} onChange={(event) => setQuickLead({ ...quickLead, phone: event.target.value })} />
               <Select value={quickLead.assignedTo} onChange={(event) => setQuickLead({ ...quickLead, assignedTo: event.target.value })}>
                 <option value="">PIC --</option>
@@ -338,14 +400,18 @@ export default function LeadsPage() {
               <Button onClick={addQuickLead}><Plus /> Thêm lead</Button>
             </div>
           </div>}
-          <Input placeholder="Search tên / SĐT / email" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+          <Input placeholder="Search học sinh / phụ huynh / SĐT / email" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
           <Select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
             <option value="">Tất cả status</option>
             {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
           </Select>
           <Select value={filters.source} onChange={(event) => setFilters({ ...filters, source: event.target.value })}>
             <option value="">Tất cả source</option>
-            {leadSources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+            {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+          </Select>
+          <Select value={filters.priorityLevel} onChange={(event) => setFilters({ ...filters, priorityLevel: event.target.value })}>
+            <option value="">Tất cả ưu tiên</option>
+            {[5, 4, 3, 2, 1].map((level) => <option key={level} value={level}>P{level}{level === 5 ? ' - cao nhất' : ''}</option>)}
           </Select>
           <Select value={filters.course} onChange={(event) => setFilters({ ...filters, course: event.target.value })}>
             <option value="">Tất cả khóa</option>
@@ -365,6 +431,16 @@ export default function LeadsPage() {
       </Card>
 
       {saveMessage && <div className="rounded-lg bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">{saveMessage}</div>}
+      {showSourceSettings && (
+        <SourcePriorityPanel
+          configs={sourceConfigs}
+          onSave={async (configs) => {
+            const saved = await sourceConfigService.saveConfigs(configs);
+            setSourceConfigs(saved);
+            setSaveMessage('Đã lưu cấu hình source và cấp độ ưu tiên.');
+          }}
+        />
+      )}
       {editing && (
         <LeadForm
           value={editing}
@@ -375,13 +451,15 @@ export default function LeadsPage() {
           salesOptions={salesOptions}
           canAssign={canAssign}
           courseOptions={courseOptions}
+          sourceOptions={sourceOptions}
+          priorityForSource={priorityForSource}
         />
       )}
 
       {view === 'table' ? (
-        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={(lead) => setEditing(toDraft(lead))} onDelete={removeLead} />
+        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={(lead) => setEditing(toDraft(lead))} onDelete={removeLead} sourceConfigs={sourceConfigs} />
       ) : (
-        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} />
+        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} />
       )}
     </div>
   );
@@ -396,6 +474,8 @@ function LeadForm({
   salesOptions,
   canAssign,
   courseOptions,
+  sourceOptions,
+  priorityForSource,
 }: {
   value: LeadDraft;
   setValue: (value: LeadDraft) => void;
@@ -405,6 +485,8 @@ function LeadForm({
   salesOptions: AdminUser[];
   canAssign: boolean;
   courseOptions: string[];
+  sourceOptions: string[];
+  priorityForSource: (source?: string, fallback?: number) => LeadPriorityLevel;
 }) {
   const set = (key: keyof LeadDraft, val: string) => setValue({ ...value, [key]: val });
   const isConsultation = value.status === CONSULTATION_STATUS;
@@ -414,7 +496,8 @@ function LeadForm({
       <CardContent className="flex flex-col gap-5">
         {error && <div className="rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
         <FormSection title="Thông tin liên hệ">
-          <Input placeholder="Họ tên" value={value.fullName || ''} onChange={(event) => set('fullName', event.target.value)} />
+          <Input placeholder="Tên phụ huynh" value={value.parentName || ''} onChange={(event) => set('parentName', event.target.value)} />
+          <Input placeholder="Tên học sinh" value={value.studentName || ''} onChange={(event) => set('studentName', event.target.value)} />
           <Input placeholder="Số điện thoại" value={value.phone || ''} onChange={(event) => set('phone', event.target.value)} />
           <Input placeholder="Email" value={value.email || ''} onChange={(event) => set('email', event.target.value)} />
           <Select value={value.contactType || 'parent'} onChange={(event) => set('contactType', event.target.value)}>
@@ -432,18 +515,25 @@ function LeadForm({
             <option value="">Chưa chọn khóa</option>
             {courseOptions.map((course) => <option key={course} value={course}>{course}</option>)}
           </Select>
-          <Input placeholder="Trình độ hiện tại" value={value.currentLevel || ''} onChange={(event) => set('currentLevel', event.target.value)} />
-          <Input placeholder="Mục tiêu" value={value.targetGoal || ''} onChange={(event) => set('targetGoal', event.target.value)} />
           <Textarea className="md:col-span-3" placeholder="Ghi chú ban đầu" value={value.initialNote || ''} onChange={(event) => set('initialNote', event.target.value)} />
         </FormSection>
 
         <FormSection title="CRM & lịch hẹn">
-          <Select value={value.source || leadSources[0]} onChange={(event) => set('source', event.target.value)}>
-            {leadSources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+          <Select
+            value={value.source || sourceOptions[0] || leadSources[0]}
+            onChange={(event) => {
+              const source = event.target.value;
+              setValue({ ...value, source, priorityLevel: priorityForSource(source, value.priorityLevel) });
+            }}
+          >
+            {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
           </Select>
           <Select value={value.status || leadStatuses[0]} onChange={(event) => set('status', event.target.value)}>
             {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
           </Select>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
+            Cấp độ ưu tiên: {priorityLabel(priorityForSource(value.source, value.priorityLevel))}
+          </div>
           <Select
             value={value.assignedTo || ''}
             disabled={!canAssign}
@@ -546,21 +636,112 @@ function LeadForm({
   );
 }
 
-function LeadsTable({ leads, canAssign, onEdit, onDelete }: { leads: Lead[]; canAssign: boolean; onEdit: (lead: Lead) => void; onDelete: (id: string) => void }) {
+function SourcePriorityPanel({
+  configs,
+  onSave,
+}: {
+  configs: LeadSourceConfig[];
+  onSave: (configs: LeadSourceConfig[]) => void | Promise<void>;
+}) {
+  const [drafts, setDrafts] = useState<LeadSourceConfig[]>(configs);
+
+  useEffect(() => {
+    setDrafts(configs);
+  }, [configs]);
+
+  function update(id: string, patch: Partial<LeadSourceConfig>) {
+    setDrafts((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  }
+
+  function addSource() {
+    const now = new Date().toISOString();
+    setDrafts((current) => [
+      ...current,
+      {
+        id: `source-${Date.now()}`,
+        name: '',
+        priorityLevel: 3,
+        description: '',
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+  }
+
+  function removeSource(id: string) {
+    setDrafts((current) => current.filter((item) => item.id !== id));
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Cấu hình source & cấp độ ưu tiên</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid gap-2 text-xs font-bold uppercase text-slate-500 md:grid-cols-[1.2fr_2fr_150px_90px_48px]">
+          <span>Nguồn lead</span>
+          <span>Mô tả chi tiết</span>
+          <span>Ưu tiên</span>
+          <span>Active</span>
+          <span />
+        </div>
+        {drafts.map((source) => (
+          <div key={source.id} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2 md:grid-cols-[1.2fr_2fr_150px_90px_48px]">
+            <Input value={source.name} placeholder="VD: Meta Lead Form" onChange={(event) => update(source.id, { name: event.target.value })} />
+            <Input value={source.description} placeholder="Mô tả cách nhận diện nguồn lead" onChange={(event) => update(source.id, { description: event.target.value })} />
+            <Select value={String(source.priorityLevel)} onChange={(event) => update(source.id, { priorityLevel: Number(event.target.value) as LeadPriorityLevel })}>
+              {[5, 4, 3, 2, 1].map((level) => <option key={level} value={level}>P{level}{level === 5 ? ' - cao nhất' : ''}</option>)}
+            </Select>
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600">
+              <input type="checkbox" checked={source.active} onChange={(event) => update(source.id, { active: event.target.checked })} />
+              Bật
+            </label>
+            <button type="button" className="inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => removeSource(source.id)} title="Xóa source">
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={addSource}><Plus /> Thêm source</Button>
+          <Button onClick={() => onSave(drafts.filter((source) => source.name.trim()))}><Save /> Lưu cấu hình</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function LeadsTable({
+  leads,
+  canAssign,
+  onEdit,
+  onDelete,
+  sourceConfigs,
+}: {
+  leads: Lead[];
+  canAssign: boolean;
+  onEdit: (lead: Lead) => void;
+  onDelete: (id: string) => void;
+  sourceConfigs: LeadSourceConfig[];
+}) {
   return (
     <Card>
       <CardContent className="p-0">
         <Table>
           <THead>
-            <TR><TH>Họ tên</TH><TH>SĐT</TH><TH>Email</TH><TH>Khóa quan tâm</TH><TH>Trạng thái</TH><TH>Deal</TH><TH>Nguồn</TH><TH>Người phụ trách</TH><TH>Follow-up</TH><TH>Ngày tạo</TH><TH>Action</TH></TR>
+            <TR><TH>Lead</TH><TH>SĐT</TH><TH>Email</TH><TH>Khóa quan tâm</TH><TH>Ưu tiên</TH><TH>Trạng thái</TH><TH>Deal</TH><TH>Nguồn</TH><TH>Người phụ trách</TH><TH>Follow-up</TH><TH>Ngày tạo</TH><TH>Action</TH></TR>
           </THead>
           <TBody>
             {leads.map((lead) => (
               <TR key={lead.id}>
-                <TD className="font-semibold"><Link to={`/crm/leads/${lead.id}`}>{lead.fullName}</Link></TD>
+                <TD>
+                  <Link to={`/crm/leads/${lead.id}`} className="font-semibold text-slate-900">{lead.studentName || lead.fullName}</Link>
+                  {lead.parentName && <p className="text-xs text-slate-500">PH: {lead.parentName}</p>}
+                </TD>
                 <TD>{lead.phone}</TD>
                 <TD>{lead.email}</TD>
                 <TD>{lead.interestedCourse}</TD>
+                <TD><span className={`rounded border px-2 py-0.5 text-xs font-bold ${priorityTone(priorityForLead(sourceConfigs, lead))}`}>{priorityLabel(priorityForLead(sourceConfigs, lead))}</span></TD>
                 <TD><Badge tone={statusTone[statusIndex(lead.status)]}>{statusLabel(lead.status)}</Badge></TD>
                 <TD className="font-semibold text-slate-800">{formatCurrency(dealValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}</TD>
                 <TD>{sourceLabel(lead.source)}</TD>
@@ -591,7 +772,21 @@ function FormSection({ title, children }: { title: string; children: React.React
   );
 }
 
-function Kanban({ leads, salesOptions, canAssign, refresh }: { leads: Lead[]; salesOptions: AdminUser[]; canAssign: boolean; refresh: () => void }) {
+function Kanban({
+  leads,
+  salesOptions,
+  canAssign,
+  refresh,
+  sourceConfigs,
+  sourceOptions,
+}: {
+  leads: Lead[];
+  salesOptions: AdminUser[];
+  canAssign: boolean;
+  refresh: () => void;
+  sourceConfigs: LeadSourceConfig[];
+  sourceOptions: string[];
+}) {
   const [dragOverStatus, setDragOverStatus] = useState('');
   // Map leadId -> actual appointment type (Tư vấn / Test / Gọi lại) — fetched once để tránh flash
   const [apptTypeByLead, setApptTypeByLead] = useState<Map<string, Appointment['type']>>(new Map());
@@ -632,14 +827,12 @@ function Kanban({ leads, salesOptions, canAssign, refresh }: { leads: Lead[]; sa
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
       {leadStatuses.map((status, index) => {
-        const colLeads = leads.filter((lead) => lead.status === status);
-        const grouped = new Map<string, Lead[]>();
-        colLeads
-          .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-          .forEach((lead) => {
-            const key = lead.createdAt?.slice(0, 10) || 'unknown';
-            grouped.set(key, [...(grouped.get(key) || []), lead]);
-          });
+        const colLeads = leads
+          .filter((lead) => lead.status === status)
+          .sort((a, b) =>
+            priorityForLead(sourceConfigs, b) - priorityForLead(sourceConfigs, a) ||
+            (b.createdAt || '').localeCompare(a.createdAt || ''),
+          );
         const isDropTarget = dragOverStatus === status;
 
         return (
@@ -669,27 +862,18 @@ function Kanban({ leads, salesOptions, canAssign, refresh }: { leads: Lead[]; sa
                   {isDropTarget ? 'Thả vào đây' : 'Trống'}
                 </div>
               )}
-              {Array.from(grouped.entries()).map(([dateKey, groupLeads]) => (
-                <div key={dateKey} className="flex flex-col gap-2">
-                  {status === 'Lead mới' && (
-                    <div className="flex items-center gap-2 px-1 text-[11px] font-bold text-blue-600">
-                      <CalendarDays size={12} /> {localDateLabel(groupLeads[0]?.createdAt)}
-                      <div className="h-px flex-1 bg-blue-200/70" />
-                      <span>{groupLeads.length}</span>
-                    </div>
-                  )}
-                  {groupLeads.map((lead) => (
-                    <LeadKanbanCard
-                      key={lead.id}
-                      lead={lead}
-                      salesOptions={salesOptions}
-                      canAssign={canAssign}
-                      onSave={updateLead}
-                      knownApptType={apptTypeByLead.get(lead.id)}
-                      appointmentsLoaded={appointmentsLoaded}
-                    />
-                  ))}
-                </div>
+              {colLeads.map((lead) => (
+                <LeadKanbanCard
+                  key={lead.id}
+                  lead={lead}
+                  salesOptions={salesOptions}
+                  canAssign={canAssign}
+                  onSave={updateLead}
+                  knownApptType={apptTypeByLead.get(lead.id)}
+                  appointmentsLoaded={appointmentsLoaded}
+                  sourceConfigs={sourceConfigs}
+                  sourceOptions={sourceOptions}
+                />
               ))}
             </div>
           </div>
@@ -706,6 +890,8 @@ function LeadKanbanCard({
   onSave,
   knownApptType,
   appointmentsLoaded,
+  sourceConfigs,
+  sourceOptions,
 }: {
   lead: Lead;
   salesOptions: AdminUser[];
@@ -713,6 +899,8 @@ function LeadKanbanCard({
   onSave: (lead: Lead, patch: Partial<Lead>) => void | Promise<void>;
   knownApptType?: Appointment['type'];
   appointmentsLoaded: boolean;
+  sourceConfigs: LeadSourceConfig[];
+  sourceOptions: string[];
 }) {
   const courseOptions = useCourseOptions();
   const [draft, setDraft] = useState(lead);
@@ -789,7 +977,7 @@ function LeadKanbanCard({
     if (kind && time) {
       const appointment = await appointmentService.upsertLeadAppointment({
         leadId: lead.id,
-        leadName: draft.fullName || lead.fullName,
+        leadName: leadDisplayName(draft) || leadDisplayName(lead),
         phone: draft.phone || lead.phone,
         type: kind,
         startTime: time,
@@ -820,8 +1008,8 @@ function LeadKanbanCard({
       <button type="button" className="block w-full px-3 py-2 text-left" onClick={() => setExpanded((item) => !item)}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-slate-950">{draft.fullName || 'Chưa có tên'}</p>
-            <p className="truncate text-xs text-slate-500">{draft.phone || '-'}</p>
+            <p className="truncate text-sm font-bold text-slate-950">{draft.studentName || draft.fullName || 'Chưa có tên học sinh'}</p>
+            <p className="truncate text-xs text-slate-500">{draft.parentName ? `PH: ${draft.parentName}` : draft.phone || '-'}</p>
           </div>
           <div className="flex items-center gap-1 text-xs text-slate-400">
             <GripVertical size={14} />
@@ -847,6 +1035,7 @@ function LeadKanbanCard({
         })()}
 
         <div className="mt-2 flex flex-wrap gap-1">
+          <span className={`rounded border px-2 py-0.5 text-[10px] font-bold ${priorityTone(priorityForLead(sourceConfigs, draft))}`}>{priorityLabel(priorityForLead(sourceConfigs, draft))}</span>
           {draft.assignedToName && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{draft.assignedToName}</span>}
           <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{statusLabel(draft.status)}</span>
           {draft.interestedCourse && <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{draft.interestedCourse}</span>}
@@ -870,7 +1059,8 @@ function LeadKanbanCard({
       </button>
       {expanded && (
         <div className="flex flex-col gap-2 border-t border-slate-100 p-3">
-          <Input value={draft.fullName || ''} placeholder="Họ tên" onChange={(event) => setDraft({ ...draft, fullName: event.target.value })} onBlur={() => commitText('fullName')} />
+          <Input value={draft.parentName || ''} placeholder="Tên phụ huynh" onChange={(event) => setDraft({ ...draft, parentName: event.target.value })} onBlur={() => commitText('parentName')} />
+          <Input value={draft.studentName || ''} placeholder="Tên học sinh" onChange={(event) => setDraft({ ...draft, studentName: event.target.value })} onBlur={() => commitText('studentName')} />
           <Input value={draft.phone || ''} placeholder="SĐT" onChange={(event) => setDraft({ ...draft, phone: event.target.value })} onBlur={() => commitText('phone')} />
           <div className="grid grid-cols-2 gap-2">
             <Input value={draft.age || ''} placeholder="Tuổi" onChange={(event) => setDraft({ ...draft, age: event.target.value })} onBlur={() => commitText('age')} />
@@ -910,8 +1100,11 @@ function LeadKanbanCard({
             {salesOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
           </Select>
           <div className="grid grid-cols-2 gap-2">
-            <Select value={draft.source || leadSources[0]} onChange={(event) => commit({ source: event.target.value as Lead['source'] })}>
-              {leadSources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+            <Select value={draft.source || sourceOptions[0] || leadSources[0]} onChange={(event) => {
+              const source = event.target.value as Lead['source'];
+              commit({ source, priorityLevel: sourcePriority(sourceConfigs, source, draft.priorityLevel) });
+            }}>
+              {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
             </Select>
             <Select value={draft.status} onChange={(event) => commit({ status: event.target.value as Lead['status'] })}>
               {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}

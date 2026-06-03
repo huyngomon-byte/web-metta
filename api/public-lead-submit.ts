@@ -14,6 +14,22 @@ const COURSE_OPTIONS = [
 ];
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_MAX = 6;
+const SOURCE_PRIORITY: Record<string, number> = {
+  'Meta Lead Form': 5,
+  Referral: 5,
+  'Meta Ads': 4,
+  Website: 4,
+  'Zalo OA': 4,
+  'Google Ads': 4,
+  'Landing Page': 4,
+  'Facebook Ads': 4,
+  'Sales input': 3,
+  'Instagram Ads': 3,
+  'TikTok Ads': 3,
+  Zalo: 3,
+  'Walk-in': 3,
+  'Khác': 1,
+};
 
 type VercelRequest = {
   method?: string;
@@ -94,7 +110,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const lead = req.body || {};
   if (lead.company || lead.website) return res.status(200).json({ ok: true, spam: true });
-  if (!lead.fullName || !lead.phone) return res.status(400).json({ error: 'fullName and phone are required' });
+  const name = String(lead.fullName || lead.studentName || lead.parentName || '').trim();
+  if (!name || !lead.phone) return res.status(400).json({ error: 'name and phone are required' });
   if (lead.interestedCourse && !COURSE_OPTIONS.includes(lead.interestedCourse)) return res.status(400).json({ error: 'Invalid interestedCourse' });
   if (!isValidEmail(lead.email)) return res.status(400).json({ error: 'Invalid email' });
 
@@ -122,12 +139,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const now = new Date().toISOString();
   const eventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const source = lead.source || 'Website';
+  const parentName = lead.parentName ? String(lead.parentName).trim() : (lead.contactType === 'parent' ? name : '');
+  const studentName = lead.studentName ? String(lead.studentName).trim() : (lead.contactType === 'student' ? name : '');
   const leadRef = db.collection('leads').doc();
   const sourceUrl = lead.sourceUrl || `${originFromRequest(req)}/${lead.pageSlug || ''}`;
 
   const payload = {
     id: leadRef.id,
-    fullName: String(lead.fullName).trim(),
+    fullName: studentName || parentName || name,
+    parentName,
+    studentName,
     phone,
     email: lead.email ? String(lead.email).trim() : '',
     contactType: lead.contactType || 'parent',
@@ -138,6 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     currentLevel: lead.currentLevel || '',
     targetGoal: lead.targetGoal || '',
     source,
+    priorityLevel: SOURCE_PRIORITY[source] || 1,
     status: 'Lead mới',
     assignedTo: '',
     assignedToName: '',

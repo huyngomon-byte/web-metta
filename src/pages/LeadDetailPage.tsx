@@ -10,13 +10,14 @@ import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseOptions } from '@/hooks/useCms';
-import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadSources, leadStatuses, lostReasons } from '@/lib/constants';
+import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadStatuses, lostReasons } from '@/lib/constants';
 import { canAssignLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
 import { leadService } from '@/services/leadService';
+import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { userService } from '@/services/userService';
-import type { Appointment, InterestedCourse, Lead, LeadActivity } from '@/types/crm';
+import type { Appointment, InterestedCourse, Lead, LeadActivity, LeadSourceConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 type AppointmentKind = '' | Appointment['type'];
@@ -32,6 +33,14 @@ function statusLabel(status: string) {
 
 function sourceLabel(source: string) {
   return source;
+}
+
+function leadDisplayName(lead: Partial<Lead>) {
+  return String(lead.studentName || lead.parentName || lead.fullName || '').trim();
+}
+
+function priorityLabel(level?: number) {
+  return `P${Number(level || 1)}`;
 }
 
 function numericInputValue(value?: number) {
@@ -72,6 +81,7 @@ export default function LeadDetailPage() {
   const courseOptions = useCourseOptions();
   const [lead, setLead] = useState<LeadDetailDraft | undefined>();
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [sourceConfigs, setSourceConfigs] = useState<LeadSourceConfig[]>([]);
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [tab, setTab] = useState('overview');
@@ -80,6 +90,13 @@ export default function LeadDetailPage() {
   const canAssign = canAssignLead(user);
 
   const salesOptions = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
+  const sourceOptions = useMemo(() => {
+    const names = new Set([
+      ...sourceConfigs.filter((source) => source.active).map((source) => source.name),
+      ...(lead?.source ? [lead.source] : []),
+    ]);
+    return Array.from(names);
+  }, [lead?.source, sourceConfigs]);
   const backPath = searchParams.get('from') === 'kanban' ? '/crm/leads?view=kanban' : '/crm/leads?view=table';
 
   const refresh = useCallback(() => {
@@ -90,6 +107,7 @@ export default function LeadDetailPage() {
     leadService.getActivities(id).then(setActivities);
     appointmentService.getByLead(id).then(setAppointments);
     userService.getUsers().then(setUsers);
+    sourceConfigService.getConfigs().then(setSourceConfigs);
   }, [id]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -105,8 +123,9 @@ export default function LeadDetailPage() {
     setError('');
     const currentLead = lead;
     if (!currentLead) return;
-    if (!currentLead.fullName || !currentLead.phone) {
-      setError('Họ tên và số điện thoại là bắt buộc.');
+    const displayName = leadDisplayName(currentLead);
+    if (!displayName || !currentLead.phone) {
+      setError('Tên phụ huynh hoặc tên học sinh và số điện thoại là bắt buộc.');
       return;
     }
     if (currentLead.appointmentKind && !currentLead.appointmentTime) {
@@ -121,7 +140,9 @@ export default function LeadDetailPage() {
     const selectedSales = salesOptions.find((sales) => sales.id === currentLead.assignedTo);
     const normalizedLead: LeadDetailDraft = {
       ...currentLead,
+      fullName: displayName,
       assignedToName: canAssign ? (selectedSales?.fullName || '') : currentLead.assignedToName,
+      priorityLevel: sourcePriority(sourceConfigs, currentLead.source, currentLead.priorityLevel),
       followUpDate: currentLead.appointmentKind === APPT_CALLBACK ? currentLead.appointmentTime : '',
       consultationDate: currentLead.appointmentKind === APPT_CONSULTATION || currentLead.appointmentKind === APPT_TEST ? currentLead.appointmentTime : '',
     } as LeadDetailDraft;
@@ -138,7 +159,7 @@ export default function LeadDetailPage() {
       if (normalizedLead.appointmentKind && normalizedLead.appointmentTime) {
         const appointment = await appointmentService.upsertLeadAppointment({
           leadId: savedLead.id,
-          leadName: savedLead.fullName,
+          leadName: leadDisplayName(savedLead),
           phone: savedLead.phone,
           type: normalizedLead.appointmentKind,
           startTime: normalizedLead.appointmentTime,
@@ -188,8 +209,10 @@ export default function LeadDetailPage() {
             <ArrowLeft /> Quay lại
           </Button>
           <div>
-            <h1 className="text-3xl font-extrabold text-slate-950">{lead.fullName}</h1>
-            <p className="text-slate-500">{lead.phone}{lead.email ? ` · ${lead.email}` : ''}</p>
+            <h1 className="text-3xl font-extrabold text-slate-950">{lead.studentName || lead.fullName}</h1>
+            <p className="text-slate-500">
+              {lead.parentName ? `Phụ huynh: ${lead.parentName} · ` : ''}{lead.phone}{lead.email ? ` · ${lead.email}` : ''}
+            </p>
           </div>
         </div>
         <Button variant="outline" onClick={() => setTab('appointments')}><CalendarPlus /> Lịch hẹn</Button>
@@ -209,7 +232,8 @@ export default function LeadDetailPage() {
           <CardContent className="flex flex-col gap-5">
             {error && <div className="rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
             <FormSection title="Thông tin liên hệ">
-              <Field label="Họ tên"><Input value={lead.fullName} onChange={(event) => set('fullName', event.target.value)} /></Field>
+              <Field label="Tên phụ huynh"><Input value={lead.parentName || ''} onChange={(event) => set('parentName', event.target.value)} /></Field>
+              <Field label="Tên học sinh"><Input value={lead.studentName || ''} onChange={(event) => set('studentName', event.target.value)} /></Field>
               <Field label="Số điện thoại"><Input value={lead.phone} onChange={(event) => set('phone', event.target.value)} /></Field>
               <Field label="Email"><Input value={lead.email} onChange={(event) => set('email', event.target.value)} /></Field>
               <Field label="Tuổi học sinh"><Input value={lead.age} onChange={(event) => set('age', event.target.value)} /></Field>
@@ -224,16 +248,22 @@ export default function LeadDetailPage() {
                   {courseOptions.map((course) => <option key={course}>{course}</option>)}
                 </Select>
               </Field>
-              <Field label="Trình độ hiện tại"><Input value={lead.currentLevel} onChange={(event) => set('currentLevel', event.target.value)} /></Field>
-              <Field label="Mục tiêu"><Input value={lead.targetGoal} onChange={(event) => set('targetGoal', event.target.value)} /></Field>
               <Textarea className="md:col-span-3" value={lead.initialNote} onChange={(event) => set('initialNote', event.target.value)} placeholder="Ghi chú ban đầu..." />
             </FormSection>
 
             <FormSection title="CRM & lịch hẹn">
               <Field label="Nguồn">
-                <Select value={lead.source} onChange={(event) => set('source', event.target.value)}>
-                  {leadSources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+                <Select value={lead.source} onChange={(event) => {
+                  const source = event.target.value;
+                  setLead({ ...lead, source, priorityLevel: sourcePriority(sourceConfigs, source, lead.priorityLevel) });
+                }}>
+                  {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
                 </Select>
+              </Field>
+              <Field label="Cấp độ ưu tiên">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
+                  {priorityLabel(sourcePriority(sourceConfigs, lead.source, lead.priorityLevel))}
+                </div>
               </Field>
               <Field label="Trạng thái">
                 <Select value={lead.status} onChange={(event) => setLead({ ...lead, status: event.target.value as Lead['status'] })}>

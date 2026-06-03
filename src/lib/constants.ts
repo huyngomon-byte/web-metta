@@ -171,18 +171,24 @@ export const lostReasons = [
   'Khác',
 ] as const;
 
-export const leadSources = [
-  'Website',
-  'Landing Page',
-  'Facebook Ads',
-  'Instagram Ads',
-  'TikTok Ads',
-  'Google Ads',
-  'Zalo',
-  'Referral',
-  'Walk-in',
-  'Khác',
+export const defaultLeadSourceConfigs = [
+  { name: 'Meta Lead Form', priorityLevel: 5, description: 'Lead để lại form trực tiếp trên Meta, intent cao và cần xử lý nhanh.' },
+  { name: 'Meta Ads', priorityLevel: 4, description: 'Lead đến từ chiến dịch quảng cáo Meta nhưng không nhất thiết là form native.' },
+  { name: 'Website', priorityLevel: 4, description: 'Lead gửi từ website METTA Academy hoặc landing page nội bộ.' },
+  { name: 'Sales input', priorityLevel: 3, description: 'Lead do sales nhập thủ công từ cuộc gọi, inbox hoặc nguồn offline.' },
+  { name: 'Zalo OA', priorityLevel: 4, description: 'Lead từ Zalo Official Account.' },
+  { name: 'Referral', priorityLevel: 5, description: 'Giới thiệu từ phụ huynh/học viên hiện hữu.' },
+  { name: 'Google Ads', priorityLevel: 4, description: 'Lead từ quảng cáo Google Search/Display.' },
+  { name: 'Landing Page', priorityLevel: 4, description: 'Lead từ landing page chiến dịch.' },
+  { name: 'Facebook Ads', priorityLevel: 4, description: 'Nguồn cũ, giữ để tương thích dữ liệu hiện tại.' },
+  { name: 'Instagram Ads', priorityLevel: 3, description: 'Nguồn cũ, giữ để tương thích dữ liệu hiện tại.' },
+  { name: 'TikTok Ads', priorityLevel: 3, description: 'Nguồn cũ, giữ để tương thích dữ liệu hiện tại.' },
+  { name: 'Zalo', priorityLevel: 3, description: 'Nguồn Zalo cũ, giữ để tương thích dữ liệu hiện tại.' },
+  { name: 'Walk-in', priorityLevel: 3, description: 'Khách đến trực tiếp trung tâm.' },
+  { name: 'Khác', priorityLevel: 1, description: 'Nguồn chưa phân loại.' },
 ] as const;
+
+export const leadSources = defaultLeadSourceConfigs.map((source) => source.name);
 
 export const studentStatuses = ['Đang tư vấn', 'Đã đăng ký', 'Đang học', 'Tạm nghỉ', 'Bảo lưu', 'Hoàn thành khóa', 'Đã nghỉ'] as const;
 export const classStatuses = ['Sắp khai giảng', 'Đang học', 'Tạm dừng', 'Đã hoàn thành', 'Đã hủy'] as const;

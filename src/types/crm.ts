@@ -1,14 +1,27 @@
 import type { COURSE_OPTIONS, leadSources, leadStatuses, lostReasons } from '@/lib/constants';
 
 export type LeadStatus = (typeof leadStatuses)[number];
-export type LeadSource = (typeof leadSources)[number];
+export type LeadSource = string;
 export type LostReason = (typeof lostReasons)[number] | string;
+export type LeadPriorityLevel = 1 | 2 | 3 | 4 | 5;
 /** Tên khóa tự do (lấy động từ CMS programs hoặc COURSE_OPTIONS fallback). */
 export type InterestedCourse = string;
+
+export interface LeadSourceConfig {
+  id: string;
+  name: string;
+  priorityLevel: LeadPriorityLevel;
+  description: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface Lead {
   id: string;
   fullName: string;
+  parentName?: string;
+  studentName?: string;
   phone: string;
   email: string;
   contactType: 'parent' | 'student' | 'other';
@@ -19,6 +32,7 @@ export interface Lead {
   currentLevel: string;
   targetGoal: string;
   source: LeadSource;
+  priorityLevel?: LeadPriorityLevel | number;
   status: LeadStatus;
   assignedTo: string;
   assignedToName?: string;
