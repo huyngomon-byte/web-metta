@@ -1,17 +1,20 @@
-import { RefreshCcw, Search, Trash2, UserCheck } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, RefreshCcw, Save, Search, Settings2, Trash2, UserCheck } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { useAuth } from '@/hooks/useAuth';
-import { LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } from '@/lib/constants';
+import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead } from '@/lib/permissions';
-import { formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { assignmentRuleService, assignmentRulesTotal } from '@/services/assignmentRuleService';
 import { leadService } from '@/services/leadService';
 import { userService } from '@/services/userService';
+import type { SalesAssignmentRule } from '@/types/assignment';
 import type { Lead } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
@@ -23,8 +26,44 @@ const groupTabs: { key: GroupKey; title: string }[] = [
   { key: 'assigned', title: 'Đã phân sale' },
 ];
 
-function statusLabel(status: string) {
-  return status;
+const CONTACTED_STATUSES: readonly string[] = [leadStatuses[1], leadStatuses[3], leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS, LOST_LEAD_STATUS];
+const TEST_STATUSES: readonly string[] = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
+
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function daysAgo(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+function inRange(value: string | undefined, from: string, to: string) {
+  const date = value?.slice(0, 10);
+  if (!date) return false;
+  return date >= from && date <= to;
+}
+
+function previousRange(from: string, to: string) {
+  const fromDate = new Date(from);
+  const toDate = new Date(to);
+  const days = Math.max(1, Math.round((toDate.getTime() - fromDate.getTime()) / 86400000) + 1);
+  const prevTo = new Date(fromDate);
+  prevTo.setDate(prevTo.getDate() - 1);
+  const prevFrom = new Date(prevTo);
+  prevFrom.setDate(prevFrom.getDate() - days + 1);
+  return [prevFrom.toISOString().slice(0, 10), prevTo.toISOString().slice(0, 10)] as const;
+}
+
+function pct(part: number, total: number) {
+  return total ? Math.round((part / total) * 100) : 0;
+}
+
+function deltaPct(value: number, previous: number) {
+  if (!previous && value) return 100;
+  if (!previous) return 0;
+  return Math.round(((value - previous) / previous) * 100);
 }
 
 function groupLead(lead: Lead): GroupKey {
@@ -38,20 +77,44 @@ function returnedReason(lead: Lead) {
   return lead.failedReason || '-';
 }
 
+function leadBelongsToSales(lead: Lead, sales: AdminUser) {
+  return lead.assignedTo === sales.id || lead.assignedTo === sales.fullName || lead.assignedToName === sales.fullName;
+}
+
+function leadReturnedToSales(lead: Lead, sales: AdminUser) {
+  return lead.failedAssignedTo === sales.id || lead.failedAssignedTo === sales.fullName || lead.failedAssignedToName === sales.fullName || (leadBelongsToSales(lead, sales) && lead.assignedStatus === 'returned');
+}
+
+function compareBadge(value: number, previous: number) {
+  const delta = deltaPct(value, previous);
+  const positive = delta >= 0;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold ${positive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+      {positive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
+      {delta > 0 ? '+' : ''}{delta}%
+    </span>
+  );
+}
+
 export default function LeadAssignmentPage() {
   const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [assignmentRules, setAssignmentRules] = useState<SalesAssignmentRule[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [salesId, setSalesId] = useState('');
   const [activeGroup, setActiveGroup] = useState<GroupKey>('unassigned');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState(daysAgo(29));
+  const [dateTo, setDateTo] = useState(todayStr());
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const salesUsers = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
   const salesNameById = useMemo(() => new Map(salesUsers.map((sales) => [sales.id, sales.fullName])), [salesUsers]);
+  const rulesTotal = useMemo(() => assignmentRulesTotal(assignmentRules), [assignmentRules]);
+  const rulesValid = rulesTotal === 100;
 
   const groups = useMemo(() => {
     const result: Record<GroupKey, Lead[]> = { unassigned: [], returned: [], assigned: [] };
@@ -63,29 +126,71 @@ export default function LeadAssignmentPage() {
     const keyword = search.trim().toLowerCase();
     return groups[activeGroup].filter((lead) => {
       if (!keyword) return true;
-      return `${lead.fullName} ${lead.phone} ${lead.email} ${lead.assignedToName}`.toLowerCase().includes(keyword);
+      return `${lead.fullName} ${lead.studentName} ${lead.parentName} ${lead.phone} ${lead.email} ${lead.assignedToName}`.toLowerCase().includes(keyword);
     });
   }, [activeGroup, groups, search]);
 
+  const rangeLeads = useMemo(() => leads.filter((lead) => inRange(lead.createdAt, dateFrom, dateTo)), [dateFrom, dateTo, leads]);
+  const [prevFrom, prevTo] = useMemo(() => previousRange(dateFrom, dateTo), [dateFrom, dateTo]);
+  const previousLeads = useMemo(() => leads.filter((lead) => inRange(lead.createdAt, prevFrom, prevTo)), [leads, prevFrom, prevTo]);
   const selectedVisibleIds = useMemo(() => visibleLeads.map((lead) => lead.id), [visibleLeads]);
   const allVisibleSelected = selectedVisibleIds.length > 0 && selectedVisibleIds.every((id) => selected.includes(id));
+  const canDelete = canDeleteLead(user);
 
-  const performance = useMemo(() => salesUsers.map((sales) => {
-    const assigned = leads.filter((lead) => lead.assignedTo === sales.id);
-    const returned = leads.filter((lead) => lead.failedAssignedTo === sales.id || (lead.assignedTo === sales.id && lead.assignedStatus === 'returned'));
-    const contacted = assigned.filter((lead) => lead.status !== leadStatuses[0] && lead.status !== leadStatuses[2]).length;
-    const converted = assigned.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).length;
-    const lost = assigned.filter((lead) => lead.status === LOST_LEAD_STATUS).length;
-    return {
-      id: sales.id,
-      name: sales.fullName,
-      assigned: assigned.length,
-      returned: returned.length,
-      contacted,
-      converted,
-      lost,
-    };
-  }).filter((item) => item.assigned || item.returned), [leads, salesUsers]);
+  const performance = useMemo(() => {
+    const totalAssigned = salesUsers.reduce((sum, sales) => sum + rangeLeads.filter((lead) => leadBelongsToSales(lead, sales)).length, 0);
+    return salesUsers.map((sales) => {
+      const assigned = rangeLeads.filter((lead) => leadBelongsToSales(lead, sales));
+      const returned = rangeLeads.filter((lead) => leadReturnedToSales(lead, sales));
+      const contacted = assigned.filter((lead) => CONTACTED_STATUSES.includes(lead.status)).length;
+      const testTrial = assigned.filter((lead) => TEST_STATUSES.includes(lead.status)).length;
+      const converted = assigned.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).length;
+      const lost = assigned.filter((lead) => lead.status === LOST_LEAD_STATUS).length;
+      const expectedRevenue = assigned.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead), 0);
+      const revenue = assigned.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead), 0);
+      return {
+        id: sales.id,
+        name: sales.fullName,
+        assigned: assigned.length,
+        assignedShare: pct(assigned.length, totalAssigned),
+        returned: returned.length,
+        returnedRate: pct(returned.length, assigned.length + returned.length),
+        contacted,
+        contactedRate: pct(contacted, assigned.length),
+        testTrial,
+        testRate: pct(testTrial, assigned.length),
+        converted,
+        convertedRate: pct(converted, assigned.length),
+        lost,
+        lostRate: pct(lost, assigned.length),
+        expectedRevenue,
+        revenue,
+      };
+    }).filter((item) => item.assigned || item.returned);
+  }, [rangeLeads, salesUsers]);
+
+  const ranking = useMemo(() => {
+    return salesUsers.map((sales) => {
+      const current = rangeLeads.filter((lead) => leadBelongsToSales(lead, sales));
+      const previous = previousLeads.filter((lead) => leadBelongsToSales(lead, sales));
+      const revenue = current.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead), 0);
+      const previousRevenue = previous.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead), 0);
+      const expectedRevenue = current.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead), 0);
+      const previousExpectedRevenue = previous.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead), 0);
+      const converted = current.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).length;
+      return {
+        id: sales.id,
+        name: sales.fullName,
+        assigned: current.length,
+        converted,
+        revenue,
+        previousRevenue,
+        expectedRevenue,
+        previousExpectedRevenue,
+      };
+    }).filter((item) => item.assigned || item.revenue || item.expectedRevenue || item.previousRevenue || item.previousExpectedRevenue)
+      .sort((a, b) => b.revenue - a.revenue || b.expectedRevenue - a.expectedRevenue || b.converted - a.converted);
+  }, [previousLeads, rangeLeads, salesUsers]);
 
   const refresh = async () => {
     setLoading(true);
@@ -93,6 +198,7 @@ export default function LeadAssignmentPage() {
       const [leadItems, userItems] = await Promise.all([leadService.getLeads(), userService.getUsers()]);
       setLeads(leadItems);
       setUsers(userItems);
+      setAssignmentRules(assignmentRuleService.getRules(userItems));
     } finally {
       setLoading(false);
     }
@@ -111,7 +217,21 @@ export default function LeadAssignmentPage() {
     });
   }
 
-  const canDelete = canDeleteLead(user);
+  function updateRule(salesIdValue: string, patch: Partial<SalesAssignmentRule>) {
+    setAssignmentRules((current) => current.map((rule) => (rule.salesId === salesIdValue ? { ...rule, ...patch } : rule)));
+  }
+
+  function saveRules() {
+    setError('');
+    setMessage('');
+    try {
+      const saved = assignmentRuleService.saveRules(users, assignmentRules);
+      setAssignmentRules(saved);
+      setMessage('Đã lưu rule auto chia lead. Lead mới sẽ được phân theo tỷ lệ này.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không lưu được rule chia lead.');
+    }
+  }
 
   async function deleteOne(lead: Lead) {
     if (!canDelete) return;
@@ -157,7 +277,7 @@ export default function LeadAssignmentPage() {
     }
     try {
       await leadService.assignLeads(selected, sales, user);
-      setMessage(`Đã phân ${selected.length} lead cho ${sales.fullName}.`);
+      setMessage(`Đã phân ${selected.length} lead cho ${sales.fullName}. Sales sẽ nhận notification trên thanh noti.`);
       setSelected([]);
       await refresh();
     } catch (err) {
@@ -170,12 +290,80 @@ export default function LeadAssignmentPage() {
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-950">Phân lead</h1>
-          <p className="mt-1 text-slate-500">Gán hàng loạt lead chưa phân và kiểm soát lead bị trả về sau 24 giờ không cập nhật trạng thái.</p>
+          <p className="mt-1 text-slate-500">Tự động chia lead theo tỷ lệ leader setup, theo dõi lead bị trả về và ranking sales.</p>
         </div>
         <Button variant="outline" onClick={() => refresh()} disabled={loading}>
           <RefreshCcw className={loading ? 'animate-spin' : ''} /> Làm mới
         </Button>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Settings2 size={18} className="text-[#003B7A]" /> Rule auto chia lead
+              </CardTitle>
+              <p className="mt-1 text-sm text-slate-500">Lead mới chưa có PIC sẽ tự vào sales theo quota. Tổng tỷ lệ active phải bằng 100%.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge tone={rulesValid ? 'green' : 'red'}>Tổng {rulesTotal}%</Badge>
+              <Button onClick={saveRules} disabled={!rulesValid || !assignmentRules.length}>
+                <Save /> Lưu rule
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2">Sales</th>
+                  <th className="py-2 text-center">Active</th>
+                  <th className="py-2 text-center">Tỷ lệ assign</th>
+                  <th className="py-2 text-center">Đang nhận</th>
+                  <th className="py-2 text-center">Share thực tế</th>
+                </tr>
+              </thead>
+              <tbody>
+                {assignmentRules.map((rule) => {
+                  const assigned = leads.filter((lead) => lead.assignedTo === rule.salesId || lead.assignedToName === rule.salesName || lead.assignedTo === rule.salesName).length;
+                  const assignedTotal = leads.filter((lead) => lead.assignedTo || lead.assignedToName).length;
+                  return (
+                    <tr key={rule.salesId} className="border-b border-slate-50">
+                      <td className="py-2 font-bold text-slate-900">{rule.salesName}</td>
+                      <td className="py-2 text-center">
+                        <input type="checkbox" checked={rule.active} onChange={(event) => updateRule(rule.salesId, { active: event.target.checked })} />
+                      </td>
+                      <td className="py-2">
+                        <div className="mx-auto flex max-w-32 items-center gap-2">
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={rule.percent}
+                            onChange={(event) => updateRule(rule.salesId, { percent: Number(event.target.value) })}
+                            className="text-center"
+                          />
+                          <span className="text-xs font-bold text-slate-400">%</span>
+                        </div>
+                      </td>
+                      <td className="py-2 text-center font-bold text-slate-800">{assigned}</td>
+                      <td className="py-2 text-center">
+                        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">{pct(assigned, assignedTotal)}%</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!assignmentRules.length && (
+                  <tr><td colSpan={5} className="py-8 text-center font-semibold text-slate-400">Chưa có sales active để setup rule.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-3 md:grid-cols-3">
         {groupTabs.map((tab) => (
@@ -186,7 +374,10 @@ export default function LeadAssignmentPage() {
             className={`rounded-xl border p-4 text-left shadow-sm transition ${activeGroup === tab.key ? 'border-[#003B7A] bg-[#003B7A] text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-[#003B7A]/40'}`}
           >
             <p className="text-sm font-bold">{tab.title}</p>
-            <p className="mt-2 text-3xl font-extrabold">{groups[tab.key].length}</p>
+            <div className="mt-2 flex items-end justify-between gap-2">
+              <p className="text-3xl font-extrabold">{groups[tab.key].length}</p>
+              <p className={`text-sm font-bold ${activeGroup === tab.key ? 'text-blue-100' : 'text-slate-400'}`}>{pct(groups[tab.key].length, leads.length)}%</p>
+            </div>
           </button>
         ))}
       </div>
@@ -198,7 +389,7 @@ export default function LeadAssignmentPage() {
             <Input className="pl-10" placeholder="Tìm tên / SĐT / email / sales" value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
           <Select className="lg:max-w-xs" value={salesId} onChange={(event) => setSalesId(event.target.value)}>
-            <option value="">Chọn sales nhận lead</option>
+            <option value="">Manual override: chọn sales</option>
             {salesUsers.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
           </Select>
           <Button onClick={assignSelected} disabled={!selected.length || !salesId}>
@@ -249,9 +440,9 @@ export default function LeadAssignmentPage() {
               {visibleLeads.map((lead) => (
                 <TR key={lead.id}>
                   <TD><input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggle(lead.id)} /></TD>
-                  <TD className="font-semibold text-slate-900">{lead.fullName}</TD>
+                  <TD className="font-semibold text-slate-900">{lead.studentName || lead.fullName}</TD>
                   <TD>{lead.phone}</TD>
-                  <TD><Badge tone="blue">{statusLabel(lead.status)}</Badge></TD>
+                  <TD><Badge tone="blue">{lead.status}</Badge></TD>
                   <TD>{lead.source}</TD>
                   <TD>{lead.assignedToName || salesNameById.get(lead.assignedTo) || 'Chưa phân'}</TD>
                   <TD>{lead.assignedAt ? formatDate(lead.assignedAt, true) : '-'}</TD>
@@ -261,7 +452,7 @@ export default function LeadAssignmentPage() {
                       <button
                         type="button"
                         onClick={() => deleteOne(lead)}
-                        className="text-slate-400 hover:text-red-500 transition"
+                        className="text-slate-400 transition hover:text-red-500"
                         title="Xóa lead"
                       >
                         <Trash2 size={16} />
@@ -278,34 +469,113 @@ export default function LeadAssignmentPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <UserCheck size={18} className="text-[#003B7A]" />
-            <h2 className="font-extrabold text-slate-950">Hiệu suất theo Sales</h2>
-          </div>
-          <Table>
-            <THead>
-              <TR><TH>Sales</TH><TH>Đang nhận</TH><TH>Đã liên hệ</TH><TH>Chốt</TH><TH>Mất</TH><TH>Bị trả về</TH></TR>
-            </THead>
-            <TBody>
-              {performance.map((item) => (
-                <TR key={item.id}>
-                  <TD className="font-bold text-slate-900">{item.name}</TD>
-                  <TD>{item.assigned}</TD>
-                  <TD>{item.contacted}</TD>
-                  <TD className="font-bold text-green-600">{item.converted}</TD>
-                  <TD className="font-bold text-red-600">{item.lost}</TD>
-                  <TD className="font-bold text-orange-600">{item.returned}</TD>
-                </TR>
-              ))}
-              {!performance.length && (
-                <TR><TD colSpan={6} className="py-8 text-center text-slate-400">Chưa có dữ liệu hiệu suất sales.</TD></TR>
-              )}
-            </TBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(360px,1fr)]">
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <UserCheck size={18} className="text-[#003B7A]" /> Report hiệu suất theo Sales
+              </CardTitle>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} className="w-40" />
+                <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="w-40" />
+              </div>
+            </div>
+            <p className="text-sm text-slate-500">{dateFrom} - {dateTo} • So sánh kỳ trước {prevFrom} - {prevTo}</p>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Sales</TH>
+                    <TH>Nhận</TH>
+                    <TH>Share</TH>
+                    <TH>Đã liên hệ</TH>
+                    <TH>Test/HT</TH>
+                    <TH>Chốt</TH>
+                    <TH>Mất</TH>
+                    <TH>Expected</TH>
+                    <TH>Revenue</TH>
+                    <TH>Bị trả</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {performance.map((item) => (
+                    <TR key={item.id}>
+                      <TD className="font-bold text-slate-900">{item.name}</TD>
+                      <TD>{item.assigned}</TD>
+                      <TD><RateBadge value={item.assignedShare} /></TD>
+                      <TD>{item.contacted} <RateBadge value={item.contactedRate} /></TD>
+                      <TD>{item.testTrial} <RateBadge value={item.testRate} /></TD>
+                      <TD className="font-bold text-green-600">{item.converted} <RateBadge value={item.convertedRate} tone="green" /></TD>
+                      <TD className="font-bold text-red-600">{item.lost} <RateBadge value={item.lostRate} tone="red" /></TD>
+                      <TD className="font-bold text-orange-600">{formatCurrency(item.expectedRevenue)}</TD>
+                      <TD className="font-bold text-emerald-600">{formatCurrency(item.revenue)}</TD>
+                      <TD className="font-bold text-orange-600">{item.returned} <RateBadge value={item.returnedRate} tone="orange" /></TD>
+                    </TR>
+                  ))}
+                  {!performance.length && (
+                    <TR><TD colSpan={10} className="py-8 text-center text-slate-400">Chưa có dữ liệu hiệu suất sales trong giai đoạn này.</TD></TR>
+                  )}
+                </TBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Ranking sales</CardTitle>
+            <p className="text-sm text-slate-500">Xếp hạng theo revenue, kèm same period trước đó.</p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {ranking.map((item, index) => (
+              <div key={item.id} className="rounded-lg border border-slate-100 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`flex size-9 items-center justify-center rounded-full text-sm font-extrabold ${index === 0 ? 'bg-emerald-500 text-white' : 'bg-blue-50 text-blue-700'}`}>
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-slate-900">{item.name}</p>
+                      <p className="text-xs text-slate-500">{item.assigned} lead • {item.converted} chốt</p>
+                    </div>
+                  </div>
+                  {compareBadge(item.revenue, item.previousRevenue)}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded bg-emerald-50 px-2 py-1.5">
+                    <p className="font-semibold text-emerald-700">Revenue</p>
+                    <p className="font-extrabold text-emerald-700">{formatCurrency(item.revenue)}</p>
+                    <p className="text-emerald-500">Trước: {formatCurrency(item.previousRevenue)}</p>
+                  </div>
+                  <div className="rounded bg-orange-50 px-2 py-1.5">
+                    <p className="font-semibold text-orange-700">Expected</p>
+                    <p className="font-extrabold text-orange-700">{formatCurrency(item.expectedRevenue)}</p>
+                    <p className="text-orange-500">Trước: {formatCurrency(item.previousExpectedRevenue)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!ranking.length && (
+              <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center font-semibold text-slate-400">
+                Chưa có dữ liệu ranking.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
+}
+
+function RateBadge({ value, tone = 'blue' }: { value: number; tone?: 'blue' | 'green' | 'red' | 'orange' }) {
+  const classes = {
+    blue: 'bg-blue-50 text-blue-700',
+    green: 'bg-emerald-50 text-emerald-700',
+    red: 'bg-red-50 text-red-600',
+    orange: 'bg-orange-50 text-orange-700',
+  };
+  return <span className={`ml-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${classes[tone]}`}>{value}%</span>;
 }

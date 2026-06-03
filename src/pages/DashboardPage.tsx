@@ -152,16 +152,29 @@ export default function DashboardPage() {
     return map;
   }, [leads, users]);
 
+  const salesIdByName = useMemo(() => {
+    const map = new Map<string, string>();
+    users.filter((item) => item.role === 'sales' && item.active).forEach((item) => {
+      if (item.fullName && item.id) map.set(item.fullName, item.id);
+    });
+    return map;
+  }, [users]);
+
+  const canonicalSalesKey = useCallback((idOrName?: string) => {
+    if (!idOrName) return '';
+    return salesIdByName.get(idOrName) || idOrName;
+  }, [salesIdByName]);
+
   const salesLabel = useCallback((idOrName: string) => salesNameById.get(idOrName) || idOrName, [salesNameById]);
 
   // ── Filtered leads ──
   const rangeLeads = useMemo(() => leads.filter((l) => {
     if (!inRange(l.createdAt, dateFrom, dateTo)) return false;
-    if (fSales && l.assignedTo !== fSales) return false;
+    if (fSales && canonicalSalesKey(l.assignedTo || l.assignedToName) !== fSales) return false;
     if (fSource && l.source !== fSource) return false;
     if (fCourse && l.interestedCourse !== fCourse) return false;
     return true;
-  }), [leads, dateFrom, dateTo, fSales, fSource, fCourse]);
+  }), [canonicalSalesKey, leads, dateFrom, dateTo, fSales, fSource, fCourse]);
 
   const salesOptions = useMemo(() => {
     // Same logic as LeadsPage: STAFF_OPTIONS + assigned + custom - hidden
@@ -169,9 +182,14 @@ export default function DashboardPage() {
     try { custom = JSON.parse(localStorage.getItem('metta_sales_staff') || '[]'); } catch {}
     try { hidden = JSON.parse(localStorage.getItem('metta_hidden_sales_staff') || '[]'); } catch {}
     const salesIds = users.filter((item) => item.role === 'sales' && item.active).map((item) => item.id);
-    const all = new Set([...salesIds, ...STAFF_OPTIONS, ...leads.map((l) => l.assignedTo).filter(isNonEmptyString), ...custom]);
+    const all = new Set([
+      ...salesIds,
+      ...STAFF_OPTIONS.map((item) => canonicalSalesKey(item)),
+      ...leads.map((l) => canonicalSalesKey(l.assignedTo || l.assignedToName)).filter(isNonEmptyString),
+      ...custom.map((item) => canonicalSalesKey(item)),
+    ]);
     return Array.from(all).filter((n) => n && !hidden.includes(n));
-  }, [leads, users]);
+  }, [canonicalSalesKey, leads, users]);
 
   /* ── KPI ── */
   const kpi = useMemo(() => {
@@ -211,15 +229,18 @@ export default function DashboardPage() {
   const picData = useMemo(() => {
     const pics = new Set([
       ...users.filter((item) => item.role === 'sales' && item.active).map((item) => item.id),
-      ...STAFF_OPTIONS,
-      ...rangeLeads.map((l) => l.assignedTo).filter(isNonEmptyString),
-      ...rangeLeads.map((l) => l.failedAssignedTo).filter(isNonEmptyString),
+      ...STAFF_OPTIONS.map((item) => canonicalSalesKey(item)),
+      ...rangeLeads.map((l) => canonicalSalesKey(l.assignedTo || l.assignedToName)).filter(isNonEmptyString),
+      ...rangeLeads.map((l) => canonicalSalesKey(l.failedAssignedTo || l.failedAssignedToName)).filter(isNonEmptyString),
     ]);
     const cStatuses = [leadStatuses[1], leadStatuses[3], leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS, LOST_LEAD_STATUS];
     const tStatuses = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
     return Array.from(pics).map((pic) => {
-      const pl = rangeLeads.filter((l) => l.assignedTo === pic);
-      const returned = rangeLeads.filter((l) => l.failedAssignedTo === pic || (l.assignedTo === pic && l.assignedStatus === 'returned')).length;
+      const pl = rangeLeads.filter((l) => canonicalSalesKey(l.assignedTo || l.assignedToName) === pic);
+      const returned = rangeLeads.filter((l) =>
+        canonicalSalesKey(l.failedAssignedTo || l.failedAssignedToName) === pic ||
+        (canonicalSalesKey(l.assignedTo || l.assignedToName) === pic && l.assignedStatus === 'returned'),
+      ).length;
       const t = pl.length, c = pl.filter((l) => cStatuses.includes(l.status)).length;
       const tt = pl.filter((l) => tStatuses.includes(l.status)).length;
       const cv = pl.filter(isConverted).length, lo = pl.filter((l) => l.status === LOST_LEAD_STATUS).length;
@@ -227,7 +248,19 @@ export default function DashboardPage() {
       const revenue = pl.filter(isConverted).reduce((sum, lead) => sum + closedRevenueAmount(lead), 0);
       return { id: pic, name: salesLabel(pic), total: t, contacted: c, cRate: t ? Math.round((c / t) * 100) : 0, testTrial: tt, converted: cv, cvRate: t ? Math.round((cv / t) * 100) : 0, expectedRevenue, revenue, lost: lo, returned, pending: t - cv - lo };
     }).filter((d) => d.total > 0 || d.returned > 0).sort((a, b) => (b.total + b.returned) - (a.total + a.returned));
-  }, [rangeLeads, salesLabel, users]);
+  }, [canonicalSalesKey, rangeLeads, salesLabel, users]);
+
+  const salesContributionData = useMemo(() => {
+    const totalExpected = picData.reduce((sum, item) => sum + item.expectedRevenue, 0);
+    const totalRevenue = picData.reduce((sum, item) => sum + item.revenue, 0);
+    return picData
+      .map((item) => ({
+        ...item,
+        expectedShare: totalExpected ? Math.round((item.expectedRevenue / totalExpected) * 100) : 0,
+        revenueShare: totalRevenue ? Math.round((item.revenue / totalRevenue) * 100) : 0,
+      }))
+      .filter((item) => item.expectedRevenue || item.revenue);
+  }, [picData]);
 
   /* ── Trend ── */
   const trendData = useMemo(() => {
@@ -542,6 +575,54 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Row: Trend + Source ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-bold text-slate-700">
+            <CircleDollarSign size={14} className="inline mr-1.5 -mt-0.5" />
+            Contribution doanh thu theo Sales
+          </CardTitle>
+          <p className="text-xs text-slate-500">Theo filter thời gian hiện tại: Expected revenue và revenue thực tế.</p>
+        </CardHeader>
+        <CardContent>
+          {salesContributionData.length > 0 ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {salesContributionData.map((item) => (
+                <div key={item.id} className="rounded-lg border border-slate-100 p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-extrabold text-slate-900">{item.name}</p>
+                      <p className="text-xs text-slate-500">{item.total} lead • {item.converted} chốt</p>
+                    </div>
+                    <div className="text-right text-xs">
+                      <p className="font-extrabold text-emerald-600">{formatCurrency(item.revenue)}</p>
+                      <p className="font-bold text-orange-600">{formatCurrency(item.expectedRevenue)}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <div>
+                      <div className="mb-1 flex justify-between text-[11px] font-bold text-slate-500">
+                        <span>Expected contribution</span><span>{item.expectedShare}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-orange-50">
+                        <div className="h-2 rounded-full bg-orange-500" style={{ width: `${item.expectedShare}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-1 flex justify-between text-[11px] font-bold text-slate-500">
+                        <span>Revenue contribution</span><span>{item.revenueShare}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-emerald-50">
+                        <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${item.revenueShare}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <EmptyState />}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader className="pb-1"><CardTitle className="text-sm font-bold text-slate-700">Xu hướng Lead theo ngày</CardTitle></CardHeader>

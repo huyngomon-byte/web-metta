@@ -10,11 +10,13 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
-import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, pendingReasonOptions } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
 import { financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
+import { chooseAutoAssignedSales } from '@/services/assignmentRuleService';
 import { currentUser } from '@/services/authService';
+import { notificationService } from '@/services/notificationService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { delay, store } from '@/services/store';
 import type { InterestedCourse, Lead, LeadActivity } from '@/types/crm';
@@ -58,6 +60,16 @@ function leadDisplayName(lead: Partial<Lead>) {
 
 function pendingWarmth(reason?: string) {
   return pendingReasonOptions.find((item) => item.reason === reason)?.warmthPercent;
+}
+
+function salesNameById(id?: string) {
+  if (!id) return '';
+  return store.users.find((user) => user.id === id)?.fullName || id;
+}
+
+function notifyLeadAssignment(lead: Lead, salesId?: string, assignedByName?: string, auto = false) {
+  if (!salesId) return;
+  notificationService.notifyLeadAssigned(lead, salesId, assignedByName, auto);
 }
 
 function parseMoney(value: unknown) {
@@ -287,10 +299,12 @@ export const leadService = {
             where('assignedTo', '==', user.id),
             where('assignedStatus', '==', 'accepted'),
           ));
-          store.leads = [...activeSnap.docs, ...acceptedSnap.docs].map((item) => normalizeLead(item.data() as Lead));
+          const remoteLeads = [...activeSnap.docs, ...acceptedSnap.docs].map((item) => normalizeLead(item.data() as Lead));
+          if (remoteLeads.length || !store.leads.length) store.leads = remoteLeads;
         } else {
           const snap = await getDocs(query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc')));
-          store.leads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+          const remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+          if (remoteLeads.length || !store.leads.length) store.leads = remoteLeads;
           await expireOverdueAssignments(user);
         }
         persistLeads();
@@ -340,6 +354,7 @@ export const leadService = {
       ...((lead.source || !lead.id) ? { priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel) } : {}),
       ...(warmthPercent !== undefined ? { pendingWarmthPercent: warmthPercent } : {}),
     };
+    let assignmentNotification: { salesId: string; assignedByName?: string; auto?: boolean } | null = null;
 
     if (lead.id) {
       const prev = store.leads.find((item) => item.id === lead.id);
@@ -387,6 +402,10 @@ export const leadService = {
           patch.failedReason = '';
           patch.failedAt = '';
           patch.failedAtMs = undefined;
+          assignmentNotification = {
+            salesId: lead.assignedTo,
+            assignedByName: user?.fullName || salesNameById(patch.assignedBy),
+          };
         } else {
           patch.assignedToName = '';
           patch.assignedBy = '';
@@ -407,6 +426,11 @@ export const leadService = {
       store.leads = store.leads.map((item) => (item.id === lead.id ? normalizeLead({ ...item, ...patch } as Lead) : item));
     } else {
       if (user?.role === 'sales') throw new Error('Sales không được tạo lead trực tiếp.');
+      const autoAssignedSales = lead.assignedTo ? null : chooseAutoAssignedSales(store.leads.map(normalizeLead), store.users);
+      const assignedTo = lead.assignedTo || autoAssignedSales?.salesId || '';
+      const assignedToName = lead.assignedToName || autoAssignedSales?.salesName || salesNameById(assignedTo);
+      const assignedBy = lead.assignedBy || (autoAssignedSales ? 'auto-assignment-rule' : '');
+      const hasAssignment = Boolean(assignedTo);
       const draftForValidation = normalizeLead({
         id: `lead-${Date.now()}`,
         fullName: lead.fullName || '',
@@ -424,14 +448,14 @@ export const leadService = {
         source: leadSource,
         centerName: lead.centerName || '',
         priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel),
-        status: lead.status || 'Lead mới',
-        assignedTo: lead.assignedTo || '',
-        assignedToName: lead.assignedToName || '',
-        assignedBy: lead.assignedBy || '',
-        assignedStatus: lead.assignedTo ? 'active' : 'unassigned',
-        assignedAt: lead.assignedTo ? (lead.assignedAt || timestamp) : '',
-        assignedAtMs: lead.assignedTo ? (lead.assignedAtMs || nowMs) : undefined,
-        assignedExpiresAtMs: lead.assignedTo ? (lead.assignedExpiresAtMs || nowMs + DAY_MS) : undefined,
+        status: lead.status || leadStatuses[0],
+        assignedTo,
+        assignedToName,
+        assignedBy,
+        assignedStatus: hasAssignment ? 'active' : 'unassigned',
+        assignedAt: hasAssignment ? (lead.assignedAt || timestamp) : '',
+        assignedAtMs: hasAssignment ? (lead.assignedAtMs || nowMs) : undefined,
+        assignedExpiresAtMs: hasAssignment ? (lead.assignedExpiresAtMs || nowMs + DAY_MS) : undefined,
         followUpDate: lead.followUpDate,
         consultationDate: lead.consultationDate,
         dealSize: lead.dealSize,
@@ -459,10 +483,20 @@ export const leadService = {
       store.leads.unshift(normalizeLead({
         ...draftForValidation,
       }));
+      if (hasAssignment) {
+        assignmentNotification = {
+          salesId: assignedTo,
+          assignedByName: autoAssignedSales ? 'Auto rule' : user?.fullName,
+          auto: Boolean(autoAssignedSales),
+        };
+      }
     }
     const saved = store.leads.find((item) => item.id === lead.id) || store.leads[0];
     persistLeads();
     await writeFirestoreLead(saved);
+    if (assignmentNotification) {
+      notifyLeadAssignment(saved, assignmentNotification.salesId, assignmentNotification.assignedByName, assignmentNotification.auto);
+    }
     return delay(visibleLeads(user));
   },
 
@@ -583,6 +617,7 @@ export const leadService = {
         content: `Phân lead cho ${sales.fullName}`,
         createdBy: assignedBy.fullName,
       });
+      notifyLeadAssignment(lead, sales.id, assignedBy.fullName);
     }));
     return delay(changed);
   },

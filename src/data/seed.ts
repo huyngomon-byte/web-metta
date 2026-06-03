@@ -523,7 +523,7 @@ export const mediaItems: MediaItem[] = [
 export const users: AdminUser[] = [
   { id: 'u1', fullName: 'METTA Admin', email: 'admin@mettaacademy.vn', role: 'admin', active: true, createdAt: now },
   { id: 'u2', fullName: 'Ms. Linh', email: 'linh@mettaacademy.vn', role: 'sales', active: true, createdAt: now },
-  { id: 'u3', fullName: 'Teacher An', email: 'teacher@mettaacademy.vn', role: 'design', active: true, createdAt: now }
+  { id: 'u3', fullName: 'Teacher An', email: 'teacher@mettaacademy.vn', role: 'sales', active: true, createdAt: now }
 ];
 
 export const courses: Course[] = [

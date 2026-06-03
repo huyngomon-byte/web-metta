@@ -223,6 +223,7 @@ export default function LeadsPage() {
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [filters, setFilters] = useState({ search: '', status: '', source: '', centerName: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
   const [view, setView] = useState<'table' | 'kanban'>(searchParams.get('view') === 'table' ? 'table' : 'kanban');
+  const focusLeadId = searchParams.get('leadId') || '';
   const [editing, setEditing] = useState<LeadDraft | null>(null);
   const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
   const [showSourceSettings, setShowSourceSettings] = useState(false);
@@ -527,7 +528,7 @@ export default function LeadsPage() {
       {view === 'table' ? (
         <LeadsTable leads={filtered} canAssign={canAssign} onEdit={(lead) => setEditing(toDraft(lead))} onDelete={removeLead} sourceConfigs={sourceConfigs} />
       ) : (
-        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} />
+        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} focusLeadId={focusLeadId} />
       )}
     </div>
   );
@@ -988,14 +989,16 @@ function Kanban({
   sourceConfigs,
   sourceOptions,
   centerOptions,
+  focusLeadId,
 }: {
   leads: Lead[];
   salesOptions: AdminUser[];
   canAssign: boolean;
-  refresh: () => void;
+  refresh: () => Promise<void>;
   sourceConfigs: LeadSourceConfig[];
   sourceOptions: string[];
   centerOptions: string[];
+  focusLeadId: string;
 }) {
   const [dragOverStatus, setDragOverStatus] = useState('');
   const [pendingQuote, setPendingQuote] = useState<{ lead: Lead; patch: Partial<Lead> } | null>(null);
@@ -1095,6 +1098,7 @@ function Kanban({
                   sourceConfigs={sourceConfigs}
                   sourceOptions={sourceOptions}
                   centerOptions={centerOptions}
+                  focused={focusLeadId === lead.id}
                 />
               ))}
             </div>
@@ -1210,6 +1214,7 @@ function LeadKanbanCard({
   sourceConfigs,
   sourceOptions,
   centerOptions,
+  focused = false,
 }: {
   lead: Lead;
   salesOptions: AdminUser[];
@@ -1220,9 +1225,11 @@ function LeadKanbanCard({
   sourceConfigs: LeadSourceConfig[];
   sourceOptions: string[];
   centerOptions: string[];
+  focused?: boolean;
 }) {
   const courseOptions = useCourseOptions();
   const [draft, setDraft] = useState(lead);
+  const cardRef = useRef<HTMLDivElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
   // Khởi tạo từ knownApptType (đã fetch ở Kanban) → không bị flash giữa Tư vấn ↔ Test
   const initialKind: AppointmentKind = knownApptType
@@ -1237,6 +1244,14 @@ function LeadKanbanCard({
   const [appointmentKind, setAppointmentKind] = useState<AppointmentKind>(initialKind);
   const [appointmentTimeDraft, setAppointmentTimeDraft] = useState(localDateTimeInput(initialKind === APPT_CALLBACK ? lead.followUpDate : lead.consultationDate));
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!focused) return;
+    setExpanded(true);
+    window.setTimeout(() => {
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    }, 120);
+  }, [focused]);
 
   useEffect(() => {
     setDraft(lead);
@@ -1330,6 +1345,7 @@ function LeadKanbanCard({
 
   return (
     <div
+      ref={cardRef}
       draggable
       onDragStart={(event) => {
         const tag = (event.target as HTMLElement).tagName;
@@ -1340,7 +1356,7 @@ function LeadKanbanCard({
         event.dataTransfer.setData('text/plain', lead.id);
         event.dataTransfer.effectAllowed = 'move';
       }}
-      className="cursor-grab rounded-lg border border-slate-200 bg-white shadow-sm transition hover:shadow-md active:cursor-grabbing"
+      className={`cursor-grab rounded-lg border bg-white shadow-sm transition hover:shadow-md active:cursor-grabbing ${focused ? 'border-[#F45A0A] ring-2 ring-orange-200' : 'border-slate-200'}`}
     >
       <button type="button" className="block w-full px-3 py-2 text-left" onClick={() => setExpanded((item) => !item)}>
         <div className="flex items-start justify-between gap-2">
