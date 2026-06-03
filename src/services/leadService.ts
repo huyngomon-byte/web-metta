@@ -10,7 +10,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
-import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, pendingReasonOptions } from '@/lib/constants';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
 import { currentUser } from '@/services/authService';
@@ -52,6 +52,10 @@ function leadDisplayName(lead: Partial<Lead>) {
   return String(lead.studentName || lead.parentName || lead.fullName || '').trim();
 }
 
+function pendingWarmth(reason?: string) {
+  return pendingReasonOptions.find((item) => item.reason === reason)?.warmthPercent;
+}
+
 function parseMoney(value: unknown) {
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value === 'number') return Number.isFinite(value) && value >= 0 ? value : undefined;
@@ -91,6 +95,7 @@ function normalizeLead(raw: Lead): Lead {
   if (!lead.fullName) lead.fullName = leadDisplayName(lead);
   if (!lead.assignedStatus) lead.assignedStatus = lead.assignedTo ? 'accepted' : 'unassigned';
   if (!lead.priorityLevel) lead.priorityLevel = 1;
+  if (lead.pendingReason && !lead.pendingWarmthPercent) lead.pendingWarmthPercent = pendingWarmth(lead.pendingReason) || 0;
   if (!lead.dealCurrency && (lead.dealSize !== undefined || lead.expectedRevenue !== undefined)) lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
   if (lead.dealSize !== undefined && lead.expectedRevenue === undefined) lead.expectedRevenue = lead.dealSize;
   if (!lead.assignedToName && lead.assignedTo && !lead.assignedTo.includes('-') && !lead.assignedTo.startsWith('uid')) {
@@ -180,6 +185,12 @@ function validateLostReason(lead: Partial<Lead>) {
   if (lead.status !== LOST_LEAD_STATUS) return;
   if (String(lead.lostReason || '').trim()) return;
   throw new Error('Vui lòng chọn lý do mất lead trước khi chuyển trạng thái Mất lead.');
+}
+
+function validatePendingReason(lead: Partial<Lead>) {
+  if (lead.status !== DEAL_QUOTED_STATUS) return;
+  if (String(lead.pendingReason || '').trim()) return;
+  throw new Error('Vui lòng chọn lý do pending trước khi chuyển trạng thái Đã báo phí/Chờ chốt.');
 }
 
 async function expireOverdueAssignments(user: AdminUser | null) {
@@ -276,10 +287,12 @@ export const leadService = {
     lead = normalizeDealFields(lead);
     const displayName = leadDisplayName(lead);
     const leadSource = lead.source || 'Website';
+    const warmthPercent = pendingWarmth(lead.pendingReason);
     lead = {
       ...lead,
       ...(displayName ? { fullName: displayName } : {}),
       ...((lead.source || !lead.id) ? { priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel) } : {}),
+      ...(warmthPercent !== undefined ? { pendingWarmthPercent: warmthPercent } : {}),
     };
 
     if (lead.id) {
@@ -303,6 +316,7 @@ export const leadService = {
       };
       const mergedForValidation = normalizeLead({ ...(prev || {}), ...patch } as Lead);
       validateLostReason(mergedForValidation);
+      validatePendingReason(mergedForValidation);
       if (mergedForValidation.status === WON_LEAD_STATUS) {
         patch.wonAt = lead.wonAt || prev?.wonAt || timestamp;
       } else if (statusChanged && prev?.status === WON_LEAD_STATUS) {
@@ -353,6 +367,7 @@ export const leadService = {
         currentLevel: lead.currentLevel || '',
         targetGoal: lead.targetGoal || '',
         source: leadSource,
+        centerName: lead.centerName || '',
         priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel),
         status: lead.status || 'Lead mới',
         assignedTo: lead.assignedTo || '',
@@ -372,6 +387,9 @@ export const leadService = {
         expectedCloseDate: lead.expectedCloseDate || '',
         enrollmentType: lead.enrollmentType || 'new',
         wonAt: lead.status === WON_LEAD_STATUS ? (lead.wonAt || timestamp) : '',
+        pendingReason: lead.pendingReason || '',
+        pendingReasonNote: lead.pendingReasonNote || '',
+        pendingWarmthPercent: pendingWarmth(lead.pendingReason) || 0,
         lostReason: lead.lostReason || '',
         lostNote: lead.lostNote || '',
         initialNote: lead.initialNote || '',
@@ -379,6 +397,7 @@ export const leadService = {
         updatedAt: timestamp,
       } as Lead);
       validateLostReason(draftForValidation);
+      validatePendingReason(draftForValidation);
       store.leads.unshift(normalizeLead({
         ...draftForValidation,
       }));

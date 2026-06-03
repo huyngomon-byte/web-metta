@@ -150,6 +150,64 @@ export const WON_LEAD_STATUS = 'Đã đăng ký học';
 export const LOST_LEAD_STATUS = 'Mất lead';
 export const DEFAULT_DEAL_CURRENCY = 'VND';
 
+export const pendingReasonOptions = [
+  {
+    reason: 'Đã hẹn chuyển khoản / giữ chỗ',
+    warmthPercent: 90,
+    defaultNote: 'Phụ huynh đã xác nhận đăng ký, đang chờ chuyển khoản hoặc giữ chỗ. Sales cần follow sát trong ngày.',
+  },
+  {
+    reason: 'Đồng ý học, chờ xác nhận lịch khai giảng',
+    warmthPercent: 85,
+    defaultNote: 'Phụ huynh đồng ý học, còn chờ xác nhận lớp/ca học phù hợp trước khi thanh toán.',
+  },
+  {
+    reason: 'Chờ ưu đãi / chính sách thanh toán',
+    warmthPercent: 70,
+    defaultNote: 'Phụ huynh quan tâm nhưng đang chờ thông tin ưu đãi, chia đợt thanh toán hoặc chính sách học phí.',
+  },
+  {
+    reason: 'Cần trao đổi thêm với người quyết định học phí',
+    warmthPercent: 60,
+    defaultNote: 'Người trao đổi chưa phải người ra quyết định cuối cùng. Cần hẹn thời điểm gọi lại với người quyết định.',
+  },
+  {
+    reason: 'Cần tư vấn thêm lộ trình / level / đầu ra',
+    warmthPercent: 55,
+    defaultNote: 'Phụ huynh còn cần làm rõ lộ trình học, level phù hợp, mục tiêu đầu ra hoặc cam kết chương trình.',
+  },
+  {
+    reason: 'Đang so sánh với trung tâm khác',
+    warmthPercent: 40,
+    defaultNote: 'Phụ huynh đang so sánh học phí, lịch học, cam kết và trải nghiệm với trung tâm khác.',
+  },
+  {
+    reason: 'Lịch học chưa phù hợp, chờ ca/lớp mới',
+    warmthPercent: 35,
+    defaultNote: 'Nhu cầu học có thật nhưng lịch hiện tại chưa phù hợp. Cần ghi rõ khung giờ mong muốn.',
+  },
+  {
+    reason: 'Học phí vượt ngân sách, đang cân nhắc',
+    warmthPercent: 25,
+    defaultNote: 'Phụ huynh quan tâm nhưng đang cân nhắc ngân sách. Cần ghi rõ mức học phí/gói học đã báo.',
+  },
+  {
+    reason: 'Chưa phản hồi sau khi báo phí',
+    warmthPercent: 20,
+    defaultNote: 'Đã gửi báo phí nhưng phụ huynh chưa phản hồi. Cần follow-up bằng kênh phù hợp và ghi lịch gọi lại.',
+  },
+  {
+    reason: 'Hơi xa, đang cân nhắc',
+    warmthPercent: 10,
+    defaultNote: 'Phụ huynh thấy vị trí trung tâm chưa thuận tiện. Cần ghi rõ khu vực nhà/trường và phương án ca học.',
+  },
+  {
+    reason: 'Chưa có nhu cầu học ngay',
+    warmthPercent: 10,
+    defaultNote: 'Phụ huynh chưa muốn đăng ký ngay, cần lưu mốc follow-up dài hạn và lý do trì hoãn.',
+  },
+] as const;
+
 export const leadStatuses = [
   'Lead mới',
   'Đã liên hệ',
@@ -189,6 +247,12 @@ export const defaultLeadSourceConfigs = [
 ] as const;
 
 export const leadSources = defaultLeadSourceConfigs.map((source) => source.name);
+
+export const defaultLeadCenterConfigs = [
+  { name: 'METTA Quận 1', address: 'Nhập địa chỉ cơ sở Quận 1', description: 'Cơ sở trung tâm, phù hợp lead ở khu vực lõi thành phố.' },
+  { name: 'METTA Thảo Điền', address: 'Nhập địa chỉ cơ sở Thảo Điền', description: 'Cơ sở ưu tiên cho lead khu Đông hoặc nhóm phụ huynh quốc tế.' },
+  { name: 'METTA Phú Nhuận', address: 'Nhập địa chỉ cơ sở Phú Nhuận', description: 'Cơ sở ưu tiên cho lead khu Phú Nhuận, Bình Thạnh, Tân Bình.' },
+] as const;
 
 export const studentStatuses = ['Đang tư vấn', 'Đã đăng ký', 'Đang học', 'Tạm nghỉ', 'Bảo lưu', 'Hoàn thành khóa', 'Đã nghỉ'] as const;
 export const classStatuses = ['Sắp khai giảng', 'Đang học', 'Tạm dừng', 'Đã hoàn thành', 'Đã hủy'] as const;

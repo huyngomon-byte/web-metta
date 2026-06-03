@@ -12,14 +12,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseOptions } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
-import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadSources, leadStatuses, lostReasons } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadSources, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
 import { canAssignLead } from '@/lib/permissions';
 import { exportCsv, formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
+import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { userService } from '@/services/userService';
-import type { Appointment, Lead, LeadPriorityLevel, LeadSourceConfig } from '@/types/crm';
+import type { Appointment, Lead, LeadCenterConfig, LeadPriorityLevel, LeadSourceConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 type AppointmentKind = '' | Appointment['type'];
@@ -49,6 +50,7 @@ const emptyLead: LeadDraft = {
   currentLevel: '',
   targetGoal: '',
   source: leadSources[0],
+  centerName: '',
   priorityLevel: 1,
   status: leadStatuses[0],
   assignedTo: '',
@@ -58,6 +60,9 @@ const emptyLead: LeadDraft = {
   dealNote: '',
   expectedCloseDate: '',
   enrollmentType: 'new',
+  pendingReason: '',
+  pendingReasonNote: '',
+  pendingWarmthPercent: 0,
   lostReason: '',
   lostNote: '',
   initialNote: '',
@@ -123,6 +128,21 @@ function priorityTone(level?: number) {
 
 function priorityForLead(configs: LeadSourceConfig[], lead: Partial<Lead>) {
   return sourcePriority(configs, lead.source, lead.priorityLevel);
+}
+
+function pendingOption(reason?: string) {
+  return pendingReasonOptions.find((item) => item.reason === reason);
+}
+
+function warmthPercent(lead: Partial<Lead>) {
+  return lead.pendingWarmthPercent || pendingOption(lead.pendingReason)?.warmthPercent || 0;
+}
+
+function warmthTone(percent: number) {
+  if (percent >= 75) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+  if (percent >= 45) return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (percent >= 25) return 'bg-orange-50 text-orange-700 border-orange-200';
+  return 'bg-red-50 text-red-700 border-red-200';
 }
 
 function numericInputValue(value?: number) {
@@ -195,11 +215,13 @@ export default function LeadsPage() {
   const courseOptions = useCourseOptions();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [sourceConfigs, setSourceConfigs] = useState<LeadSourceConfig[]>([]);
-  const [filters, setFilters] = useState({ search: '', status: '', source: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
+  const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
+  const [filters, setFilters] = useState({ search: '', status: '', source: '', centerName: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
   const [view, setView] = useState<'table' | 'kanban'>(searchParams.get('view') === 'table' ? 'table' : 'kanban');
   const [editing, setEditing] = useState<LeadDraft | null>(null);
-  const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', assignedTo: '' });
+  const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
   const [showSourceSettings, setShowSourceSettings] = useState(false);
+  const [showCenterSettings, setShowCenterSettings] = useState(false);
   const [error, setError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const canAssign = canAssignLead(user);
@@ -207,6 +229,7 @@ export default function LeadsPage() {
   useEffect(() => {
     userService.getUsers().then(setUsers);
     sourceConfigService.getConfigs().then(setSourceConfigs);
+    centerConfigService.getConfigs().then(setCenterConfigs);
   }, []);
 
   const salesOptions = useMemo(
@@ -222,6 +245,7 @@ export default function LeadsPage() {
       (!filters.search || haystack.includes(filters.search.toLowerCase())) &&
       (!filters.status || lead.status === filters.status) &&
       (!filters.source || lead.source === filters.source) &&
+      (!filters.centerName || lead.centerName === filters.centerName) &&
       (!filters.priorityLevel || String(priority) === filters.priorityLevel) &&
       (!filters.course || lead.interestedCourse === filters.course) &&
       (!filters.assignedTo || lead.assignedTo === filters.assignedTo) &&
@@ -238,13 +262,21 @@ export default function LeadsPage() {
     return Array.from(names);
   }, [leads, sourceConfigs]);
 
+  const centerOptions = useMemo(() => {
+    const names = new Set([
+      ...centerConfigs.filter((center) => center.active).map((center) => center.name),
+      ...leads.map((lead) => lead.centerName).filter((name): name is string => Boolean(name)),
+    ]);
+    return Array.from(names);
+  }, [centerConfigs, leads]);
+
   function priorityForSource(source?: string, fallback?: number) {
     return sourcePriority(sourceConfigs, source, fallback);
   }
 
   function newLeadDraft(): LeadDraft {
     const source = sourceOptions[0] || leadSources[0];
-    return { ...emptyLead, source, priorityLevel: priorityForSource(source) };
+    return { ...emptyLead, source, centerName: centerOptions[0] || '', priorityLevel: priorityForSource(source) };
   }
 
   async function saveLead() {
@@ -267,6 +299,10 @@ export default function LeadsPage() {
       setError('Vui lòng chọn lý do mất lead.');
       return;
     }
+    if (editing.status === DEAL_QUOTED_STATUS && !String(editing.pendingReason || '').trim()) {
+      setError('Vui lòng chọn lý do pending khi chuyển sang Đã báo phí/Chờ chốt.');
+      return;
+    }
 
     const selectedSales = salesOptions.find((sales) => sales.id === editing.assignedTo);
     const payload: LeadDraft = {
@@ -274,6 +310,8 @@ export default function LeadsPage() {
       fullName: displayName,
       assignedToName: canAssign ? (selectedSales?.fullName || '') : editing.assignedToName,
       priorityLevel: priorityForSource(editing.source, editing.priorityLevel),
+      pendingWarmthPercent: warmthPercent(editing),
+      pendingReasonNote: editing.pendingReasonNote || pendingOption(editing.pendingReason)?.defaultNote || '',
       followUpDate: editing.appointmentKind === APPT_CALLBACK ? editing.appointmentTime : '',
       consultationDate: editing.appointmentKind === APPT_CONSULTATION || editing.appointmentKind === APPT_TEST ? editing.appointmentTime : '',
     };
@@ -335,6 +373,7 @@ export default function LeadsPage() {
     const selectedSales = salesOptions.find((sales) => sales.id === quickLead.assignedTo);
     const timestamp = new Date().toISOString();
     const source = sourceOptions[0] || leadSources[0];
+    const centerName = quickLead.centerName || centerOptions[0] || '';
     try {
       await leadService.saveLead({
         ...emptyLead,
@@ -343,6 +382,7 @@ export default function LeadsPage() {
         studentName,
         phone,
         source,
+        centerName,
         priorityLevel: priorityForSource(source),
         assignedTo: selectedSales?.id || '',
         assignedToName: selectedSales?.fullName || '',
@@ -351,7 +391,7 @@ export default function LeadsPage() {
         assignedStatus: selectedSales ? 'active' : 'unassigned',
         ...(selectedSales ? { assignedAtMs: Date.now() } : {}),
       });
-      setQuickLead({ parentName: '', studentName: '', phone: '', assignedTo: '' });
+      setQuickLead({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
       setSaveMessage('Đã thêm lead mới.');
       refresh();
     } catch (err) {
@@ -381,6 +421,9 @@ export default function LeadsPage() {
           {canAssign && <Button variant="outline" onClick={() => setShowSourceSettings((current) => !current)}>
             Source priority
           </Button>}
+          {canAssign && <Button variant="outline" onClick={() => setShowCenterSettings((current) => !current)}>
+            Trung tâm
+          </Button>}
           {canAssign && <Button onClick={() => setEditing(newLeadDraft())}><Plus /> Thêm lead</Button>}
         </div>
       </div>
@@ -389,10 +432,14 @@ export default function LeadsPage() {
         <CardContent className="grid gap-3 p-4 md:grid-cols-6">
           {canAssign && <div className="md:col-span-6">
             <div className="mb-1 text-xs font-bold uppercase text-slate-500">Nhập lead nhanh</div>
-            <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 md:grid-cols-[1fr_1fr_1fr_220px_auto]">
+            <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 md:grid-cols-[1fr_1fr_1fr_180px_220px_auto]">
               <Input placeholder="Tên phụ huynh" value={quickLead.parentName} onChange={(event) => setQuickLead({ ...quickLead, parentName: event.target.value })} />
               <Input placeholder="Tên học sinh" value={quickLead.studentName} onChange={(event) => setQuickLead({ ...quickLead, studentName: event.target.value })} />
               <Input placeholder="Số điện thoại" value={quickLead.phone} onChange={(event) => setQuickLead({ ...quickLead, phone: event.target.value })} />
+              <Select value={quickLead.centerName} onChange={(event) => setQuickLead({ ...quickLead, centerName: event.target.value })}>
+                <option value="">Trung tâm --</option>
+                {centerOptions.map((center) => <option key={center} value={center}>{center}</option>)}
+              </Select>
               <Select value={quickLead.assignedTo} onChange={(event) => setQuickLead({ ...quickLead, assignedTo: event.target.value })}>
                 <option value="">PIC --</option>
                 {salesOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
@@ -408,6 +455,10 @@ export default function LeadsPage() {
           <Select value={filters.source} onChange={(event) => setFilters({ ...filters, source: event.target.value })}>
             <option value="">Tất cả source</option>
             {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+          </Select>
+          <Select value={filters.centerName} onChange={(event) => setFilters({ ...filters, centerName: event.target.value })}>
+            <option value="">Tất cả trung tâm</option>
+            {centerOptions.map((center) => <option key={center} value={center}>{center}</option>)}
           </Select>
           <Select value={filters.priorityLevel} onChange={(event) => setFilters({ ...filters, priorityLevel: event.target.value })}>
             <option value="">Tất cả ưu tiên</option>
@@ -441,6 +492,16 @@ export default function LeadsPage() {
           }}
         />
       )}
+      {showCenterSettings && (
+        <CenterSettingsPanel
+          configs={centerConfigs}
+          onSave={async (configs) => {
+            const saved = await centerConfigService.saveConfigs(configs);
+            setCenterConfigs(saved);
+            setSaveMessage('Đã lưu danh sách trung tâm.');
+          }}
+        />
+      )}
       {editing && (
         <LeadForm
           value={editing}
@@ -452,6 +513,7 @@ export default function LeadsPage() {
           canAssign={canAssign}
           courseOptions={courseOptions}
           sourceOptions={sourceOptions}
+          centerOptions={centerOptions}
           priorityForSource={priorityForSource}
         />
       )}
@@ -459,7 +521,7 @@ export default function LeadsPage() {
       {view === 'table' ? (
         <LeadsTable leads={filtered} canAssign={canAssign} onEdit={(lead) => setEditing(toDraft(lead))} onDelete={removeLead} sourceConfigs={sourceConfigs} />
       ) : (
-        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} />
+        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} />
       )}
     </div>
   );
@@ -475,6 +537,7 @@ function LeadForm({
   canAssign,
   courseOptions,
   sourceOptions,
+  centerOptions,
   priorityForSource,
 }: {
   value: LeadDraft;
@@ -486,6 +549,7 @@ function LeadForm({
   canAssign: boolean;
   courseOptions: string[];
   sourceOptions: string[];
+  centerOptions: string[];
   priorityForSource: (source?: string, fallback?: number) => LeadPriorityLevel;
 }) {
   const set = (key: keyof LeadDraft, val: string) => setValue({ ...value, [key]: val });
@@ -527,6 +591,10 @@ function LeadForm({
             }}
           >
             {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+          </Select>
+          <Select value={value.centerName || ''} onChange={(event) => set('centerName', event.target.value)}>
+            <option value="">Chọn trung tâm/cơ sở</option>
+            {centerOptions.map((center) => <option key={center} value={center}>{center}</option>)}
           </Select>
           <Select value={value.status || leadStatuses[0]} onChange={(event) => set('status', event.target.value)}>
             {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
@@ -621,6 +689,32 @@ function LeadForm({
               {lostReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
             </Select>
           )}
+          {value.status === DEAL_QUOTED_STATUS && (
+            <>
+              <Select
+                value={value.pendingReason || ''}
+                onChange={(event) => {
+                  const reason = event.target.value;
+                  const option = pendingOption(reason);
+                  setValue({
+                    ...value,
+                    pendingReason: reason,
+                    pendingWarmthPercent: option?.warmthPercent || 0,
+                    pendingReasonNote: value.pendingReasonNote || option?.defaultNote || '',
+                  });
+                }}
+              >
+                <option value="">Chọn lý do pending</option>
+                {pendingReasonOptions.map((option) => (
+                  <option key={option.reason} value={option.reason}>{option.reason} ({option.warmthPercent}%)</option>
+                ))}
+              </Select>
+              <div className={`rounded-lg border px-3 py-2 text-sm font-bold ${warmthTone(warmthPercent(value))}`}>
+                Warmth: {warmthPercent(value)}%
+              </div>
+              <Textarea className="md:col-span-3" placeholder="Ghi chú pending để sales bổ sung thêm" value={value.pendingReasonNote || pendingOption(value.pendingReason)?.defaultNote || ''} onChange={(event) => set('pendingReasonNote', event.target.value)} />
+            </>
+          )}
           <Textarea className="md:col-span-3" placeholder="Note deal / báo phí / điều kiện chốt" value={value.dealNote || ''} onChange={(event) => set('dealNote', event.target.value)} />
           {value.status === LOST_LEAD_STATUS && (
             <Textarea className="md:col-span-3" placeholder="Ghi chú thêm về lý do mất lead" value={value.lostNote || ''} onChange={(event) => set('lostNote', event.target.value)} />
@@ -711,6 +805,79 @@ function SourcePriorityPanel({
   );
 }
 
+function CenterSettingsPanel({
+  configs,
+  onSave,
+}: {
+  configs: LeadCenterConfig[];
+  onSave: (configs: LeadCenterConfig[]) => void | Promise<void>;
+}) {
+  const [drafts, setDrafts] = useState<LeadCenterConfig[]>(configs);
+
+  useEffect(() => {
+    setDrafts(configs);
+  }, [configs]);
+
+  function update(id: string, patch: Partial<LeadCenterConfig>) {
+    setDrafts((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
+  }
+
+  function addCenter() {
+    const now = new Date().toISOString();
+    setDrafts((current) => [
+      ...current,
+      {
+        id: `center-${Date.now()}`,
+        name: '',
+        address: '',
+        description: '',
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+  }
+
+  function removeCenter(id: string) {
+    setDrafts((current) => current.filter((item) => item.id !== id));
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Cấu hình trung tâm / cơ sở</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid gap-2 text-xs font-bold uppercase text-slate-500 md:grid-cols-[1fr_1.6fr_1.6fr_90px_48px]">
+          <span>Tên trung tâm</span>
+          <span>Địa chỉ</span>
+          <span>Ghi chú</span>
+          <span>Active</span>
+          <span />
+        </div>
+        {drafts.map((center) => (
+          <div key={center.id} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2 md:grid-cols-[1fr_1.6fr_1.6fr_90px_48px]">
+            <Input value={center.name} placeholder="VD: METTA Quận 1" onChange={(event) => update(center.id, { name: event.target.value })} />
+            <Input value={center.address} placeholder="Địa chỉ cơ sở" onChange={(event) => update(center.id, { address: event.target.value })} />
+            <Input value={center.description} placeholder="Ghi chú khu vực / tuyến đường / đối tượng phù hợp" onChange={(event) => update(center.id, { description: event.target.value })} />
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600">
+              <input type="checkbox" checked={center.active} onChange={(event) => update(center.id, { active: event.target.checked })} />
+              Bật
+            </label>
+            <button type="button" className="inline-flex items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => removeCenter(center.id)} title="Xóa trung tâm">
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={addCenter}><Plus /> Thêm trung tâm</Button>
+          <Button onClick={() => onSave(drafts.filter((center) => center.name.trim()))}><Save /> Lưu trung tâm</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function LeadsTable({
   leads,
   canAssign,
@@ -729,7 +896,7 @@ function LeadsTable({
       <CardContent className="p-0">
         <Table>
           <THead>
-            <TR><TH>Lead</TH><TH>SĐT</TH><TH>Email</TH><TH>Khóa quan tâm</TH><TH>Ưu tiên</TH><TH>Trạng thái</TH><TH>Deal</TH><TH>Nguồn</TH><TH>Người phụ trách</TH><TH>Follow-up</TH><TH>Ngày tạo</TH><TH>Action</TH></TR>
+            <TR><TH>Lead</TH><TH>SĐT</TH><TH>Email</TH><TH>Khóa quan tâm</TH><TH>Trung tâm</TH><TH>Ưu tiên</TH><TH>Trạng thái</TH><TH>Deal</TH><TH>Nguồn</TH><TH>Người phụ trách</TH><TH>Follow-up</TH><TH>Ngày tạo</TH><TH>Action</TH></TR>
           </THead>
           <TBody>
             {leads.map((lead) => (
@@ -741,6 +908,7 @@ function LeadsTable({
                 <TD>{lead.phone}</TD>
                 <TD>{lead.email}</TD>
                 <TD>{lead.interestedCourse}</TD>
+                <TD>{lead.centerName || '-'}</TD>
                 <TD><span className={`rounded border px-2 py-0.5 text-xs font-bold ${priorityTone(priorityForLead(sourceConfigs, lead))}`}>{priorityLabel(priorityForLead(sourceConfigs, lead))}</span></TD>
                 <TD><Badge tone={statusTone[statusIndex(lead.status)]}>{statusLabel(lead.status)}</Badge></TD>
                 <TD className="font-semibold text-slate-800">{formatCurrency(dealValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}</TD>
@@ -779,6 +947,7 @@ function Kanban({
   refresh,
   sourceConfigs,
   sourceOptions,
+  centerOptions,
 }: {
   leads: Lead[];
   salesOptions: AdminUser[];
@@ -786,8 +955,10 @@ function Kanban({
   refresh: () => void;
   sourceConfigs: LeadSourceConfig[];
   sourceOptions: string[];
+  centerOptions: string[];
 }) {
   const [dragOverStatus, setDragOverStatus] = useState('');
+  const [pendingQuote, setPendingQuote] = useState<{ lead: Lead; patch: Partial<Lead> } | null>(null);
   // Map leadId -> actual appointment type (Tư vấn / Test / Gọi lại) — fetched once để tránh flash
   const [apptTypeByLead, setApptTypeByLead] = useState<Map<string, Appointment['type']>>(new Map());
   const [appointmentsLoaded, setAppointmentsLoaded] = useState(false);
@@ -810,12 +981,21 @@ function Kanban({
     }).catch(() => setAppointmentsLoaded(true));
   }, [leads]);
 
-  async function updateLead(lead: Lead, patch: Partial<Lead>) {
+  async function applyLeadPatch(lead: Lead, patch: Partial<Lead>) {
     const confirmedPatch = buildLostReasonPatch(lead, patch);
     if (!confirmedPatch) return;
     await leadService.saveLead({ ...lead, ...confirmedPatch });
     await leadService.addActivity({ leadId: lead.id, type: 'update', content: `Cập nhật ${Object.keys(confirmedPatch).join(', ')}` });
     refresh();
+  }
+
+  async function updateLead(lead: Lead, patch: Partial<Lead>) {
+    const nextStatus = patch.status || lead.status;
+    if (nextStatus === DEAL_QUOTED_STATUS && !String(patch.pendingReason || lead.pendingReason || '').trim()) {
+      setPendingQuote({ lead, patch });
+      return;
+    }
+    await applyLeadPatch(lead, patch);
   }
 
   async function moveLead(leadId: string, status: Lead['status']) {
@@ -825,6 +1005,7 @@ function Kanban({
   }
 
   return (
+    <>
     <div className="flex gap-4 overflow-x-auto pb-4">
       {leadStatuses.map((status, index) => {
         const colLeads = leads
@@ -873,12 +1054,99 @@ function Kanban({
                   appointmentsLoaded={appointmentsLoaded}
                   sourceConfigs={sourceConfigs}
                   sourceOptions={sourceOptions}
+                  centerOptions={centerOptions}
                 />
               ))}
             </div>
           </div>
         );
       })}
+    </div>
+    {pendingQuote && (
+      <PendingReasonModal
+        lead={pendingQuote.lead}
+        onCancel={() => setPendingQuote(null)}
+        onConfirm={async (patch) => {
+          const nextPatch: Partial<Lead> = { ...pendingQuote.patch, ...patch, status: DEAL_QUOTED_STATUS };
+          setPendingQuote(null);
+          await applyLeadPatch(pendingQuote.lead, nextPatch);
+        }}
+      />
+    )}
+    </>
+  );
+}
+
+function PendingReasonModal({
+  lead,
+  onCancel,
+  onConfirm,
+}: {
+  lead: Lead;
+  onCancel: () => void;
+  onConfirm: (patch: Partial<Lead>) => void | Promise<void>;
+}) {
+  const [reason, setReason] = useState(lead.pendingReason || '');
+  const selected = pendingOption(reason);
+  const [note, setNote] = useState(lead.pendingReasonNote || selected?.defaultNote || '');
+  const percent = selected?.warmthPercent || 0;
+
+  function chooseReason(nextReason: string) {
+    const option = pendingOption(nextReason);
+    setReason(nextReason);
+    setNote((current) => current.trim() ? current : option?.defaultNote || '');
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-2xl rounded-xl bg-white p-5 shadow-xl">
+        <div className="mb-4">
+          <h2 className="text-lg font-extrabold text-slate-950">Lý do pending báo phí</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            {lead.studentName || lead.fullName} {lead.parentName ? `· PH: ${lead.parentName}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold uppercase text-slate-500">Lý do pending bắt buộc</span>
+            <Select value={reason} onChange={(event) => chooseReason(event.target.value)}>
+              <option value="">Chọn lý do pending</option>
+              {pendingReasonOptions.map((option) => (
+                <option key={option.reason} value={option.reason}>
+                  {option.reason} ({option.warmthPercent}%)
+                </option>
+              ))}
+            </Select>
+          </label>
+          {reason && (
+            <div className={`rounded-lg border px-3 py-2 text-sm font-bold ${warmthTone(percent)}`}>
+              Warmth dự kiến: {percent}%
+            </div>
+          )}
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold uppercase text-slate-500">Ghi chú pending</span>
+            <Textarea
+              rows={4}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Ghi chú mặc định sẽ hiện sau khi chọn lý do; sales bổ sung thêm thông tin thực tế tại đây."
+            />
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" onClick={onCancel}>Hủy</Button>
+          <Button
+            disabled={!reason}
+            onClick={() => onConfirm({
+              pendingReason: reason,
+              pendingReasonNote: note || selected?.defaultNote || '',
+              pendingWarmthPercent: percent,
+            })}
+          >
+            <Save /> Lưu pending
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -892,6 +1160,7 @@ function LeadKanbanCard({
   appointmentsLoaded,
   sourceConfigs,
   sourceOptions,
+  centerOptions,
 }: {
   lead: Lead;
   salesOptions: AdminUser[];
@@ -901,6 +1170,7 @@ function LeadKanbanCard({
   appointmentsLoaded: boolean;
   sourceConfigs: LeadSourceConfig[];
   sourceOptions: string[];
+  centerOptions: string[];
 }) {
   const courseOptions = useCourseOptions();
   const [draft, setDraft] = useState(lead);
@@ -950,6 +1220,11 @@ function LeadKanbanCard({
   }
 
   function commit(patch: Partial<Lead>) {
+    const nextStatus = patch.status || lead.status;
+    if (nextStatus === DEAL_QUOTED_STATUS && !String(patch.pendingReason || lead.pendingReason || '').trim()) {
+      void onSave(lead, patch);
+      return;
+    }
     const confirmedPatch = buildLostReasonPatch(lead, patch);
     if (!confirmedPatch) {
       setDraft(lead);
@@ -1038,7 +1313,11 @@ function LeadKanbanCard({
           <span className={`rounded border px-2 py-0.5 text-[10px] font-bold ${priorityTone(priorityForLead(sourceConfigs, draft))}`}>{priorityLabel(priorityForLead(sourceConfigs, draft))}</span>
           {draft.assignedToName && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{draft.assignedToName}</span>}
           <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">{statusLabel(draft.status)}</span>
+          {draft.status === DEAL_QUOTED_STATUS && draft.pendingReason && (
+            <span className={`rounded border px-2 py-0.5 text-[10px] font-bold ${warmthTone(warmthPercent(draft))}`}>{warmthPercent(draft)}%</span>
+          )}
           {draft.interestedCourse && <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{draft.interestedCourse}</span>}
+          {draft.centerName && <span className="rounded bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">{draft.centerName}</span>}
           {draft.source && <span className="rounded bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">{sourceLabel(draft.source)}</span>}
           {dealValue(draft) ? <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{formatCurrency(dealValue(draft), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}</span> : null}
         </div>
@@ -1099,6 +1378,10 @@ function LeadKanbanCard({
             <option value="">PIC --</option>
             {salesOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
           </Select>
+          <Select value={draft.centerName || ''} onChange={(event) => commit({ centerName: event.target.value })}>
+            <option value="">Trung tâm --</option>
+            {centerOptions.map((center) => <option key={center} value={center}>{center}</option>)}
+          </Select>
           <div className="grid grid-cols-2 gap-2">
             <Select value={draft.source || sourceOptions[0] || leadSources[0]} onChange={(event) => {
               const source = event.target.value as Lead['source'];
@@ -1115,6 +1398,11 @@ function LeadKanbanCard({
               <option value="">Chọn lý do mất lead</option>
               {lostReasons.map((reason) => <option key={reason} value={reason}>{reason}</option>)}
             </Select>
+          )}
+          {draft.status === DEAL_QUOTED_STATUS && draft.pendingReason && (
+            <div className={`rounded-lg border px-2 py-1 text-xs font-bold ${warmthTone(warmthPercent(draft))}`}>
+              Warmth {warmthPercent(draft)}% · {draft.pendingReason}
+            </div>
           )}
           {/* Loại lịch — full width để hiện đủ chữ */}
           <Select

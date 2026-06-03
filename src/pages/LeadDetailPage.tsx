@@ -10,14 +10,15 @@ import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseOptions } from '@/hooks/useCms';
-import { DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadStatuses, lostReasons } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
 import { canAssignLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
+import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { userService } from '@/services/userService';
-import type { Appointment, InterestedCourse, Lead, LeadActivity, LeadSourceConfig } from '@/types/crm';
+import type { Appointment, InterestedCourse, Lead, LeadActivity, LeadCenterConfig, LeadSourceConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 type AppointmentKind = '' | Appointment['type'];
@@ -41,6 +42,21 @@ function leadDisplayName(lead: Partial<Lead>) {
 
 function priorityLabel(level?: number) {
   return `P${Number(level || 1)}`;
+}
+
+function pendingOption(reason?: string) {
+  return pendingReasonOptions.find((item) => item.reason === reason);
+}
+
+function warmthPercent(lead: Partial<Lead>) {
+  return lead.pendingWarmthPercent || pendingOption(lead.pendingReason)?.warmthPercent || 0;
+}
+
+function warmthTone(percent: number) {
+  if (percent >= 75) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (percent >= 45) return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (percent >= 25) return 'border-orange-200 bg-orange-50 text-orange-700';
+  return 'border-red-200 bg-red-50 text-red-700';
 }
 
 function numericInputValue(value?: number) {
@@ -82,6 +98,7 @@ export default function LeadDetailPage() {
   const [lead, setLead] = useState<LeadDetailDraft | undefined>();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [sourceConfigs, setSourceConfigs] = useState<LeadSourceConfig[]>([]);
+  const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [tab, setTab] = useState('overview');
@@ -97,6 +114,13 @@ export default function LeadDetailPage() {
     ]);
     return Array.from(names);
   }, [lead?.source, sourceConfigs]);
+  const centerOptions = useMemo(() => {
+    const names = new Set([
+      ...centerConfigs.filter((center) => center.active).map((center) => center.name),
+      ...(lead?.centerName ? [lead.centerName] : []),
+    ]);
+    return Array.from(names);
+  }, [centerConfigs, lead?.centerName]);
   const backPath = searchParams.get('from') === 'kanban' ? '/crm/leads?view=kanban' : '/crm/leads?view=table';
 
   const refresh = useCallback(() => {
@@ -108,6 +132,7 @@ export default function LeadDetailPage() {
     appointmentService.getByLead(id).then(setAppointments);
     userService.getUsers().then(setUsers);
     sourceConfigService.getConfigs().then(setSourceConfigs);
+    centerConfigService.getConfigs().then(setCenterConfigs);
   }, [id]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -136,6 +161,10 @@ export default function LeadDetailPage() {
       setError('Vui lòng chọn lý do mất lead.');
       return;
     }
+    if (currentLead.status === DEAL_QUOTED_STATUS && !String(currentLead.pendingReason || '').trim()) {
+      setError('Vui lòng chọn lý do pending khi chuyển sang Đã báo phí/Chờ chốt.');
+      return;
+    }
 
     const selectedSales = salesOptions.find((sales) => sales.id === currentLead.assignedTo);
     const normalizedLead: LeadDetailDraft = {
@@ -143,6 +172,8 @@ export default function LeadDetailPage() {
       fullName: displayName,
       assignedToName: canAssign ? (selectedSales?.fullName || '') : currentLead.assignedToName,
       priorityLevel: sourcePriority(sourceConfigs, currentLead.source, currentLead.priorityLevel),
+      pendingWarmthPercent: warmthPercent(currentLead),
+      pendingReasonNote: currentLead.pendingReasonNote || pendingOption(currentLead.pendingReason)?.defaultNote || '',
       followUpDate: currentLead.appointmentKind === APPT_CALLBACK ? currentLead.appointmentTime : '',
       consultationDate: currentLead.appointmentKind === APPT_CONSULTATION || currentLead.appointmentKind === APPT_TEST ? currentLead.appointmentTime : '',
     } as LeadDetailDraft;
@@ -211,7 +242,7 @@ export default function LeadDetailPage() {
           <div>
             <h1 className="text-3xl font-extrabold text-slate-950">{lead.studentName || lead.fullName}</h1>
             <p className="text-slate-500">
-              {lead.parentName ? `Phụ huynh: ${lead.parentName} · ` : ''}{lead.phone}{lead.email ? ` · ${lead.email}` : ''}
+              {lead.parentName ? `Phụ huynh: ${lead.parentName} · ` : ''}{lead.phone}{lead.email ? ` · ${lead.email}` : ''}{lead.centerName ? ` · Trung tâm: ${lead.centerName}` : ''}
             </p>
           </div>
         </div>
@@ -258,6 +289,12 @@ export default function LeadDetailPage() {
                   setLead({ ...lead, source, priorityLevel: sourcePriority(sourceConfigs, source, lead.priorityLevel) });
                 }}>
                   {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+                </Select>
+              </Field>
+              <Field label="Trung tâm">
+                <Select value={lead.centerName || ''} onChange={(event) => set('centerName', event.target.value)}>
+                  <option value="">Chọn trung tâm/cơ sở</option>
+                  {centerOptions.map((center) => <option key={center} value={center}>{center}</option>)}
                 </Select>
               </Field>
               <Field label="Cấp độ ưu tiên">
@@ -354,6 +391,41 @@ export default function LeadDetailPage() {
               <Field label="Ngày dự kiến chốt">
                 <Input type="date" value={lead.expectedCloseDate || ''} onChange={(event) => set('expectedCloseDate', event.target.value)} />
               </Field>
+              {lead.status === DEAL_QUOTED_STATUS && (
+                <>
+                  <Field label="Lý do pending">
+                    <Select
+                      value={lead.pendingReason || ''}
+                      onChange={(event) => {
+                        const reason = event.target.value;
+                        const option = pendingOption(reason);
+                        setLead({
+                          ...lead,
+                          pendingReason: reason,
+                          pendingWarmthPercent: option?.warmthPercent || 0,
+                          pendingReasonNote: lead.pendingReasonNote || option?.defaultNote || '',
+                        });
+                      }}
+                    >
+                      <option value="">Chọn lý do pending</option>
+                      {pendingReasonOptions.map((option) => (
+                        <option key={option.reason} value={option.reason}>{option.reason} ({option.warmthPercent}%)</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="Warmth">
+                    <div className={`rounded-lg border px-3 py-2 text-sm font-bold ${warmthTone(warmthPercent(lead))}`}>
+                      {warmthPercent(lead)}%
+                    </div>
+                  </Field>
+                  <Textarea
+                    className="md:col-span-3"
+                    value={lead.pendingReasonNote || pendingOption(lead.pendingReason)?.defaultNote || ''}
+                    onChange={(event) => set('pendingReasonNote', event.target.value)}
+                    placeholder="Ghi chú pending để sales bổ sung thêm"
+                  />
+                </>
+              )}
               {lead.status === LOST_LEAD_STATUS && (
                 <Field label="Lý do mất lead">
                   <Select value={lead.lostReason || ''} onChange={(event) => set('lostReason', event.target.value)}>

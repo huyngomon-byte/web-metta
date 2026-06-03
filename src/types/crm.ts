@@ -1,8 +1,9 @@
-import type { COURSE_OPTIONS, leadSources, leadStatuses, lostReasons } from '@/lib/constants';
+import type { COURSE_OPTIONS, leadSources, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
 
 export type LeadStatus = (typeof leadStatuses)[number];
 export type LeadSource = string;
 export type LostReason = (typeof lostReasons)[number] | string;
+export type PendingReason = (typeof pendingReasonOptions)[number]['reason'] | string;
 export type LeadPriorityLevel = 1 | 2 | 3 | 4 | 5;
 /** Tên khóa tự do (lấy động từ CMS programs hoặc COURSE_OPTIONS fallback). */
 export type InterestedCourse = string;
@@ -11,6 +12,16 @@ export interface LeadSourceConfig {
   id: string;
   name: string;
   priorityLevel: LeadPriorityLevel;
+  description: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LeadCenterConfig {
+  id: string;
+  name: string;
+  address: string;
   description: string;
   active: boolean;
   createdAt?: string;
@@ -32,6 +43,7 @@ export interface Lead {
   currentLevel: string;
   targetGoal: string;
   source: LeadSource;
+  centerName?: string;
   priorityLevel?: LeadPriorityLevel | number;
   status: LeadStatus;
   assignedTo: string;
@@ -58,6 +70,9 @@ export interface Lead {
   expectedCloseDate?: string;
   enrollmentType?: 'new' | 'upsell' | 'renewal' | string;
   wonAt?: string;
+  pendingReason?: PendingReason;
+  pendingReasonNote?: string;
+  pendingWarmthPercent?: number;
   lostReason?: LostReason;
   lostNote?: string;
   initialNote: string;

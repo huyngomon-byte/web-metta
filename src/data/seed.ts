@@ -3,7 +3,7 @@ import type { ClassItem, ClassSession, ClassStudent, Course, Student } from '@/t
 import type { CmsPage, MediaItem, PageSection, ProgramCms, SiteSettings } from '@/types/cms';
 import type { Appointment, Lead, LeadActivity } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
-import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, pendingReasonOptions } from '@/lib/constants';
 
 const now = '2026-05-26T09:00:00+07:00';
 
@@ -614,6 +614,13 @@ const demoLeadSources = [
   ['Khác', 1],
 ] as const;
 
+const demoLeadCenters = ['METTA Quận 1', 'METTA Thảo Điền', 'METTA Phú Nhuận'] as const;
+const demoPendingOptions = [
+  pendingReasonOptions[0],
+  pendingReasonOptions[6],
+  pendingReasonOptions[9],
+] as const;
+
 const demoLeadNames = [
   ['Chị Hạnh Nguyễn', 'Bé Bảo An'],
   ['Anh Minh Trần', 'Minh Khang'],
@@ -630,7 +637,9 @@ const demoLeadNames = [
 const demoPriorityLeads: Lead[] = demoLeadNames.map(([parentName, studentName], index) => {
   const [source, priorityLevel] = demoLeadSources[index];
   const course = courseCycle[index % courseCycle.length];
-  const statusCycle = ['Lead mới', 'Đã liên hệ', 'Đã hẹn tư vấn', 'Đã tư vấn/Đặt lịch test', 'Đã test/Học thử'] as Lead['status'][];
+  const statusCycle = ['Lead mới', 'Đã liên hệ', DEAL_QUOTED_STATUS, 'Đã hẹn tư vấn', 'Đã tư vấn/Đặt lịch test', DEAL_QUOTED_STATUS, 'Đã test/Học thử'] as Lead['status'][];
+  const status = statusCycle[index % statusCycle.length];
+  const pendingOption = status === DEAL_QUOTED_STATUS ? demoPendingOptions[index % demoPendingOptions.length] : undefined;
   return {
     id: `lead-demo-priority-${index + 1}`,
     fullName: studentName,
@@ -646,12 +655,24 @@ const demoPriorityLeads: Lead[] = demoLeadNames.map(([parentName, studentName], 
     currentLevel: '',
     targetGoal: '',
     source,
+    centerName: demoLeadCenters[index % demoLeadCenters.length],
     priorityLevel,
-    status: statusCycle[index % statusCycle.length],
+    status,
     assignedTo: index % 2 ? 'Teacher An' : 'Ms. Linh',
     assignedToName: index % 2 ? 'Teacher An' : 'Ms. Linh',
     followUpDate: `2026-06-${String(3 + (index % 8)).padStart(2, '0')}T${String(9 + (index % 7)).padStart(2, '0')}:30:00+07:00`,
     consultationDate: index % 3 === 0 ? `2026-06-${String(4 + index).padStart(2, '0')}T17:30:00+07:00` : '',
+    ...(pendingOption ? {
+      dealSize: 9800000 + index * 450000,
+      dealCurrency: DEFAULT_DEAL_CURRENCY,
+      dealPackage: `${course} demo package`,
+      dealNote: 'Đã báo phí demo để kiểm tra lý do pending và warmth trên Kanban.',
+      expectedRevenue: 9800000 + index * 450000,
+      expectedCloseDate: `2026-06-${String(12 + index).padStart(2, '0')}`,
+      pendingReason: pendingOption.reason,
+      pendingReasonNote: pendingOption.defaultNote,
+      pendingWarmthPercent: pendingOption.warmthPercent,
+    } : {}),
     initialNote: `Demo lead ưu tiên P${priorityLevel} từ ${source}.`,
     createdAt: `2026-06-${String(1 + index).padStart(2, '0')}T0${8 + (index % 2)}:00:00+07:00`,
     updatedAt: now,
@@ -660,11 +681,11 @@ const demoPriorityLeads: Lead[] = demoLeadNames.map(([parentName, studentName], 
 
 export const leads: Lead[] = [
   ...demoPriorityLeads,
-  { id: 'lead-1', fullName: 'Nguyễn Hoàng Anh', phone: '0901234567', email: 'anh@example.com', contactType: 'parent', age: '8', school: 'Tiểu học Nguyễn Du', currentClass: 'Lớp 3', interestedCourse: 'METTA Young Learner', currentLevel: 'Beginner', targetGoal: 'Tự tin giao tiếp', source: 'Website', status: 'Lead mới', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T15:00:00+07:00', consultationDate: '2026-05-27T09:00:00+07:00', initialNote: 'Muốn con phản xạ tốt hơn.', createdAt: '2026-05-26T08:10:00+07:00', updatedAt: now },
-  { id: 'lead-2', fullName: 'Trần Minh Khoa', phone: '0912345678', email: 'khoa@example.com', contactType: 'student', age: '7', school: 'Tiểu học Lê Lợi', currentClass: 'Lớp 2', interestedCourse: 'METTA on Phonics', currentLevel: 'Starter', targetGoal: 'Phát âm chuẩn', source: 'Facebook Ads', status: 'Đã hẹn tư vấn', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T16:30:00+07:00', consultationDate: '2026-05-28T18:00:00+07:00', initialNote: 'Quan tâm Phonics.', createdAt: '2026-05-25T10:20:00+07:00', updatedAt: now },
-  { id: 'lead-3', fullName: 'Lê Thu Hà', phone: '0987654321', email: 'ha@example.com', contactType: 'parent', age: '5', school: 'Mầm non Hoa Sen', currentClass: 'Lá', interestedCourse: 'METTA Kiddies', currentLevel: 'Starter', targetGoal: 'Làm quen tiếng Anh', source: 'Landing Page', status: 'Đã liên hệ', assignedTo: 'Ms. Linh', followUpDate: '2026-05-27T10:00:00+07:00', initialNote: 'Cần lớp cuối tuần.', createdAt: '2026-05-24T14:10:00+07:00', updatedAt: now },
-  { id: 'lead-4', fullName: 'Phạm Gia Bảo', phone: '0933333333', email: 'bao@example.com', contactType: 'parent', age: '10', school: 'Tiểu học Trần Phú', currentClass: 'Lớp 5', interestedCourse: 'METTA Young Learner', currentLevel: 'A1', targetGoal: 'Tăng phản xạ', source: 'Zalo', status: DEAL_QUOTED_STATUS, assignedTo: 'Ms. Linh', consultationDate: '2026-05-26T11:00:00+07:00', dealSize: 12800000, dealCurrency: DEFAULT_DEAL_CURRENCY, dealPackage: 'Young Learner 48 buổi', expectedRevenue: 12800000, expectedCloseDate: '2026-05-31', dealNote: 'Đã báo phí trọn khóa, phụ huynh đang cân nhắc lịch học.', initialNote: 'Đã tư vấn lớp TN-01.', createdAt: '2026-05-23T09:00:00+07:00', updatedAt: now },
-  { id: 'lead-5', fullName: 'Đặng Quỳnh Như', phone: '0977777777', email: 'nhu@example.com', contactType: 'student', age: '6', school: 'Tiểu học Gia Định', currentClass: 'Lớp 1', interestedCourse: 'METTA on Phonics', currentLevel: 'Beginner', targetGoal: 'Ghép âm tốt', source: 'Referral', status: WON_LEAD_STATUS, assignedTo: 'Ms. Linh', dealSize: 9600000, dealCurrency: DEFAULT_DEAL_CURRENCY, dealPackage: 'Phonics 36 buổi', expectedRevenue: 9600000, wonAt: '2026-05-20T17:30:00+07:00', initialNote: 'Đã chuyển đổi học sinh.', createdAt: '2026-05-20T17:00:00+07:00', updatedAt: now, convertedToStudentId: 'stu-1' },
+  { id: 'lead-1', fullName: 'Nguyễn Hoàng Anh', phone: '0901234567', email: 'anh@example.com', contactType: 'parent', age: '8', school: 'Tiểu học Nguyễn Du', currentClass: 'Lớp 3', interestedCourse: 'METTA Young Learner', currentLevel: 'Beginner', targetGoal: 'Tự tin giao tiếp', source: 'Website', centerName: 'METTA Quận 1', status: 'Lead mới', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T15:00:00+07:00', consultationDate: '2026-05-27T09:00:00+07:00', initialNote: 'Muốn con phản xạ tốt hơn.', createdAt: '2026-05-26T08:10:00+07:00', updatedAt: now },
+  { id: 'lead-2', fullName: 'Trần Minh Khoa', phone: '0912345678', email: 'khoa@example.com', contactType: 'student', age: '7', school: 'Tiểu học Lê Lợi', currentClass: 'Lớp 2', interestedCourse: 'METTA on Phonics', currentLevel: 'Starter', targetGoal: 'Phát âm chuẩn', source: 'Facebook Ads', centerName: 'METTA Thảo Điền', status: 'Đã hẹn tư vấn', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T16:30:00+07:00', consultationDate: '2026-05-28T18:00:00+07:00', initialNote: 'Quan tâm Phonics.', createdAt: '2026-05-25T10:20:00+07:00', updatedAt: now },
+  { id: 'lead-3', fullName: 'Lê Thu Hà', phone: '0987654321', email: 'ha@example.com', contactType: 'parent', age: '5', school: 'Mầm non Hoa Sen', currentClass: 'Lá', interestedCourse: 'METTA Kiddies', currentLevel: 'Starter', targetGoal: 'Làm quen tiếng Anh', source: 'Landing Page', centerName: 'METTA Phú Nhuận', status: 'Đã liên hệ', assignedTo: 'Ms. Linh', followUpDate: '2026-05-27T10:00:00+07:00', initialNote: 'Cần lớp cuối tuần.', createdAt: '2026-05-24T14:10:00+07:00', updatedAt: now },
+  { id: 'lead-4', fullName: 'Phạm Gia Bảo', phone: '0933333333', email: 'bao@example.com', contactType: 'parent', age: '10', school: 'Tiểu học Trần Phú', currentClass: 'Lớp 5', interestedCourse: 'METTA Young Learner', currentLevel: 'A1', targetGoal: 'Tăng phản xạ', source: 'Zalo', centerName: 'METTA Quận 1', status: DEAL_QUOTED_STATUS, assignedTo: 'Ms. Linh', consultationDate: '2026-05-26T11:00:00+07:00', dealSize: 12800000, dealCurrency: DEFAULT_DEAL_CURRENCY, dealPackage: 'Young Learner 48 buổi', expectedRevenue: 12800000, expectedCloseDate: '2026-05-31', pendingReason: pendingReasonOptions[2].reason, pendingReasonNote: pendingReasonOptions[2].defaultNote, pendingWarmthPercent: pendingReasonOptions[2].warmthPercent, dealNote: 'Đã báo phí trọn khóa, phụ huynh đang cân nhắc lịch học.', initialNote: 'Đã tư vấn lớp TN-01.', createdAt: '2026-05-23T09:00:00+07:00', updatedAt: now },
+  { id: 'lead-5', fullName: 'Đặng Quỳnh Như', phone: '0977777777', email: 'nhu@example.com', contactType: 'student', age: '6', school: 'Tiểu học Gia Định', currentClass: 'Lớp 1', interestedCourse: 'METTA on Phonics', currentLevel: 'Beginner', targetGoal: 'Ghép âm tốt', source: 'Referral', centerName: 'METTA Thảo Điền', status: WON_LEAD_STATUS, assignedTo: 'Ms. Linh', dealSize: 9600000, dealCurrency: DEFAULT_DEAL_CURRENCY, dealPackage: 'Phonics 36 buổi', expectedRevenue: 9600000, wonAt: '2026-05-20T17:30:00+07:00', initialNote: 'Đã chuyển đổi học sinh.', createdAt: '2026-05-20T17:00:00+07:00', updatedAt: now, convertedToStudentId: 'stu-1' },
   ...Array.from({ length: 5 }, (_, i) => ({
     id: `lead-x${i}`,
     fullName: `Lead mẫu ${i + 1}`,
@@ -678,6 +699,7 @@ export const leads: Lead[] = [
     currentLevel: 'Starter',
     targetGoal: 'Tăng phản xạ',
     source: ['Website', 'Landing Page', 'Facebook Ads', 'Zalo', 'Khác'][i] as Lead['source'],
+    centerName: demoLeadCenters[i % demoLeadCenters.length],
     status: ['Chưa nghe máy', 'Đã test/Học thử', LOST_LEAD_STATUS, 'Lead mới', 'Đã liên hệ'][i] as Lead['status'],
     lostReason: i === 2 ? 'Không liên lạc được' : '',
     assignedTo: i % 2 ? 'Teacher An' : 'Ms. Linh',
