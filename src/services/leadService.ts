@@ -10,6 +10,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { STAGE_DEMO_LEAD_PREFIX } from '@/data/stageDemoLeads';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
 import { financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
@@ -30,9 +31,11 @@ const COL_AUDIT_LOGS = 'activityLogs';
 const LS_LEADS = 'metta_leads';
 const LS_ACTIVITIES = 'metta_lead_activities';
 const LS_FINANCE_DEMO_MIGRATION = 'metta_lead_finance_demo_seed_v1';
+const LS_STAGE_DEMO_MIGRATION = 'metta_lead_stage_demo_seed_v1';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const financeDemoSeedLeads = store.leads.filter((lead) => lead.id.startsWith(FINANCE_DEMO_ID_PREFIX));
+const stageDemoSeedLeads = store.leads.filter((lead) => lead.id.startsWith(STAGE_DEMO_LEAD_PREFIX));
 
 type PublicLeadSubmitInput = Partial<Lead> & {
   company?: string;
@@ -156,21 +159,24 @@ function persistLeads() {
   try { localStorage.setItem(LS_LEADS, JSON.stringify(store.leads)); } catch {}
 }
 
+function mergeSeedLeads(current: Lead[], seedLeads: Lead[], migrationKey: string) {
+  if (localStorage.getItem(migrationKey)) return current;
+  const existingIds = new Set(current.map((lead) => lead?.id).filter(Boolean));
+  const missingDemoLeads = seedLeads.filter((lead) => !existingIds.has(lead.id));
+  localStorage.setItem(migrationKey, '1');
+  return missingDemoLeads.length ? [...missingDemoLeads, ...current] : current;
+}
+
 function loadLeads() {
   try {
     const raw = localStorage.getItem(LS_LEADS);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length) {
-        if (!localStorage.getItem(LS_FINANCE_DEMO_MIGRATION)) {
-          const existingIds = new Set(parsed.map((lead) => lead?.id).filter(Boolean));
-          const missingDemoLeads = financeDemoSeedLeads.filter((lead) => !existingIds.has(lead.id));
-          store.leads = [...missingDemoLeads, ...parsed];
-          localStorage.setItem(LS_FINANCE_DEMO_MIGRATION, '1');
-          if (missingDemoLeads.length) persistLeads();
-        } else {
-          store.leads = parsed;
-        }
+        const mergedFinanceDemo = mergeSeedLeads(parsed, financeDemoSeedLeads, LS_FINANCE_DEMO_MIGRATION);
+        const mergedStageDemo = mergeSeedLeads(mergedFinanceDemo, stageDemoSeedLeads, LS_STAGE_DEMO_MIGRATION);
+        store.leads = mergedStageDemo;
+        if (mergedStageDemo.length !== parsed.length) persistLeads();
       }
     }
   } catch {}

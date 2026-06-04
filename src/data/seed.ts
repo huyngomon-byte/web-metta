@@ -5,6 +5,7 @@ import type { Appointment, Lead, LeadActivity } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 import { DEAL_QUOTED_STATUS, DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, pendingReasonOptions } from '@/lib/constants';
 import { expectedRevenueFrom } from '@/lib/leadFinance';
+import { stageDemoLeads } from '@/data/stageDemoLeads';
 
 const now = '2026-05-26T09:00:00+07:00';
 
@@ -690,6 +691,7 @@ const demoPriorityLeads: Lead[] = demoLeadNames.map(([parentName, studentName], 
 });
 
 export const leads: Lead[] = [
+  ...stageDemoLeads,
   ...demoPriorityLeads,
   { id: 'lead-1', fullName: 'Nguyễn Hoàng Anh', phone: '0901234567', email: 'anh@example.com', contactType: 'parent', age: '8', school: 'Tiểu học Nguyễn Du', currentClass: 'Lớp 3', interestedCourse: 'METTA Young Learner', currentLevel: 'Beginner', targetGoal: 'Tự tin giao tiếp', source: 'Website', centerName: 'METTA Quận 1', status: 'Lead mới', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T15:00:00+07:00', consultationDate: '2026-05-27T09:00:00+07:00', initialNote: 'Muốn con phản xạ tốt hơn.', createdAt: '2026-05-26T08:10:00+07:00', updatedAt: now },
   { id: 'lead-2', fullName: 'Trần Minh Khoa', phone: '0912345678', email: 'khoa@example.com', contactType: 'student', age: '7', school: 'Tiểu học Lê Lợi', currentClass: 'Lớp 2', interestedCourse: 'METTA on Phonics', currentLevel: 'Starter', targetGoal: 'Phát âm chuẩn', source: 'Facebook Ads', centerName: 'METTA Thảo Điền', status: 'Đã hẹn tư vấn', assignedTo: 'Ms. Linh', followUpDate: '2026-05-26T16:30:00+07:00', consultationDate: '2026-05-28T18:00:00+07:00', initialNote: 'Quan tâm Phonics.', createdAt: '2026-05-25T10:20:00+07:00', updatedAt: now },
