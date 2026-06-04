@@ -25,6 +25,7 @@ import type { AdminUser } from '@/types/user';
 
 const now = () => new Date().toISOString();
 const USE_FIREBASE = isFirebaseConfigured && !!db;
+const ENABLE_STAGE_DEMO_SEED = import.meta.env.DEV;
 const COL_LEADS = 'leads';
 const COL_ACTIVITIES = 'leadActivities';
 const COL_AUDIT_LOGS = 'activityLogs';
@@ -159,12 +160,26 @@ function persistLeads() {
   try { localStorage.setItem(LS_LEADS, JSON.stringify(store.leads)); } catch {}
 }
 
-function mergeSeedLeads(current: Lead[], seedLeads: Lead[], migrationKey: string) {
-  if (localStorage.getItem(migrationKey)) return current;
+function mergeMissingSeedLeads(current: Lead[], seedLeads: Lead[]) {
   const existingIds = new Set(current.map((lead) => lead?.id).filter(Boolean));
   const missingDemoLeads = seedLeads.filter((lead) => !existingIds.has(lead.id));
-  localStorage.setItem(migrationKey, '1');
   return missingDemoLeads.length ? [...missingDemoLeads, ...current] : current;
+}
+
+function mergeSeedLeads(current: Lead[], seedLeads: Lead[], migrationKey: string) {
+  if (localStorage.getItem(migrationKey)) return current;
+  const merged = mergeMissingSeedLeads(current, seedLeads);
+  localStorage.setItem(migrationKey, '1');
+  return merged;
+}
+
+function mergeDemoSeeds(current: Lead[]) {
+  const mergedFinanceDemo = mergeSeedLeads(current, financeDemoSeedLeads, LS_FINANCE_DEMO_MIGRATION);
+  if (!ENABLE_STAGE_DEMO_SEED) {
+    return mergeSeedLeads(mergedFinanceDemo, stageDemoSeedLeads, LS_STAGE_DEMO_MIGRATION);
+  }
+  localStorage.setItem(LS_STAGE_DEMO_MIGRATION, '1');
+  return mergeMissingSeedLeads(mergedFinanceDemo, stageDemoSeedLeads);
 }
 
 function loadLeads() {
@@ -173,10 +188,9 @@ function loadLeads() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length) {
-        const mergedFinanceDemo = mergeSeedLeads(parsed, financeDemoSeedLeads, LS_FINANCE_DEMO_MIGRATION);
-        const mergedStageDemo = mergeSeedLeads(mergedFinanceDemo, stageDemoSeedLeads, LS_STAGE_DEMO_MIGRATION);
-        store.leads = mergedStageDemo;
-        if (mergedStageDemo.length !== parsed.length) persistLeads();
+        const merged = mergeDemoSeeds(parsed);
+        store.leads = merged;
+        if (merged.length !== parsed.length) persistLeads();
       }
     }
   } catch {}
@@ -203,6 +217,13 @@ async function writeFirestoreLead(lead: Lead) {
   } catch (error) {
     console.warn('[Leads] Firestore lead write failed, keeping local:', error);
   }
+}
+
+async function syncMissingStageDemoLeadsToFirestore(current: Lead[]) {
+  if (!USE_FIREBASE || !ENABLE_STAGE_DEMO_SEED) return;
+  const existingIds = new Set(current.map((lead) => lead.id));
+  const missingDemoLeads = stageDemoSeedLeads.filter((lead) => !existingIds.has(lead.id));
+  for (const lead of missingDemoLeads) await writeFirestoreLead(normalizeLead(lead));
 }
 
 async function writeFirestoreActivity(activity: LeadActivity) {
@@ -306,11 +327,14 @@ export const leadService = {
             where('assignedStatus', '==', 'accepted'),
           ));
           const remoteLeads = [...activeSnap.docs, ...acceptedSnap.docs].map((item) => normalizeLead(item.data() as Lead));
-          if (remoteLeads.length || !store.leads.length) store.leads = remoteLeads;
+          if (remoteLeads.length || !store.leads.length) store.leads = ENABLE_STAGE_DEMO_SEED ? mergeDemoSeeds(remoteLeads) : remoteLeads;
         } else {
           const snap = await getDocs(query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc')));
           const remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
-          if (remoteLeads.length || !store.leads.length) store.leads = remoteLeads;
+          if (remoteLeads.length || !store.leads.length) {
+            store.leads = ENABLE_STAGE_DEMO_SEED ? mergeDemoSeeds(remoteLeads) : remoteLeads;
+            await syncMissingStageDemoLeadsToFirestore(remoteLeads);
+          }
           await expireOverdueAssignments(user);
         }
         persistLeads();
