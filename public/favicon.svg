@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- METTA M icon - transparent background -->
+  <!-- Left orange vertical bar -->
+  <rect x="6" y="42" width="16" height="30" fill="#F45A0A"/>
+  <!-- Left orange diagonal -->
+  <polygon points="6,42 6,16 50,56" fill="#F45A0A"/>
+  <!-- Left orange top diagonal -->
+  <polygon points="6,16 28,2 50,22" fill="#F45A0A"/>
+  <!-- Right navy vertical bar -->
+  <rect x="78" y="42" width="16" height="30" fill="#003B7A"/>
+  <!-- Right navy diagonal -->
+  <polygon points="94,42 94,16 50,56" fill="#003B7A"/>
+  <!-- Right navy top diagonal -->
+  <polygon points="94,16 72,2 50,22" fill="#003B7A"/>
+  <!-- Bottom navy triangle -->
+  <polygon points="6,72 22,72 22,56" fill="#003B7A"/>
+  <!-- Center cyan triangle -->
+  <polygon points="58,44 78,28 78,56" fill="#1A8FCE"/>
+  <!-- Lighter cyan accent -->
+  <polygon points="66,50 78,40 78,56" fill="#16A9D8"/>
+</svg>

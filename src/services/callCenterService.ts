@@ -1,0 +1,384 @@
+import {
+  onAuthStateChanged,
+  type User as FirebaseUser,
+} from 'firebase/auth';
+import {
+  collection,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  where,
+} from 'firebase/firestore';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
+import { currentUser } from '@/services/authService';
+import { leadService } from '@/services/leadService';
+import { delay, store } from '@/services/store';
+import type { AgentPresence, CallCenterSettings, CallLog, StartCallPayload } from '@/types/call';
+import { DEFAULT_CALL_DISPOSITIONS } from '@/types/call';
+import type { Lead } from '@/types/crm';
+import type { AdminUser } from '@/types/user';
+
+const USE_FIREBASE = isFirebaseConfigured && !!db;
+const COL_CALL_LOGS = 'callLogs';
+const COL_CALL_SETTINGS = 'callCenterSettings';
+const COL_AGENT_PRESENCE = 'agentPresence';
+const SETTINGS_DOC_ID = 'stringee';
+const LS_CALL_LOGS = 'metta_call_logs';
+const LS_CALL_SETTINGS = 'metta_call_center_settings';
+
+function now() {
+  return new Date().toISOString();
+}
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, stripUndefined(item)]),
+    ) as T;
+  }
+  return value;
+}
+
+function readLocalLogs(): CallLog[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LS_CALL_LOGS) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalLogs(logs: CallLog[]) {
+  localStorage.setItem(LS_CALL_LOGS, JSON.stringify(logs.slice(0, 500)));
+  window.dispatchEvent(new Event('metta-call-logs-updated'));
+}
+
+function readLocalSettings(): CallCenterSettings | null {
+  try {
+    const raw = localStorage.getItem(LS_CALL_SETTINGS);
+    return raw ? JSON.parse(raw) as CallCenterSettings : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalSettings(settings: CallCenterSettings) {
+  localStorage.setItem(LS_CALL_SETTINGS, JSON.stringify(settings));
+  window.dispatchEvent(new Event('metta-call-settings-updated'));
+}
+
+function salesUsers() {
+  return store.users.filter((user) => user.role === 'sales' && user.active);
+}
+
+function defaultUserMappings() {
+  const sales = salesUsers();
+  const linh = sales.find((user) => user.fullName.toLowerCase().includes('linh')) || sales[1] || sales[0];
+  const chi = sales.find((user) => user.fullName.toLowerCase().includes('chi')) || sales[0];
+  const base = [
+    linh && { crmUserId: linh.id, crmName: linh.fullName, stringeeUserId: 'u2', active: true, routingType: 1 as const, answerTimeoutSec: 15 },
+    chi && { crmUserId: chi.id, crmName: chi.fullName, stringeeUserId: 'u3', active: true, routingType: 1 as const, answerTimeoutSec: 15 },
+  ].filter(Boolean) as CallCenterSettings['userMappings'];
+  const unique = new Map(base.map((item) => [item.crmUserId, item]));
+  return Array.from(unique.values());
+}
+
+export function defaultCallCenterSettings(): CallCenterSettings {
+  const firstSales = salesUsers()[0];
+  return {
+    provider: 'stringee',
+    enabled: true,
+    pccMode: true,
+    fromNumber: '842471058267',
+    fallbackAgentId: firstSales?.id || 'u2',
+    fallbackAgentName: firstSales?.fullName || 'Sales lead',
+    userMappings: defaultUserMappings(),
+    dispositions: [...DEFAULT_CALL_DISPOSITIONS],
+    updatedAt: now(),
+  };
+}
+
+export function normalizePhoneForCall(phone?: string) {
+  const digits = String(phone || '').replace(/[^\d+]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('+84')) return `84${digits.slice(3)}`;
+  if (digits.startsWith('84')) return digits;
+  if (digits.startsWith('0')) return `84${digits.slice(1)}`;
+  return digits;
+}
+
+function displayName(lead: Partial<Lead> | StartCallPayload) {
+  return String(
+    'leadName' in lead
+      ? lead.leadName
+      : lead.studentName || lead.parentName || lead.fullName || lead.phone || '',
+  ).trim();
+}
+
+function mapSettings(settings: Partial<CallCenterSettings>): CallCenterSettings {
+  const defaults = defaultCallCenterSettings();
+  return {
+    ...defaults,
+    ...settings,
+    pccMode: settings.pccMode ?? defaults.pccMode,
+    userMappings: settings.userMappings?.length ? settings.userMappings : defaults.userMappings,
+    dispositions: settings.dispositions?.length ? settings.dispositions : defaults.dispositions,
+  };
+}
+
+async function currentFirebaseIdToken(timeoutMs = 4000) {
+  const authInstance = auth;
+  if (!authInstance) return '';
+  const current = authInstance.currentUser;
+  if (current) return current.getIdToken().catch(() => '');
+
+  const restored = await new Promise<FirebaseUser | null>((resolve) => {
+    const timeout = window.setTimeout(() => {
+      unsubscribe();
+      resolve(null);
+    }, timeoutMs);
+    const unsubscribe = onAuthStateChanged(authInstance, (nextUser) => {
+      window.clearTimeout(timeout);
+      unsubscribe();
+      resolve(nextUser);
+    });
+  });
+  return restored?.getIdToken().catch(() => '') || '';
+}
+
+async function writeFirestoreSettings(settings: CallCenterSettings) {
+  if (!USE_FIREBASE) return;
+  try {
+    await setDoc(doc(db!, COL_CALL_SETTINGS, SETTINGS_DOC_ID), stripUndefined(settings));
+  } catch (error) {
+    console.warn('[CallCenter] Cannot write settings to Firestore:', error);
+  }
+}
+
+async function writeFirestoreLog(log: CallLog) {
+  if (!USE_FIREBASE) return;
+  try {
+    await setDoc(doc(db!, COL_CALL_LOGS, log.id), stripUndefined(log), { merge: true });
+  } catch (error) {
+    console.warn('[CallCenter] Cannot write call log to Firestore:', error);
+  }
+}
+
+async function writeFirestorePresence(presence: AgentPresence) {
+  if (!USE_FIREBASE) return;
+  try {
+    await setDoc(doc(db!, COL_AGENT_PRESENCE, presence.userId), stripUndefined(presence), { merge: true });
+  } catch (error) {
+    console.warn('[CallCenter] Cannot write presence to Firestore:', error);
+  }
+}
+
+export const callCenterService = {
+  getSettings: async () => {
+    const local = readLocalSettings();
+    const settings = mapSettings(local || defaultCallCenterSettings());
+    writeLocalSettings(settings);
+    return delay(settings);
+  },
+
+  saveSettings: async (settings: CallCenterSettings) => {
+    const normalized = mapSettings({ ...settings, updatedAt: now() });
+    writeLocalSettings(normalized);
+    await writeFirestoreSettings(normalized);
+    return delay(normalized);
+  },
+
+  getMappedStringeeUserId: async (user?: AdminUser | null) => {
+    if (!user) return '';
+    const settings = await callCenterService.getSettings();
+    const directMapping = settings.userMappings.find((mapping) => mapping.crmUserId === user.id && mapping.active);
+    if (directMapping?.stringeeUserId) return directMapping.stringeeUserId;
+    if (user.role === 'admin' && settings.fallbackAgentId) {
+      const fallbackMapping = settings.userMappings.find((mapping) => mapping.crmUserId === settings.fallbackAgentId && mapping.active);
+      if (fallbackMapping?.stringeeUserId) return fallbackMapping.stringeeUserId;
+    }
+    return user.id;
+  },
+
+  getToken: async (user?: AdminUser | null) => {
+    if (!user) return '';
+    const idToken = await currentFirebaseIdToken();
+    const stringeeUserId = await callCenterService.getMappedStringeeUserId(user);
+    const response = await fetch('/api/call/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
+      body: JSON.stringify({ stringeeUserId, crmUserId: user.id }),
+    });
+    const payload = await response.json().catch(() => ({})) as { token?: string; expiresAt?: string; error?: string };
+    if (!response.ok || !payload.token) throw new Error(payload.error || 'Cannot issue Stringee token.');
+    return payload.token;
+  },
+
+  startPccOutboundCall: async (lead: Lead, user?: AdminUser | null, providerCallId?: string) => {
+    if (!user) throw new Error('Bạn cần đăng nhập để gọi.');
+    const idToken = await currentFirebaseIdToken();
+    const settings = await callCenterService.getSettings();
+    const response = await fetch('/api/call/outbound', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
+      body: JSON.stringify({
+        providerCallId,
+        leadId: lead.id,
+        leadName: displayName(lead),
+        phone: normalizePhoneForCall(lead.phone),
+        crmUserId: user.id,
+        agentName: user.fullName,
+        fromNumber: settings.fromNumber,
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; providerCallId?: string; userId?: string; message?: string; error?: string };
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'Stringee PCC chưa tạo được cuộc gọi.');
+    return payload;
+  },
+
+  getLogs: async () => {
+    let logs = readLocalLogs();
+    if (USE_FIREBASE) {
+      try {
+        const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), orderBy('startedAt', 'desc')));
+        logs = snap.docs.map((item) => item.data() as CallLog);
+        writeLocalLogs(logs);
+      } catch (error) {
+        console.warn('[CallCenter] Cannot read call logs from Firestore, using local:', error);
+      }
+    }
+    return delay(logs.sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')));
+  },
+
+  getLogsForLead: async (leadId: string) => {
+    let logs = readLocalLogs().filter((log) => log.leadId === leadId);
+    if (USE_FIREBASE) {
+      try {
+        const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), where('leadId', '==', leadId), orderBy('startedAt', 'desc')));
+        logs = snap.docs.map((item) => item.data() as CallLog);
+        writeLocalLogs([...logs, ...readLocalLogs().filter((log) => log.leadId !== leadId)]);
+      } catch (error) {
+        console.warn('[CallCenter] Cannot read lead call logs from Firestore, using local:', error);
+      }
+    }
+    return delay(logs.sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')));
+  },
+
+  latestForLead: (leadId: string) => readLocalLogs()
+    .filter((log) => log.leadId === leadId)
+    .sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''))[0],
+
+  saveLog: async (input: Partial<CallLog>) => {
+    const timestamp = now();
+    const id = input.id || input.providerCallId || `call-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const existing = readLocalLogs().find((log) => log.id === id || log.providerCallId === input.providerCallId);
+    const log: CallLog = {
+      id: existing?.id || id,
+      provider: 'stringee',
+      providerCallId: input.providerCallId || existing?.providerCallId || id,
+      direction: input.direction || existing?.direction || 'outbound',
+      status: input.status || existing?.status || 'queued',
+      leadId: input.leadId || existing?.leadId,
+      leadName: input.leadName || existing?.leadName,
+      agentId: input.agentId || existing?.agentId || currentUser()?.id,
+      agentName: input.agentName || existing?.agentName || currentUser()?.fullName,
+      fromNumber: input.fromNumber || existing?.fromNumber || '',
+      toNumber: input.toNumber || existing?.toNumber || '',
+      customerNumber: input.customerNumber || existing?.customerNumber || input.toNumber || '',
+      startedAt: input.startedAt || existing?.startedAt || timestamp,
+      answeredAt: input.answeredAt || existing?.answeredAt,
+      endedAt: input.endedAt || existing?.endedAt,
+      durationSec: input.durationSec ?? existing?.durationSec,
+      recordingUrl: input.recordingUrl || existing?.recordingUrl,
+      recordingExpiresAt: input.recordingExpiresAt || existing?.recordingExpiresAt,
+      disposition: input.disposition || existing?.disposition,
+      note: input.note || existing?.note,
+      createdAt: existing?.createdAt || input.createdAt || timestamp,
+      updatedAt: timestamp,
+      rawEvent: input.rawEvent || existing?.rawEvent,
+    };
+    const next = [log, ...readLocalLogs().filter((item) => item.id !== log.id && item.providerCallId !== log.providerCallId)];
+    writeLocalLogs(next);
+    await writeFirestoreLog(log);
+    return delay(log);
+  },
+
+  startLocalLogForLead: async (lead: Lead, direction: 'outbound' | 'inbound' = 'outbound', providerCallId?: string) => {
+    const user = currentUser();
+    return callCenterService.saveLog({
+      providerCallId: providerCallId || `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      direction,
+      status: direction === 'outbound' ? 'queued' : 'ringing',
+      leadId: lead.id,
+      leadName: displayName(lead),
+      agentId: user?.id,
+      agentName: user?.fullName,
+      fromNumber: direction === 'outbound' ? user?.id || '' : normalizePhoneForCall(lead.phone),
+      toNumber: direction === 'outbound' ? normalizePhoneForCall(lead.phone) : user?.id || '',
+      customerNumber: normalizePhoneForCall(lead.phone),
+      startedAt: now(),
+    });
+  },
+
+  wrapUp: async (log: CallLog, disposition: string, note: string) => {
+    const saved = await callCenterService.saveLog({
+      ...log,
+      status: log.status === 'ringing' || log.status === 'queued' ? 'ended' : log.status,
+      disposition,
+      note,
+      endedAt: log.endedAt || now(),
+    });
+    if (saved.leadId) {
+      const duration = saved.durationSec ? ` · ${Math.round(saved.durationSec)}s` : '';
+      const recording = saved.recordingUrl ? ' · có ghi âm' : '';
+      await leadService.addActivity({
+        leadId: saved.leadId,
+        type: 'call',
+        content: `Call ${saved.direction === 'outbound' ? 'outbound' : 'inbound'}: ${disposition}${duration}${recording}${note ? ` · ${note}` : ''}`,
+        createdBy: saved.agentName || currentUser()?.fullName || 'Call Center',
+        callLogId: saved.id,
+        callDirection: saved.direction,
+        callDurationSec: saved.durationSec,
+        callDisposition: disposition,
+        recordingUrl: saved.recordingUrl,
+      });
+    }
+    return saved;
+  },
+
+  setPresence: async (user: AdminUser | null, online: boolean, currentCallId?: string) => {
+    if (!user) return null;
+    const stringeeUserId = await callCenterService.getMappedStringeeUserId(user);
+    const presence: AgentPresence = {
+      userId: user.id,
+      stringeeUserId,
+      online,
+      currentCallId,
+      lastSeenAt: now(),
+    };
+    await writeFirestorePresence(presence);
+    return delay(presence);
+  },
+
+  findLeadByPhone: async (phone: string) => {
+    const target = normalizePhoneForCall(phone);
+    const leads = await leadService.getLeads();
+    return leads.find((lead) => normalizePhoneForCall(lead.phone) === target);
+  },
+
+  recordingProxyUrl: (log: Pick<CallLog, 'id' | 'providerCallId'>) => {
+    const id = encodeURIComponent(log.id || log.providerCallId);
+    return `/api/call/recording?callLogId=${id}`;
+  },
+};

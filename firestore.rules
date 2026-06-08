@@ -1,0 +1,188 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function bootstrapAdminEmail() {
+      return signedIn()
+        && request.auth.token.email in [
+          "admin@mettaacademy.vn",
+          "huyngomon@gmail.com",
+          "huyngomon999@gmail.com"
+        ];
+    }
+
+    function hasUserDoc() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function activeUser() {
+      return hasUserDoc() && userData().active == true;
+    }
+
+    function role() {
+      return activeUser() ? userData().role : request.auth.token.role;
+    }
+
+    function isAdmin() {
+      return bootstrapAdminEmail() || role() == "admin";
+    }
+
+    function isManager() {
+      return activeUser() && role() == "manager";
+    }
+
+    function isSales() {
+      return activeUser() && role() == "sales";
+    }
+
+    function isAds() {
+      return activeUser() && role() == "ads";
+    }
+
+    function isDesign() {
+      return activeUser() && role() == "design";
+    }
+
+    function canManageCms() {
+      return isAdmin() || isManager() || isDesign();
+    }
+
+    function canManageMarketing() {
+      return isAdmin() || isManager() || isAds();
+    }
+
+    function canManageLeads() {
+      return isAdmin() || isManager();
+    }
+
+    function assignmentReadable(data) {
+      return data.assignedStatus == "accepted"
+        || (data.assignedStatus == "active" && data.assignedExpiresAtMs > request.time.toMillis());
+    }
+
+    function salesCanReadLead(data) {
+      return isSales()
+        && data.assignedTo == request.auth.uid
+        && assignmentReadable(data);
+    }
+
+    function salesCanUpdateLead() {
+      return salesCanReadLead(resource.data)
+        && request.resource.data.assignedTo == resource.data.assignedTo
+        && request.resource.data.assignedToName == resource.data.assignedToName
+        && request.resource.data.assignedBy == resource.data.assignedBy
+        && request.resource.data.assignedAt == resource.data.assignedAt
+        && request.resource.data.assignedAtMs == resource.data.assignedAtMs
+        && request.resource.data.assignedExpiresAtMs == resource.data.assignedExpiresAtMs
+        && request.resource.data.failedAssignedTo == resource.data.failedAssignedTo
+        && request.resource.data.failedAssignedToName == resource.data.failedAssignedToName;
+    }
+
+    function canReadLeadDoc(data) {
+      return canManageLeads() || salesCanReadLead(data);
+    }
+
+    function publicLeadCreate() {
+      return request.auth == null
+        && request.resource.data.fullName is string
+        && request.resource.data.phone is string
+        && request.resource.data.assignedTo == ""
+        && request.resource.data.assignedStatus == "unassigned"
+        && request.resource.data.source in ["Website", "Landing Page"];
+    }
+
+    match /pages/{id} {
+      allow read: if resource.data.status == "published" || canManageCms();
+      allow create, update, delete: if canManageCms();
+    }
+
+    match /pageSections/{id} {
+      allow read: if canManageCms()
+        || get(/databases/$(database)/documents/pages/$(resource.data.pageId)).data.status == "published";
+      allow create, update, delete: if canManageCms();
+    }
+
+    match /siteSettings/{id} {
+      allow read: if true;
+      allow create, update, delete: if canManageCms();
+    }
+
+    match /cms_meta/{id} {
+      allow read: if true;
+      allow create, update, delete: if canManageCms();
+    }
+
+    match /media/{id} {
+      allow read: if true;
+      allow create, update, delete: if canManageCms();
+    }
+
+    match /blogPosts/{id} {
+      allow read: if true;
+      allow create, update, delete: if canManageCms();
+    }
+
+    match /leads/{id} {
+      allow read: if canReadLeadDoc(resource.data);
+      allow create: if canManageLeads() || publicLeadCreate();
+      allow update: if canManageLeads() || salesCanUpdateLead();
+      allow delete: if canManageLeads();
+    }
+
+    match /leadActivities/{id} {
+      allow read: if canManageLeads()
+        || (isSales()
+          && canReadLeadDoc(get(/databases/$(database)/documents/leads/$(resource.data.leadId)).data));
+      allow create: if canManageLeads()
+        || (isSales()
+          && canReadLeadDoc(get(/databases/$(database)/documents/leads/$(request.resource.data.leadId)).data));
+      allow update, delete: if canManageLeads();
+    }
+
+    match /appointments/{id} {
+      allow read: if canManageLeads()
+        || (isSales() && resource.data.assignedTo == request.auth.uid);
+      allow create: if canManageLeads()
+        || (isSales() && request.resource.data.assignedTo == request.auth.uid);
+      allow update: if canManageLeads()
+        || (isSales()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.assignedTo == resource.data.assignedTo);
+      allow delete: if canManageLeads();
+    }
+
+    match /capiSettings/{id} {
+      allow read, write: if canManageMarketing();
+    }
+
+    match /capiMappings/{id} {
+      allow read, write: if canManageMarketing();
+    }
+
+    match /capiEvents/{id} {
+      allow read, write: if canManageMarketing();
+    }
+
+    match /activityLogs/{id} {
+      allow read, create: if isAdmin() || isManager();
+      allow update, delete: if isAdmin();
+    }
+
+    match /users/{id} {
+      allow read: if activeUser() || bootstrapAdminEmail();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

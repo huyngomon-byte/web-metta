@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Secrets — KHONG commit
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+dist-*/
+.vercel/
+
+# Logs & temp
+*.log
+~$*
+
+# Generated QA/manual artifacts
+qa/
+User_Manual_METTA_Academy_*
+QA_Report_METTA_Academy_*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.claude/
+
+.vercel
+.env*
+!.env.example

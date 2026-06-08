@@ -1,0 +1,19 @@
+{
+  "regions": ["sin1"],
+  "crons": [
+    {
+      "path": "/api/cron-return-expired-leads",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/cron-overdue-appointments",
+      "schedule": "15 17 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/((?!api/.*).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
