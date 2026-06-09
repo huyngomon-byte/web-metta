@@ -1,4 +1,4 @@
-# METTA Academy Website + Admin
+﻿# METTA Academy Website + Admin
 
 Project root is this folder. It contains one Vite app for the public website and the internal admin system.
 
@@ -20,7 +20,7 @@ npm run dev
 
 Open `http://localhost:5173/`.
 
-Important: in Vite dev mode, `/api` is proxied to `https://metta-academy.gg99.vn` by `vite.config.js`. Admin login, public lead submit, CAPI tests, and user management can touch production services unless you run the API locally with Vercel or point the proxy to a staging target.
+Important: in Vite dev mode, `/api` is proxied to `https://www.metta.edu.vn` by `vite.config.js`. Admin login, public lead submit, CAPI tests, and user management can touch production services unless you run the API locally with Vercel or point the proxy to a staging target.
 
 ## Quality Gates
 
@@ -92,13 +92,13 @@ Admin:
 
 ## CRM Pipeline Notes
 
-- Pipeline includes `Đã báo phí/Chờ chốt` between `Đã test/Học thử` and `Đã đăng ký học`.
+- Pipeline includes `ÄÃ£ bÃ¡o phÃ­/Chá» chá»‘t` between `ÄÃ£ test/Há»c thá»­` and `ÄÃ£ Ä‘Äƒng kÃ½ há»c`.
 - Leads store both `parentName` and `studentName`; `fullName` is kept as a compatibility display name.
 - Lead source priority is configurable in Leads via `Source priority`; priority levels are P1-P5, with P5 handled first on Kanban.
 - Kanban sorts each status column by source priority first, then created time.
 - Finance/enrollment fields are stored on leads: `dealSize`, `dealCurrency`, `dealPackage`, `dealNote`, `expectedRevenue`, and `expectedCloseDate`.
 - `expectedRevenue` is copied from the sales-entered `dealSize`. There is no default probability mapping in this implementation.
-- Moving a lead to `Mất lead` requires `lostReason`.
+- Moving a lead to `Máº¥t lead` requires `lostReason`.
 - Appointment statuses are `upcoming`, `done`, `cancelled`, and `overdue`.
 - Local seed data includes 10 demo priority leads (`lead-demo-priority-*`) for UI review.
 
@@ -142,3 +142,4 @@ Recommended deploy flow:
 4. Output directory: `dist`.
 5. Add all server-only environment variables in Vercel Project Settings.
 6. Use Vercel preview deployments before promoting to production.
+

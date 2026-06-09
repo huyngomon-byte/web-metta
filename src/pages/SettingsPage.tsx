@@ -2,6 +2,7 @@ import { Eye, EyeOff, KeyRound, Save } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CallCenterSettingsCard } from '@/components/call/CallCenterSettingsCard';
 import { Input } from '@/components/ui/input';
 import { changeCurrentPassword } from '@/services/authService';
 import ThemeSettingsPage from '@/pages/ThemeSettingsPage';
@@ -89,6 +90,8 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+
+      <CallCenterSettingsCard />
 
       <ThemeSettingsPage />
     </div>

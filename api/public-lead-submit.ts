@@ -101,7 +101,7 @@ async function verifyAppCheckIfRequired(req: VercelRequest) {
 
 function originFromRequest(req: VercelRequest) {
   const proto = req.headers['x-forwarded-proto'] || 'https';
-  const host = req.headers.host || 'metta-academy.gg99.vn';
+  const host = req.headers.host || 'www.metta.edu.vn';
   return `${Array.isArray(proto) ? proto[0] : proto}://${Array.isArray(host) ? host[0] : host}`;
 }
 
@@ -139,6 +139,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const now = new Date().toISOString();
   const eventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const source = lead.source || 'Website';
+  const referralPhone = lead.referralPhone ? normalizePhone(String(lead.referralPhone)) : '';
+  if (String(source).toLowerCase() === 'referral' && !isValidPhone(referralPhone)) {
+    return res.status(400).json({ error: 'Referral source requires a valid referralPhone' });
+  }
   const parentName = lead.parentName ? String(lead.parentName).trim() : (lead.contactType === 'parent' ? name : '');
   const studentName = lead.studentName ? String(lead.studentName).trim() : (lead.contactType === 'student' ? name : '');
   const leadRef = db.collection('leads').doc();
@@ -159,6 +163,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     currentLevel: lead.currentLevel || '',
     targetGoal: lead.targetGoal || '',
     source,
+    referralPhone,
     centerName: lead.centerName || '',
     priorityLevel: SOURCE_PRIORITY[source] || 1,
     status: 'Lead mới',
@@ -189,6 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     formId: lead.formId || 'public-lead-form',
     createdAt: now,
     updatedAt: now,
+    stageHistory: [{ status: 'Lead má»›i', enteredAt: now }],
     convertedToStudentId: '',
   };
 

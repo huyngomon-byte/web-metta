@@ -8,6 +8,12 @@ export type LeadPriorityLevel = 1 | 2 | 3 | 4 | 5;
 /** Tên khóa tự do (lấy động từ CMS programs hoặc COURSE_OPTIONS fallback). */
 export type InterestedCourse = string;
 
+export interface LeadStageHistoryEntry {
+  status: LeadStatus | string;
+  enteredAt: string;
+  exitedAt?: string;
+}
+
 export interface LeadSourceConfig {
   id: string;
   name: string;
@@ -43,6 +49,7 @@ export interface Lead {
   currentLevel: string;
   targetGoal: string;
   source: LeadSource;
+  referralPhone?: string;
   centerName?: string;
   priorityLevel?: LeadPriorityLevel | number;
   status: LeadStatus;
@@ -60,6 +67,7 @@ export interface Lead {
   failedReason?: 'no_status_update_24h' | string;
   statusUpdatedAt?: string;
   statusUpdatedAtMs?: number;
+  stageHistory?: LeadStageHistoryEntry[];
   followUpDate?: string;
   consultationDate?: string;
   dealSize?: number;
@@ -91,6 +99,11 @@ export interface LeadActivity {
   content: string;
   createdBy: string;
   createdAt: string;
+  callLogId?: string;
+  callDirection?: 'outbound' | 'inbound';
+  callDurationSec?: number;
+  callDisposition?: string;
+  recordingUrl?: string;
 }
 
 export interface Appointment {

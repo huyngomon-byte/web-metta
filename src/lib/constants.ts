@@ -9,7 +9,7 @@ export const BRAND = {
 };
 
 export const COURSE_OPTIONS = ['METTA Kiddies', 'METTA on Phonics', 'METTA Young Learner', 'IELTS Junior'] as const;
-export const STAFF_OPTIONS = ['METTA Admin', 'Ms. Linh', 'Teacher An'] as const;
+export const STAFF_OPTIONS = ['METTA Admin', 'Chi', 'Linh'] as const;
 
 export const COURSES = [
   { name: 'METTA Kiddies', code: 'KIDDIES', ageRange: '3-6 tuổi', level: 'Preschool' },
@@ -229,11 +229,16 @@ export const leadStatuses = [
 ] as const;
 
 export const lostReasons = [
-  'Không liên lạc được',
-  'Không phù hợp học phí',
-  'Chưa sẵn sàng',
-  'Chọn trung tâm khác',
-  'Không phù hợp lịch học',
+  'Không liên lạc được sau nhiều lần gọi',
+  'Sai số / số không tồn tại',
+  'Phụ huynh từ chối, không có nhu cầu học',
+  'Học phí vượt ngân sách',
+  'Lịch học không phù hợp',
+  'Địa điểm xa / di chuyển bất tiện',
+  'Chọn trung tâm hoặc đối thủ khác',
+  'Học viên chưa đúng độ tuổi / chưa phù hợp chương trình',
+  'Chưa sẵn sàng, hẹn liên hệ lại dài hạn',
+  'Trùng lead / data không hợp lệ',
   'Khác',
 ] as const;
 

@@ -1,4 +1,10 @@
-export type AppNotificationType = 'lead_assigned';
+export type AppNotificationType =
+  | 'lead_assigned'
+  | 'admin_digest'
+  | 'sales_digest'
+  | 'task_due'
+  | 'appointment_due'
+  | 'pipeline_alert';
 
 export interface AppNotification {
   id: string;

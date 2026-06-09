@@ -18,9 +18,23 @@ const now = () => new Date().toISOString();
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const COL = 'appointments';
 const LS_KEY = 'metta_appointments';
+const LS_DEMO_RESET = 'metta_appointment_demo_reset_v4';
+const LS_FIRESTORE_DEMO_RESET = 'metta_appointment_demo_firestore_reset_v4';
+const STAGE_DEMO_CONSULTATION_PREFIX = 'ap-demo-stage-consultation-';
+const PRIORITY_DEMO_CONSULTATION_PREFIX = 'ap-demo-priority-consultation-';
+const demoConsultationAppointments = store.appointments.filter((item) =>
+  item.id.startsWith(STAGE_DEMO_CONSULTATION_PREFIX) || item.id.startsWith(PRIORITY_DEMO_CONSULTATION_PREFIX),
+);
 
 function persist() {
   try { localStorage.setItem(LS_KEY, JSON.stringify(store.appointments)); } catch {}
+}
+
+function isDemoAppointment(item: Partial<Appointment>) {
+  const id = String(item.id || '');
+  return id.startsWith(STAGE_DEMO_CONSULTATION_PREFIX)
+    || id.startsWith(PRIORITY_DEMO_CONSULTATION_PREFIX)
+    || /^ap-[1-5]$/.test(id);
 }
 
 function loadLocal() {
@@ -28,7 +42,31 @@ function loadLocal() {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) store.appointments = parsed;
+    if (Array.isArray(parsed)) {
+      if (!localStorage.getItem(LS_DEMO_RESET)) {
+        store.appointments = [...demoConsultationAppointments, ...parsed.filter((item: Appointment) => !isDemoAppointment(item))];
+        localStorage.setItem(LS_DEMO_RESET, '1');
+        persist();
+        return;
+      }
+      const existingIds = new Set(parsed.map((item: Appointment) => item.id));
+      const missingDemoAppointments = demoConsultationAppointments.filter((item) => !existingIds.has(item.id));
+      const normalizedAp2 = parsed.some((item: Appointment) => item.id === 'ap-2' && item.type !== 'Tư vấn');
+      const nextItems = parsed.map((item: Appointment) => {
+        if (item.id !== 'ap-2') return item;
+        return {
+          ...item,
+          type: 'Tư vấn' as Appointment['type'],
+          title: 'Tư vấn Phonics cho Trần Minh Khoa',
+          endTime: addMinutes(item.startTime, 45),
+          assignedTo: item.assignedTo === 'Teacher An' ? 'u2' : item.assignedTo,
+          assignedToName: item.assignedToName || 'Linh',
+          notes: item.notes || 'Demo appointment tư vấn bắt buộc cho trạng thái Đã hẹn tư vấn.',
+        };
+      });
+      store.appointments = missingDemoAppointments.length ? [...missingDemoAppointments, ...nextItems] : nextItems;
+      if (missingDemoAppointments.length || normalizedAp2) persist();
+    }
   } catch {}
 }
 
@@ -72,6 +110,20 @@ async function deleteFirestore(id: string) {
   await deleteDoc(doc(db!, COL, id));
 }
 
+async function replaceFirestoreDemoAppointments(current: Appointment[]) {
+  if (!USE_FIREBASE || localStorage.getItem(LS_FIRESTORE_DEMO_RESET)) return current;
+  const demoItems = current.filter((item) => isDemoAppointment(item));
+  try {
+    await Promise.all(demoItems.map((item) => deleteFirestore(item.id).catch(() => {})));
+    await Promise.all(demoConsultationAppointments.map(writeFirestore));
+    localStorage.setItem(LS_FIRESTORE_DEMO_RESET, '1');
+    return [...demoConsultationAppointments, ...current.filter((item) => !isDemoAppointment(item))];
+  } catch (error) {
+    console.warn('[Appointments] Demo reset failed, keeping current data:', error);
+    return current;
+  }
+}
+
 async function markOverdueAppointments() {
   const timestamp = now();
   const overdue = store.appointments.filter((item) => {
@@ -101,7 +153,8 @@ export const appointmentService = {
           ? query(collection(db!, COL), where('assignedTo', '==', user.id))
           : query(collection(db!, COL), orderBy('startTime', 'desc'));
         const snap = await getDocs(appointmentQuery);
-        const firestoreItems = snap.docs.map((item) => item.data() as Appointment);
+        let firestoreItems = snap.docs.map((item) => item.data() as Appointment);
+        if (canViewAllLeads(user)) firestoreItems = await replaceFirestoreDemoAppointments(firestoreItems);
         store.appointments = firestoreItems.length ? mergeAppointments(localItems, firestoreItems) : [];
         await markOverdueAppointments();
         persist();

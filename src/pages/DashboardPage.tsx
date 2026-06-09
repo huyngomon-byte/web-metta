@@ -21,6 +21,8 @@ import {
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -30,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadSources, leadStatuses, STAFF_OPTIONS } from '@/lib/constants';
+import { buildReasonShareData, buildStageCohortData, formatDurationHours } from '@/lib/leadAnalytics';
 import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { formatCurrency } from '@/lib/utils';
 import { useCourseOptions } from '@/hooks/useCms';
@@ -55,6 +58,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const COURSE_COLORS = ['#3B82F6', '#06B6D4', '#8B5CF6', '#F59E0B', '#EC4899', '#16A34A'];
 const SOURCE_COLORS = ['#1267AE', '#16A9D8', '#F45A0A', '#16A34A', '#F59E0B', '#DC2626', '#8B5CF6', '#EC4899', '#6366F1', '#64748b'];
+const REASON_COLORS = ['#EF4444', '#F97316', '#F59E0B', '#8B5CF6', '#3B82F6', '#06B6D4', '#10B981', '#64748B', '#EC4899', '#14B8A6', '#A855F7'];
 const FOLLOW_UP_OPEN_STATUSES: readonly string[] = [leadStatuses[0], leadStatuses[1], leadStatuses[2]];
 const UNCONTACTED_STATUSES: readonly string[] = [leadStatuses[0], leadStatuses[2]];
 
@@ -120,6 +124,55 @@ function presetRange(p: Preset): [string, string] {
 
 /* ══════════════════════════════════════════════════════════════════════ */
 
+function addDays(dateStr: string, delta: number) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+function periodDays(from: string, to: string) {
+  return Math.max(1, Math.round((new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime()) / 86400000) + 1);
+}
+
+function previousPeriod(from: string, to: string): [string, string] {
+  const days = periodDays(from, to);
+  return [addDays(from, -days), addDays(to, -days)];
+}
+
+function trendPercent(current: number, previous: number) {
+  if (!previous) return current ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function leadMetricSummary(items: Lead[]) {
+  const total = items.length;
+  const contacted = items.filter((l) => !UNCONTACTED_STATUSES.includes(l.status)).length;
+  const ttStatuses = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
+  const testTrial = items.filter((l) => ttStatuses.includes(l.status)).length;
+  const converted = items.filter(isConverted).length;
+  const lost = items.filter((l) => l.status === LOST_LEAD_STATUS).length;
+  const expectedRevenue = items
+    .filter((l) => l.status === DEAL_QUOTED_STATUS)
+    .reduce((sum, lead) => sum + expectedAmount(lead), 0);
+  const revenue = items
+    .filter((l) => isConverted(l))
+    .reduce((sum, lead) => sum + closedRevenueAmount(lead), 0);
+
+  return {
+    total,
+    contacted,
+    contactRate: total ? Math.round((contacted / total) * 100) : 0,
+    testTrial,
+    testTrialRate: total ? Math.round((testTrial / total) * 100) : 0,
+    converted,
+    lost,
+    expectedRevenue,
+    revenue,
+    convRate: total ? Math.round((converted / total) * 100) : 0,
+    lostRate: total ? Math.round((lost / total) * 100) : 0,
+  };
+}
+
 export default function DashboardPage() {
   const { leads } = useLeads();
   const COURSE_OPTIONS = useCourseOptions();
@@ -133,6 +186,7 @@ export default function DashboardPage() {
   const [fSales, setFSales] = useState('');
   const [fSource, setFSource] = useState('');
   const [fCourse, setFCourse] = useState('');
+  const [fCenter, setFCenter] = useState('');
 
   useEffect(() => { if (preset !== 'custom') { const [f, t] = presetRange(preset); setDateFrom(f); setDateTo(t); } }, [preset]);
   useEffect(() => { appointmentService.getAppointments().then(setAppointments); }, []);
@@ -168,13 +222,20 @@ export default function DashboardPage() {
   const salesLabel = useCallback((idOrName: string) => salesNameById.get(idOrName) || idOrName, [salesNameById]);
 
   // ── Filtered leads ──
-  const rangeLeads = useMemo(() => leads.filter((l) => {
-    if (!inRange(l.createdAt, dateFrom, dateTo)) return false;
+  const baseLeads = useMemo(() => leads.filter((l) => {
     if (fSales && canonicalSalesKey(l.assignedTo || l.assignedToName) !== fSales) return false;
     if (fSource && l.source !== fSource) return false;
     if (fCourse && l.interestedCourse !== fCourse) return false;
+    if (fCenter && l.centerName !== fCenter) return false;
     return true;
-  }), [canonicalSalesKey, leads, dateFrom, dateTo, fSales, fSource, fCourse]);
+  }), [canonicalSalesKey, leads, fSales, fSource, fCourse, fCenter]);
+
+  const rangeLeads = useMemo(() => baseLeads.filter((l) => inRange(l.createdAt, dateFrom, dateTo)), [baseLeads, dateFrom, dateTo]);
+
+  const [previousFrom, previousTo] = useMemo(() => previousPeriod(dateFrom, dateTo), [dateFrom, dateTo]);
+  const previousRangeLeads = useMemo(() => baseLeads.filter((l) => inRange(l.createdAt, previousFrom, previousTo)), [baseLeads, previousFrom, previousTo]);
+
+  const pipelineLeads = baseLeads;
 
   const salesOptions = useMemo(() => {
     // Same logic as LeadsPage: STAFF_OPTIONS + assigned + custom - hidden
@@ -191,39 +252,34 @@ export default function DashboardPage() {
     return Array.from(all).filter((n) => n && !hidden.includes(n));
   }, [canonicalSalesKey, leads, users]);
 
+  const centerOptions = useMemo(() => Array.from(new Set(leads.map((lead) => lead.centerName || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')), [leads]);
+
   /* ── KPI ── */
   const kpi = useMemo(() => {
-    const total = rangeLeads.length;
-    const newToday = leads.filter((l) => l.createdAt?.startsWith(today)).length;
-    const untouched = leads.filter((l) => l.status === leadStatuses[0]).length;
-    const overdueFollowUp = leads.filter((l) => {
+    const current = leadMetricSummary(rangeLeads);
+    const previous = leadMetricSummary(previousRangeLeads);
+    const newToday = pipelineLeads.filter((l) => l.createdAt?.startsWith(today)).length;
+    const untouched = pipelineLeads.filter((l) => l.status === leadStatuses[0]).length;
+    const overdueFollowUp = pipelineLeads.filter((l) => {
       if (!l.followUpDate) return false;
       return l.followUpDate.slice(0, 10) < today && FOLLOW_UP_OPEN_STATUSES.includes(l.status);
     }).length;
-    const followUpToday = leads.filter((l) => l.followUpDate?.startsWith(today)).length;
-    const contacted = rangeLeads.filter((l) => !UNCONTACTED_STATUSES.includes(l.status)).length;
-    const contactRate = total ? Math.round((contacted / total) * 100) : 0;
-    const ttStatuses = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
-    const testTrial = rangeLeads.filter((l) => ttStatuses.includes(l.status)).length;
-    const testTrialRate = total ? Math.round((testTrial / total) * 100) : 0;
-    const converted = rangeLeads.filter(isConverted).length;
-    const lost = rangeLeads.filter((l) => l.status === LOST_LEAD_STATUS).length;
-    const expectedRevenue = rangeLeads
-      .filter((l) => l.status === DEAL_QUOTED_STATUS)
-      .reduce((sum, lead) => sum + expectedAmount(lead), 0);
-    const revenue = rangeLeads
-      .filter((l) => isConverted(l))
-      .reduce((sum, lead) => sum + closedRevenueAmount(lead), 0);
-    const convRate = total ? Math.round((converted / total) * 100) : 0;
-    const lostRate = total ? Math.round((lost / total) * 100) : 0;
-    // trend vs previous period
-    const days = Math.max(1, Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86400000) + 1);
-    const off = Math.round((new Date(today).getTime() - new Date(dateTo).getTime()) / 86400000);
-    const pFrom = daysAgo(days * 2 - 1 + off), pTo = daysAgo(days + off);
-    const prev = leads.filter((l) => inRange(l.createdAt, pFrom, pTo)).length;
-    const trend = prev ? Math.round(((total - prev) / prev) * 100) : 0;
-    return { total, newToday, untouched, overdueFollowUp, followUpToday, contacted, contactRate, testTrial, testTrialRate, converted, lost, expectedRevenue, revenue, convRate, lostRate, trend };
-  }, [rangeLeads, leads, today, dateFrom, dateTo]);
+    const followUpToday = pipelineLeads.filter((l) => l.followUpDate?.startsWith(today)).length;
+    return {
+      ...current,
+      newToday,
+      untouched,
+      overdueFollowUp,
+      followUpToday,
+      trend: trendPercent(current.total, previous.total),
+      contactTrend: trendPercent(current.contacted, previous.contacted),
+      testTrialTrend: trendPercent(current.testTrial, previous.testTrial),
+      convertedTrend: trendPercent(current.converted, previous.converted),
+      lostTrend: trendPercent(current.lost, previous.lost),
+      expectedTrend: trendPercent(current.expectedRevenue, previous.expectedRevenue),
+      revenueTrend: trendPercent(current.revenue, previous.revenue),
+    };
+  }, [rangeLeads, previousRangeLeads, pipelineLeads, today]);
 
   /* ── PIC table ── */
   const picData = useMemo(() => {
@@ -269,18 +325,22 @@ export default function DashboardPage() {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(dateTo); d.setDate(d.getDate() - i);
       const k = d.toISOString().slice(0, 10);
-      const dl = leads.filter((l) => l.createdAt?.startsWith(k));
+      const dl = baseLeads.filter((l) => l.createdAt?.startsWith(k));
       r.push({ day: `${d.getDate()}/${d.getMonth() + 1}`, 'Lead mới': dl.length, 'Chuyển đổi': dl.filter(isConverted).length });
     }
     return r;
-  }, [leads, dateFrom, dateTo]);
+  }, [baseLeads, dateFrom, dateTo]);
 
   /* ── Status stacked bar ── */
   const statusBarData = useMemo(() => {
     const result: Record<string, number> = {};
-    for (const s of leadStatuses) result[s] = rangeLeads.filter((l) => l.status === s).length;
+    for (const s of leadStatuses) result[s] = pipelineLeads.filter((l) => l.status === s).length;
     return [result];
-  }, [rangeLeads]);
+  }, [pipelineLeads]);
+
+  const stageCohortData = useMemo(() => buildStageCohortData(pipelineLeads), [pipelineLeads]);
+  const pendingReasonData = useMemo(() => buildReasonShareData(pipelineLeads, 'pendingReason'), [pipelineLeads]);
+  const lostReasonData = useMemo(() => buildReasonShareData(pipelineLeads, 'lostReason'), [pipelineLeads]);
 
   /* ── Source data ── */
   const sourceData = useMemo(
@@ -309,7 +369,7 @@ export default function DashboardPage() {
 
     // 1. Duplicate phone numbers
     const phoneMap = new Map<string, Lead[]>();
-    for (const l of leads) {
+    for (const l of pipelineLeads) {
       if (!l.phone) continue;
       const p = l.phone.replace(/\D/g, '');
       if (!p) continue;
@@ -322,13 +382,13 @@ export default function DashboardPage() {
     }
 
     // 2. No PIC assigned
-    const noPic = leads.filter((l) => !l.assignedTo && l.status !== LOST_LEAD_STATUS);
+    const noPic = pipelineLeads.filter((l) => !l.assignedTo && l.status !== LOST_LEAD_STATUS);
     if (noPic.length > 0) {
       items.push({ type: 'warning', icon: '👤', title: `${noPic.length} lead chưa có PIC`, leads: noPic.map((l) => ({ id: l.id, name: l.fullName, phone: l.phone, pic: '' })) });
     }
 
     // 3. Overdue follow-up
-    const overdue = leads.filter((l) => {
+    const overdue = pipelineLeads.filter((l) => {
       if (!l.followUpDate) return false;
       return l.followUpDate.slice(0, 10) < today && FOLLOW_UP_OPEN_STATUSES.includes(l.status);
     });
@@ -338,7 +398,7 @@ export default function DashboardPage() {
 
     // 4. Forgotten leads (no update > 3 days, still active)
     const threeDaysAgo = daysAgo(3);
-    const forgotten = leads.filter((l) => {
+    const forgotten = pipelineLeads.filter((l) => {
       if ([WON_LEAD_STATUS, LOST_LEAD_STATUS].includes(l.status)) return false;
       return l.updatedAt.slice(0, 10) < threeDaysAgo;
     });
@@ -347,28 +407,31 @@ export default function DashboardPage() {
     }
 
     return items;
-  }, [leads, today]);
+  }, [pipelineLeads, today]);
 
   /* ── Upcoming test/trial appointments ── */
+  const pipelineLeadIds = useMemo(() => new Set(pipelineLeads.map((lead) => lead.id)), [pipelineLeads]);
+
   const upcomingTests = useMemo(() =>
     appointments
       .filter((a) => a.startTime >= today && ['Tư vấn', 'Test đầu vào'].includes(a.type) && a.status === 'upcoming')
+      .filter((a) => !a.leadId || pipelineLeadIds.has(a.leadId))
       .sort((a, b) => a.startTime.localeCompare(b.startTime))
       .slice(0, 6),
-    [appointments, today],
+    [appointments, pipelineLeadIds, today],
   );
 
   /* ── Tasks today ── */
   const tasks = useMemo(() => [
-    ...leads.filter((l) => l.followUpDate?.startsWith(today)).map((l) => ({ type: 'follow-up' as const, title: l.fullName, detail: l.phone, pic: l.assignedTo })),
-    ...appointments.filter((a) => a.startTime.startsWith(today) && a.status === 'upcoming').map((a) => ({ type: 'appointment' as const, title: a.title, detail: a.startTime.slice(11, 16), pic: a.assignedTo })),
-    ...leads.filter((l) => l.status === leadStatuses[2] && l.updatedAt < daysAgo(1)).map((l) => ({ type: 'retry' as const, title: l.fullName, detail: l.phone, pic: l.assignedTo })),
-  ], [leads, appointments, today]);
+    ...pipelineLeads.filter((l) => l.followUpDate?.startsWith(today)).map((l) => ({ type: 'follow-up' as const, title: l.fullName, detail: l.phone, pic: l.assignedTo })),
+    ...appointments.filter((a) => a.startTime.startsWith(today) && a.status === 'upcoming' && (!a.leadId || pipelineLeadIds.has(a.leadId))).map((a) => ({ type: 'appointment' as const, title: a.title, detail: a.startTime.slice(11, 16), pic: a.assignedTo })),
+    ...pipelineLeads.filter((l) => l.status === leadStatuses[2] && l.updatedAt < daysAgo(1)).map((l) => ({ type: 'retry' as const, title: l.fullName, detail: l.phone, pic: l.assignedTo })),
+  ], [pipelineLeads, appointments, pipelineLeadIds, today]);
 
   /* ── Recent leads ── */
-  const recentLeads = useMemo(() => [...leads].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8), [leads]);
+  const recentLeads = useMemo(() => [...pipelineLeads].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8), [pipelineLeads]);
 
-  const hasFilter = fSales || fSource || fCourse;
+  const hasFilter = fSales || fSource || fCourse || fCenter;
 
   /* ══════════════════════════════════════════════════════════════════════ */
 
@@ -421,30 +484,34 @@ export default function DashboardPage() {
           <option value="">Tất cả nguồn</option>
           {leadSources.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
+        <Select value={fCenter} onChange={(e) => setFCenter(e.target.value)} className="text-xs w-auto min-w-[120px]">
+          <option value="">Tất cả trung tâm</option>
+          {centerOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+        </Select>
         <Select value={fCourse} onChange={(e) => setFCourse(e.target.value)} className="text-xs w-auto min-w-[100px]">
           <option value="">Tất cả khóa</option>
           {COURSE_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
 
         {hasFilter && (
-          <button onClick={() => { setFSales(''); setFSource(''); setFCourse(''); }}
+          <button onClick={() => { setFSales(''); setFSource(''); setFCourse(''); setFCenter(''); }}
             className="text-xs text-red-500 font-semibold hover:text-red-700 ml-1">✕ Xóa filter</button>
         )}
 
-        <span className="ml-auto text-[11px] text-slate-400 hidden sm:block">{formatVN(dateFrom)} – {formatVN(dateTo)} • {rangeLeads.length} lead</span>
+        <span className="ml-auto text-[11px] text-slate-400 hidden sm:block">{formatVN(dateFrom)} - {formatVN(dateTo)} • {rangeLeads.length} lead theo kỳ • {pipelineLeads.length} lead pipeline</span>
       </div>
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
-        <KpiCard label="Lead mới hôm nay" value={kpi.newToday} icon={UserPlus} color="bg-blue-500" trend={kpi.trend} sub="Từ ads / form" />
+        <KpiCard label="Lead theo kỳ" value={kpi.total} icon={UserPlus} color="bg-blue-500" trend={kpi.trend} sub={`Hôm nay ${kpi.newToday} lead`} />
         <KpiCard label="Chưa xử lý" value={kpi.untouched} icon={PhoneOff} color="bg-orange-500" sub="Chưa ai gọi" alert={kpi.untouched > 0} />
         <KpiCard label="Quá hạn follow-up" value={kpi.overdueFollowUp} icon={AlertTriangle} color="bg-red-500" sub={`${kpi.followUpToday} gọi hôm nay`} alert={kpi.overdueFollowUp > 0} />
-        <KpiCard label="Liên hệ thành công" value={`${kpi.contactRate}%`} icon={Phone} color="bg-cyan-500" sub={`${kpi.contacted}/${kpi.total} lead`} />
-        <KpiCard label="Test / Học thử" value={`${kpi.testTrialRate}%`} icon={ClipboardList} color="bg-violet-500" sub={`${kpi.testTrial} lead`} />
-        <KpiCard label="Expected revenue" value={formatCurrency(kpi.expectedRevenue)} icon={CircleDollarSign} color="bg-orange-500" sub={DEAL_QUOTED_STATUS} />
-        <KpiCard label="Revenue" value={formatCurrency(kpi.revenue)} icon={CircleDollarSign} color="bg-emerald-500" sub={WON_LEAD_STATUS} />
-        <KpiCard label="Đã chuyển đổi" value={kpi.converted} icon={UserCheck} color="bg-emerald-500" sub={`Tỷ lệ ${kpi.convRate}%`} />
-        <KpiCard label="Mất lead" value={kpi.lost} icon={AlertTriangle} color="bg-red-400" sub={`Tỷ lệ ${kpi.lostRate}%`} />
+        <KpiCard label="Liên hệ thành công" value={`${kpi.contactRate}%`} icon={Phone} color="bg-cyan-500" trend={kpi.contactTrend} sub={`${kpi.contacted}/${kpi.total} lead`} />
+        <KpiCard label="Test / Học thử" value={`${kpi.testTrialRate}%`} icon={ClipboardList} color="bg-violet-500" trend={kpi.testTrialTrend} sub={`${kpi.testTrial} lead`} />
+        <KpiCard label="Expected revenue" value={formatCurrency(kpi.expectedRevenue)} icon={CircleDollarSign} color="bg-orange-500" trend={kpi.expectedTrend} sub={DEAL_QUOTED_STATUS} />
+        <KpiCard label="Revenue" value={formatCurrency(kpi.revenue)} icon={CircleDollarSign} color="bg-emerald-500" trend={kpi.revenueTrend} sub={WON_LEAD_STATUS} />
+        <KpiCard label="Đã chuyển đổi" value={kpi.converted} icon={UserCheck} color="bg-emerald-500" trend={kpi.convertedTrend} sub={`Tỷ lệ ${kpi.convRate}%`} />
+        <KpiCard label="Mất lead" value={kpi.lost} icon={AlertTriangle} color="bg-red-400" trend={kpi.lostTrend} sub={`Tỷ lệ ${kpi.lostRate}%`} />
       </div>
 
       {/* ── Alerts ── */}
@@ -463,17 +530,17 @@ export default function DashboardPage() {
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-bold text-slate-700">Trạng thái</CardTitle>
-              <span className="text-xs font-extrabold text-slate-800">{rangeLeads.length} lead</span>
+              <span className="text-xs font-extrabold text-slate-800">{pipelineLeads.length} lead</span>
             </div>
           </CardHeader>
           <CardContent className="pt-2">
-            {rangeLeads.length > 0 ? (
+            {pipelineLeads.length > 0 ? (
               <div className="flex flex-col gap-1.5">
                 <div className="h-8 flex rounded-lg overflow-hidden">
                   {leadStatuses.map((s) => {
-                    const count = rangeLeads.filter((l) => l.status === s).length;
+                    const count = pipelineLeads.filter((l) => l.status === s).length;
                     if (!count) return null;
-                    const pct = (count / rangeLeads.length) * 100;
+                    const pct = (count / pipelineLeads.length) * 100;
                     return (
                       <div key={s} className="h-full flex items-center justify-center text-white text-[9px] font-bold transition-all" title={`${s}: ${count}`}
                         style={{ width: `${pct}%`, backgroundColor: STATUS_COLORS[s], minWidth: count > 0 ? 16 : 0 }}>
@@ -484,14 +551,14 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex flex-col gap-0.5">
                   {leadStatuses.map((s) => {
-                    const count = rangeLeads.filter((l) => l.status === s).length;
+                    const count = pipelineLeads.filter((l) => l.status === s).length;
                     if (!count) return null;
                     return (
                       <div key={s} className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-slate-50 text-[11px]">
                         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: STATUS_COLORS[s] }} />
                         <span className="text-slate-600 flex-1 truncate">{s}</span>
                         <span className="font-bold text-slate-800">{count}</span>
-                        <span className="text-[10px] text-slate-400 w-7 text-right">{Math.round((count / rangeLeads.length) * 100)}%</span>
+                        <span className="text-[10px] text-slate-400 w-7 text-right">{Math.round((count / pipelineLeads.length) * 100)}%</span>
                       </div>
                     );
                   })}
@@ -572,6 +639,21 @@ export default function DashboardPage() {
             ) : <EmptyState />}
           </CardContent>
         </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-bold text-slate-700">Cohort stage & tốc độ chuyển trạng thái</CardTitle>
+          <p className="text-xs text-slate-500">Tỷ lệ lead đang ở từng stage, tỷ lệ từng đi qua stage và thời gian trung bình trước khi chuyển tiếp.</p>
+        </CardHeader>
+        <CardContent>
+          {pipelineLeads.length > 0 ? <StageCohortTable data={stageCohortData} /> : <EmptyState />}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <ReasonShareCard title="Tỷ lệ lý do pending" data={pendingReasonData} color="#F97316" empty="Chưa có lead báo phí/pending trong filter." />
+        <ReasonShareCard title="Tỷ lệ lý do mất lead" data={lostReasonData} color="#EF4444" empty="Chưa có lead mất trong filter." />
       </div>
 
       {/* ── Row: Trend + Source ── */}
@@ -830,6 +912,119 @@ export default function DashboardPage() {
 }
 
 /* ── Sub-components ──────────────────────────────────────────────────── */
+
+function StageCohortTable({ data }: { data: ReturnType<typeof buildStageCohortData> }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-xs">
+        <thead>
+          <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-slate-400">
+            <th className="py-2 pr-3">Stage</th>
+            <th className="py-2 px-3 text-center">Đang ở stage</th>
+            <th className="py-2 px-3 text-center">% hiện tại</th>
+            <th className="py-2 px-3 text-center">Từng đi qua</th>
+            <th className="py-2 px-3 text-center">% cohort</th>
+            <th className="py-2 px-3 text-center">Avg time</th>
+            <th className="py-2 px-3 text-center">Median</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((item) => (
+            <tr key={item.status} className="border-b border-slate-100">
+              <td className="py-2.5 pr-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-extrabold text-slate-600">{item.index}</span>
+                  <span className="font-bold text-slate-800">{item.status}</span>
+                </div>
+              </td>
+              <td className="px-3 py-2.5 text-center font-extrabold text-slate-900">{item.current}</td>
+              <td className="px-3 py-2.5"><MiniRateBar value={item.currentRate} color="#3B82F6" /></td>
+              <td className="px-3 py-2.5 text-center font-bold text-slate-700">{item.reached}</td>
+              <td className="px-3 py-2.5"><MiniRateBar value={item.reachedRate} color="#16A34A" /></td>
+              <td className="px-3 py-2.5 text-center font-bold text-orange-600">{formatDurationHours(item.avgHours)}</td>
+              <td className="px-3 py-2.5 text-center font-semibold text-slate-600">{item.samples ? formatDurationHours(item.medianHours) : '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MiniRateBar({ value, color }: { value: number; color: string }) {
+  return (
+    <div className="flex min-w-[120px] items-center gap-2">
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(value, 100)}%`, backgroundColor: color }} />
+      </div>
+      <span className="w-9 text-right text-[11px] font-bold text-slate-700">{value}%</span>
+    </div>
+  );
+}
+
+function ReasonShareCard({
+  title,
+  data,
+  color,
+  empty,
+}: {
+  title: string;
+  data: ReturnType<typeof buildReasonShareData>;
+  color: string;
+  empty: string;
+}) {
+  const palette = [color, ...REASON_COLORS.filter((item) => item !== color)];
+  return (
+    <Card>
+      <CardHeader className="pb-1">
+        <CardTitle className="text-sm font-bold text-slate-700">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.length > 0 ? (
+          <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={54}
+                    outerRadius={88}
+                    paddingAngle={2}
+                  >
+                    {data.map((item, index) => (
+                      <Cell key={item.name} fill={palette[index % palette.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number, name: string) => [`${value} lead`, name]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex flex-col justify-center gap-2.5">
+              {data.map((item, index) => (
+                <div key={item.name} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                  <div className="mb-1 flex items-start justify-between gap-3">
+                    <span className="flex min-w-0 items-start gap-2 text-xs font-bold text-slate-700">
+                      <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: palette[index % palette.length] }} />
+                      <span>{item.name}</span>
+                    </span>
+                    <span className="shrink-0 text-xs font-extrabold text-slate-900">{item.rate}%</span>
+                  </div>
+                  <p className="pl-4 text-[10px] font-semibold text-slate-400">{item.value} lead</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex h-32 items-center justify-center rounded-xl border border-dashed border-slate-200 text-xs font-semibold text-slate-400">{empty}</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function KpiCard({ label, value, icon: Icon, color, trend, sub, alert }: {
   label: string; value: string | number; icon: React.ElementType; color: string; trend?: number; sub?: string; alert?: boolean;

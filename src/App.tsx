@@ -26,10 +26,13 @@ const BlogAdminPage = lazy(() => import('@/pages/BlogAdminPage'));
 const MediaLibraryPage = lazy(() => import('@/pages/MediaLibraryPage'));
 const LeadsPage = lazy(() => import('@/pages/LeadsPage'));
 const LeadAssignmentPage = lazy(() => import('@/pages/LeadAssignmentPage'));
+const LeadDatabasePage = lazy(() => import('@/pages/LeadDatabasePage'));
 const LeadDetailPage = lazy(() => import('@/pages/LeadDetailPage'));
+const SalesTasksPage = lazy(() => import('@/pages/SalesTasksPage'));
 const AppointmentsPage = lazy(() => import('@/pages/AppointmentsPage'));
 const CapiSettingsPage = lazy(() => import('@/pages/CapiSettingsPage'));
 const CapiEventsPage = lazy(() => import('@/pages/CapiEventsPage'));
+const SourceEnginePage = lazy(() => import('@/pages/SourceEnginePage'));
 const ReportsPage = lazy(() => import('@/pages/ReportsPage'));
 const UsersPage = lazy(() => import('@/pages/UsersPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
@@ -81,10 +84,13 @@ export default function App() {
               <Route path="/media" element={<MediaLibraryPage />} />
               <Route path="/crm/leads" element={<LeadsPage />} />
               <Route path="/crm/lead-assignment" element={<LeadAssignmentPage />} />
+              <Route path="/crm/tasks" element={<SalesTasksPage />} />
+              <Route path="/crm/database" element={<LeadDatabasePage />} />
               <Route path="/crm/leads/:id" element={<LeadDetailPage />} />
               <Route path="/appointments" element={<AppointmentsPage />} />
               <Route path="/capi" element={<CapiSettingsPage />} />
               <Route path="/capi/events" element={<CapiEventsPage />} />
+              <Route path="/marketing/source-engine" element={<SourceEnginePage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/settings" element={<SettingsPage />} />

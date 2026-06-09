@@ -1,4 +1,4 @@
-import { ArrowLeft, CalendarPlus, Save } from 'lucide-react';
+import { ArrowLeft, CalendarPlus, PhoneCall, Save } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
@@ -8,17 +8,21 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { useCallCenter } from '@/context/CallCenterContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseOptions } from '@/hooks/useCms';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
 import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
+import { buildLeadTimeline } from '@/lib/leadTimeline';
 import { canAssignLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
+import { callCenterService } from '@/services/callCenterService';
 import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { userService } from '@/services/userService';
+import type { CallLog } from '@/types/call';
 import type { Appointment, InterestedCourse, Lead, LeadActivity, LeadCenterConfig, LeadSourceConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
@@ -53,6 +57,10 @@ function warmthPercent(lead: Partial<Lead>) {
   return lead.pendingWarmthPercent || pendingOption(lead.pendingReason)?.warmthPercent || 0;
 }
 
+function isReferralLead(lead: Partial<Lead>) {
+  return String(lead.source || '').trim().toLowerCase() === 'referral';
+}
+
 function warmthTone(percent: number) {
   if (percent >= 75) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (percent >= 45) return 'border-amber-200 bg-amber-50 text-amber-700';
@@ -85,6 +93,14 @@ function appointmentStatusLabel(status: Appointment['status']) {
   return 'Sắp diễn ra';
 }
 
+function callLogText(log: CallLog) {
+  const direction = log.direction === 'inbound' ? 'Inbound' : 'Outbound';
+  const date = log.startedAt ? formatDate(log.startedAt, true) : '';
+  const disposition = log.disposition ? ` · ${log.disposition}` : '';
+  const duration = log.durationSec ? ` · ${Math.round(log.durationSec)}s` : '';
+  return `${direction} ${date}${disposition}${duration}`;
+}
+
 function toDetailDraft(lead: Lead): LeadDetailDraft {
   return {
     ...lead,
@@ -94,11 +110,20 @@ function toDetailDraft(lead: Lead): LeadDetailDraft {
   };
 }
 
+function defaultAppointmentInput() {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(10, 0, 0, 0);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export default function LeadDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const { startOutboundCall } = useCallCenter();
   const courseOptions = useCourseOptions();
   const [lead, setLead] = useState<LeadDetailDraft | undefined>();
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -106,6 +131,7 @@ export default function LeadDetailPage() {
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [activities, setActivities] = useState<LeadActivity[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [tab, setTab] = useState('overview');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -135,6 +161,7 @@ export default function LeadDetailPage() {
     });
     leadService.getActivities(id).then(setActivities);
     appointmentService.getByLead(id).then(setAppointments);
+    callCenterService.getLogsForLead(id).then(setCallLogs);
     userService.getUsers().then(setUsers);
     sourceConfigService.getConfigs().then(setSourceConfigs);
     centerConfigService.getConfigs().then(setCenterConfigs);
@@ -160,6 +187,14 @@ export default function LeadDetailPage() {
     }
     if (currentLead.appointmentKind && !currentLead.appointmentTime) {
       setError('Vui lòng chọn ngày giờ lịch hẹn.');
+      return;
+    }
+    if (isReferralLead(currentLead) && !String(currentLead.referralPhone || '').trim()) {
+      setError('Lead source Referral cần có SĐT phụ huynh/người giới thiệu.');
+      return;
+    }
+    if (currentLead.status === leadStatuses[3] && (currentLead.appointmentKind !== APPT_CONSULTATION || !currentLead.appointmentTime)) {
+      setError('Lead ở trạng thái Đã hẹn tư vấn cần có lịch tư vấn ngày + giờ.');
       return;
     }
     if (currentLead.status === LOST_LEAD_STATUS && !String(currentLead.lostReason || '').trim()) {
@@ -231,6 +266,16 @@ export default function LeadDetailPage() {
     cancelled: 'red',
     overdue: 'orange',
   };
+  const timeline = buildLeadTimeline(lead, activities, appointments);
+  const timelineToneClass: Record<string, string> = {
+    blue: 'border-blue-300 bg-blue-50 text-blue-700',
+    cyan: 'border-cyan-300 bg-cyan-50 text-cyan-700',
+    green: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+    orange: 'border-orange-300 bg-orange-50 text-orange-700',
+    red: 'border-red-300 bg-red-50 text-red-700',
+    purple: 'border-violet-300 bg-violet-50 text-violet-700',
+    gray: 'border-slate-300 bg-slate-50 text-slate-700',
+  };
 
   async function updateAppointmentStatus(appointment: Appointment, status: Appointment['status']) {
     if (appointment.status === status) return;
@@ -252,12 +297,15 @@ export default function LeadDetailPage() {
             </p>
           </div>
         </div>
-        <Button variant="outline" onClick={() => setTab('appointments')}><CalendarPlus /> Lịch hẹn</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => void startOutboundCall(lead)} disabled={!lead.phone}><PhoneCall /> Gọi</Button>
+          <Button variant="outline" onClick={() => setTab('appointments')}><CalendarPlus /> Lịch hẹn</Button>
+        </div>
       </div>
 
       <TabsList>
         <TabsTrigger active={tab === 'overview'} onClick={() => setTab('overview')}>Tổng quan</TabsTrigger>
-        <TabsTrigger active={tab === 'activities'} onClick={() => setTab('activities')}>Lịch sử chăm sóc</TabsTrigger>
+        <TabsTrigger active={tab === 'activities'} onClick={() => setTab('activities')}>Timeline tư vấn</TabsTrigger>
         <TabsTrigger active={tab === 'appointments'} onClick={() => setTab('appointments')}>Lịch hẹn</TabsTrigger>
         <TabsTrigger active={tab === 'notes'} onClick={() => setTab('notes')}>Ghi chú</TabsTrigger>
         <TabsTrigger active={tab === 'tracking'} onClick={() => setTab('tracking')}>Event tracking</TabsTrigger>
@@ -297,6 +345,11 @@ export default function LeadDetailPage() {
                   {sourceOptions.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
                 </Select>
               </Field>
+              {isReferralLead(lead) && (
+                <Field label="SĐT người referral">
+                  <Input value={lead.referralPhone || ''} onChange={(event) => set('referralPhone', event.target.value)} />
+                </Field>
+              )}
               <Field label="Trung tâm">
                 <Select value={lead.centerName || ''} onChange={(event) => set('centerName', event.target.value)}>
                   <option value="">Chọn trung tâm/cơ sở</option>
@@ -309,7 +362,22 @@ export default function LeadDetailPage() {
                 </div>
               </Field>
               <Field label="Trạng thái">
-                <Select value={lead.status} onChange={(event) => setLead(applyFinanceDefaults({ ...lead, status: event.target.value as Lead['status'] }))}>
+                <Select value={lead.status} onChange={(event) => {
+                  const status = event.target.value as Lead['status'];
+                  const next = applyFinanceDefaults({ ...lead, status });
+                  if (status === leadStatuses[3]) {
+                    const appointmentTime = lead.consultationDate || lead.appointmentTime || defaultAppointmentInput();
+                    setLead({
+                      ...next,
+                      appointmentKind: APPT_CONSULTATION,
+                      appointmentTime,
+                      consultationDate: appointmentTime,
+                      followUpDate: '',
+                    });
+                    return;
+                  }
+                  setLead(next);
+                }}>
                   {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
                 </Select>
               </Field>
@@ -466,14 +534,37 @@ export default function LeadDetailPage() {
 
       {tab === 'activities' && (
         <Card>
-          <CardHeader><CardTitle>Timeline chăm sóc</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Timeline tư vấn</CardTitle></CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {activities.length === 0 && <p className="text-sm text-slate-500">Chưa có hoạt động nào.</p>}
-            {activities.map((activity) => (
-              <div key={activity.id} className="rounded-r-lg border-l-4 border-[#F45A0A] bg-slate-50 p-4">
-                <Badge tone="cyan">{activity.type}</Badge>
-                <p className="mt-2 font-semibold text-slate-950">{activity.content}</p>
-                <p className="text-xs text-slate-500">{activity.createdBy} · {formatDate(activity.createdAt, true)}</p>
+            {callLogs.length > 0 && (
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                <p className="mb-2 text-sm font-extrabold text-blue-800">Call logs Stringee</p>
+                <div className="grid gap-2">
+                  {callLogs.slice(0, 8).map((log) => (
+                    <div key={log.id} className="flex flex-col justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm md:flex-row md:items-center">
+                      <span className="font-semibold text-slate-700">{callLogText(log)}</span>
+                      {log.recordingUrl && (
+                        <a className="text-xs font-bold text-[#003B7A] hover:underline" href={callCenterService.recordingProxyUrl(log)} target="_blank" rel="noreferrer">
+                          Ghi âm
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {timeline.length === 0 && <p className="text-sm text-slate-500">Chưa có dữ liệu timeline.</p>}
+            {timeline.map((event) => (
+              <div key={event.id} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[150px_1fr]">
+                <div>
+                  <p className="text-xs font-bold text-slate-400">{formatDate(event.at, true)}</p>
+                  <span className={`mt-2 inline-flex rounded border px-2 py-0.5 text-[11px] font-bold ${timelineToneClass[event.tone] || timelineToneClass.gray}`}>{event.label}</span>
+                </div>
+                <div>
+                  <p className="font-bold text-slate-950">{event.title}</p>
+                  {event.description && <p className="mt-1 text-sm text-slate-600">{event.description}</p>}
+                  {event.meta && <p className="mt-2 text-xs font-semibold italic text-slate-500">{event.meta}</p>}
+                </div>
               </div>
             ))}
           </CardContent>

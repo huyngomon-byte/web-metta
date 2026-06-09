@@ -10,7 +10,7 @@ import {
   pendingReasonOptions,
 } from '@/lib/constants';
 import { courseDealSize, expectedRevenueFrom } from '@/lib/leadFinance';
-import type { Lead } from '@/types/crm';
+import type { Lead, LeadStageHistoryEntry } from '@/types/crm';
 
 export const STAGE_DEMO_LEAD_PREFIX = 'lead-demo-stage-';
 
@@ -38,8 +38,8 @@ const sources = [
   { name: 'Khác', priorityLevel: 1 },
 ] as const;
 const sales = [
-  { id: 'u2', name: 'Ms. Linh' },
-  { id: 'u3', name: 'Teacher An' },
+  { id: 'u2', name: 'Linh' },
+  { id: 'u3', name: 'Chi' },
 ] as const;
 
 const parentNames = [
@@ -66,22 +66,54 @@ const goalNotes = [
   'Lead referral, phụ huynh có thiện chí cao.',
   'Cần tư vấn thêm về cam kết đầu ra và lịch khai giảng.',
 ] as const;
+
 const appointmentKinds = ['Gọi lại', 'Tư vấn', 'Test đầu vào'] as const;
 
 function pad(value: number) {
   return String(value).padStart(2, '0');
 }
 
-function dateTime(globalIndex: number, hourSeed = 9) {
-  const day = ((globalIndex * 2) % 25) + 3;
+function demoPhone(globalIndex: number) {
+  return `09${String(71000000 + globalIndex * 13791).padStart(8, '0').slice(0, 8)}`;
+}
+
+function dateTime(dayOffset: number, hour = 9, minute = 0) {
+  const date = new Date(Date.UTC(2026, 4, 5 + dayOffset, hour - 7, minute, 0));
+  return date.toISOString();
+}
+
+function appointmentDateTime(globalIndex: number, hourSeed = 10) {
+  const day = 5 + (globalIndex % 10);
   const hour = hourSeed + (globalIndex % 6);
-  const minute = globalIndex % 2 ? '30' : '00';
-  return `2026-06-${pad(day)}T${pad(hour)}:${minute}:00+07:00`;
+  const minute = globalIndex % 2 ? 30 : 0;
+  return `2026-06-${pad(day)}T${pad(hour)}:${pad(minute)}:00+07:00`;
+}
+
+function freshAssignmentDateTime(globalIndex: number) {
+  const hour = 8 + (globalIndex % 8);
+  const minute = (globalIndex % 4) * 15;
+  return `2026-06-04T${pad(hour)}:${pad(minute)}:00+07:00`;
 }
 
 function dateOnly(globalIndex: number) {
-  const day = ((globalIndex * 3) % 24) + 5;
+  const day = 7 + (globalIndex % 14);
   return `2026-06-${pad(day)}`;
+}
+
+function stageHistoryFor(status: Lead['status'], globalIndex: number, createdAt: string) {
+  const currentIndex = Math.max((leadStatuses as readonly string[]).indexOf(status), 0);
+  const startMs = new Date(createdAt).getTime();
+  const stepHours = 8 + (globalIndex % 5) * 5;
+  const stepMs = stepHours * 60 * 60 * 1000;
+  return leadStatuses.slice(0, currentIndex + 1).map((stage, index) => {
+    const enteredAt = new Date(startMs + index * stepMs).toISOString();
+    const isCurrent = index === currentIndex;
+    return {
+      status: stage,
+      enteredAt,
+      ...(isCurrent ? {} : { exitedAt: new Date(startMs + (index + 1) * stepMs).toISOString() }),
+    } as LeadStageHistoryEntry;
+  });
 }
 
 function statusSpecificFields(status: Lead['status'], indexInStage: number, globalIndex: number, course: string) {
@@ -93,7 +125,7 @@ function statusSpecificFields(status: Lead['status'], indexInStage: number, glob
   if (status === DEAL_QUOTED_STATUS) {
     const option = pendingReasonOptions[indexInStage % pendingReasonOptions.length];
     return {
-      consultationDate: dateTime(globalIndex, 14),
+      consultationDate: appointmentDateTime(globalIndex, 9),
       dealSize,
       dealCurrency: DEFAULT_DEAL_CURRENCY,
       discountPercent,
@@ -110,14 +142,14 @@ function statusSpecificFields(status: Lead['status'], indexInStage: number, glob
 
   if (status === WON_LEAD_STATUS) {
     return {
-      consultationDate: dateTime(globalIndex, 13),
+      consultationDate: appointmentDateTime(globalIndex, 10),
       dealSize,
       dealCurrency: DEFAULT_DEAL_CURRENCY,
       discountPercent,
       expectedRevenue,
       revenue: expectedRevenue,
-      revenueAt: dateTime(globalIndex, 17),
-      wonAt: dateTime(globalIndex, 17),
+      revenueAt: appointmentDateTime(globalIndex, 17),
+      wonAt: appointmentDateTime(globalIndex, 17),
       expectedCloseDate: dateOnly(globalIndex),
       dealPackage: `${course} - nhập học tháng 6`,
       dealNote: `Đã chốt gói ${course}, revenue ghi nhận sau discount ${discountPercent}%.`,
@@ -132,29 +164,29 @@ function statusSpecificFields(status: Lead['status'], indexInStage: number, glob
       lostReason,
       lostNote: `Demo mất lead: ${lostReason}. Sales cần xem lại source, lịch học hoặc objection.`,
       followUpDate: '',
-      consultationDate: indexInStage % 2 ? dateTime(globalIndex, 15) : '',
+      consultationDate: indexInStage % 2 ? appointmentDateTime(globalIndex, 14) : '',
     };
   }
 
   if (status === 'Đã hẹn tư vấn') {
     return {
-      consultationDate: dateTime(globalIndex, 15),
-      initialAppointmentType: appointmentKind,
+      consultationDate: appointmentDateTime(globalIndex, 10),
+      initialAppointmentType: 'Tư vấn',
     };
   }
 
   if (status === 'Đã tư vấn/Đặt lịch test') {
     return {
-      consultationDate: dateTime(globalIndex, 16),
-      followUpDate: dateTime(globalIndex + 1, 10),
+      consultationDate: appointmentDateTime(globalIndex, 11),
+      followUpDate: appointmentDateTime(globalIndex + 1, 15),
       initialAppointmentType: 'Test đầu vào',
     };
   }
 
   if (status === 'Đã test/Học thử') {
     return {
-      consultationDate: dateTime(globalIndex, 14),
-      followUpDate: dateTime(globalIndex + 2, 11),
+      consultationDate: appointmentDateTime(globalIndex, 13),
+      followUpDate: appointmentDateTime(globalIndex + 2, 11),
       dealPackage: `${course} - đề xuất sau test`,
       dealNote: 'Đã test/học thử, chờ sales báo phí và chốt gói phù hợp.',
     };
@@ -162,35 +194,43 @@ function statusSpecificFields(status: Lead['status'], indexInStage: number, glob
 
   if (status === 'Chưa nghe máy') {
     return {
-      followUpDate: dateTime(globalIndex + 1, 9),
+      followUpDate: appointmentDateTime(globalIndex + 1, 9),
       failedReason: indexInStage % 4 === 0 ? 'no_answer_first_call' : '',
     };
   }
 
   if (status === 'Đã liên hệ') {
     return {
-      followUpDate: dateTime(globalIndex + 1, 10),
-      statusUpdatedAt: dateTime(globalIndex, 9),
-      statusUpdatedAtMs: Date.parse(dateTime(globalIndex, 9)),
+      followUpDate: appointmentDateTime(globalIndex + 1, 10),
     };
   }
 
   return {
-    followUpDate: indexInStage % 2 === 0 ? dateTime(globalIndex + 1, 9) : '',
+    followUpDate: indexInStage % 2 === 0 ? appointmentDateTime(globalIndex + 1, 9) : '',
   };
 }
 
 export const stageDemoLeads: Lead[] = leadStatuses.flatMap((status, stageIndex) =>
   Array.from({ length: 10 }, (_, indexInStage) => {
     const globalIndex = stageIndex * 10 + indexInStage;
-    const source = sources[(indexInStage + stageIndex) % sources.length];
+    const source = sources[(indexInStage + stageIndex * 2) % sources.length];
     const salesOwner = sales[(indexInStage + stageIndex) % sales.length];
     const parentName = parentNames[globalIndex % parentNames.length];
     const studentName = `${studentNames[globalIndex % studentNames.length]} ${stageIndex + 1}${indexInStage + 1}`;
     const course = COURSE_OPTIONS[(globalIndex + stageIndex) % COURSE_OPTIONS.length];
     const isUnassigned = stageIndex === 0 && indexInStage % 5 === 0;
     const isReturned = status === 'Chưa nghe máy' && indexInStage % 5 === 0;
-    const createdAt = dateTime(globalIndex, 8);
+    const createdAt = dateTime((globalIndex * 3) % 29, 8 + (indexInStage % 4), indexInStage % 2 ? 30 : 0);
+    const history = stageHistoryFor(status, globalIndex, createdAt);
+    const statusEnteredAt = history[history.length - 1]?.enteredAt || createdAt;
+    const statusFields = statusSpecificFields(status, indexInStage, globalIndex, course);
+    const referralPhone = source.name === 'Referral'
+      ? demoPhone(Math.max(0, globalIndex - ((globalIndex % 9) + 1)))
+      : '';
+
+    const isActiveAssignment = stageIndex <= 1;
+    const assignedAt = isActiveAssignment ? freshAssignmentDateTime(globalIndex) : history[0]?.enteredAt || createdAt;
+
     const assignmentFields = isUnassigned || isReturned
       ? {
           assignedTo: '',
@@ -198,18 +238,18 @@ export const stageDemoLeads: Lead[] = leadStatuses.flatMap((status, stageIndex) 
           assignedStatus: isReturned ? 'returned' as const : 'unassigned' as const,
           failedAssignedTo: isReturned ? salesOwner.id : '',
           failedAssignedToName: isReturned ? salesOwner.name : '',
-          failedAt: isReturned ? dateTime(globalIndex, 18) : '',
-          failedAtMs: isReturned ? Date.parse(dateTime(globalIndex, 18)) : undefined,
-          failedReason: isReturned ? 'no_status_update_24h' : '',
+          failedAt: isReturned ? appointmentDateTime(globalIndex, 18) : '',
+          failedAtMs: isReturned ? Date.parse(appointmentDateTime(globalIndex, 18)) : undefined,
+          failedReason: isReturned ? 'no_status_update_24h' : statusFields.failedReason || '',
         }
       : {
           assignedTo: salesOwner.id,
           assignedToName: salesOwner.name,
           assignedBy: stageIndex % 2 ? 'u1' : 'auto-assignment-rule',
-          assignedAt: dateTime(globalIndex, 8),
-          assignedAtMs: Date.parse(dateTime(globalIndex, 8)),
-          assignedExpiresAtMs: Date.parse(dateTime(globalIndex + 1, 8)),
-          assignedStatus: stageIndex <= 1 ? 'active' as const : 'accepted' as const,
+          assignedAt,
+          assignedAtMs: Date.parse(assignedAt),
+          assignedExpiresAtMs: Date.parse(assignedAt) + 24 * 60 * 60 * 1000,
+          assignedStatus: isActiveAssignment ? 'active' as const : 'accepted' as const,
         };
 
     return {
@@ -217,7 +257,7 @@ export const stageDemoLeads: Lead[] = leadStatuses.flatMap((status, stageIndex) 
       fullName: studentName,
       parentName,
       studentName,
-      phone: `09${String(71000000 + globalIndex * 13791).slice(0, 8)}`,
+      phone: demoPhone(globalIndex),
       email: `demo.stage.${stageIndex + 1}.${indexInStage + 1}@metta.test`,
       contactType: indexInStage % 6 === 0 ? 'student' : indexInStage % 7 === 0 ? 'other' : 'parent',
       age: String(4 + ((globalIndex + stageIndex) % 12)),
@@ -227,14 +267,18 @@ export const stageDemoLeads: Lead[] = leadStatuses.flatMap((status, stageIndex) 
       currentLevel: '',
       targetGoal: '',
       source: source.name,
+      referralPhone,
       centerName: centers[(globalIndex + stageIndex) % centers.length],
       priorityLevel: source.priorityLevel,
       status,
       ...assignmentFields,
-      ...statusSpecificFields(status, indexInStage, globalIndex, course),
-      initialNote: `[Demo ${status}] ${goalNotes[(indexInStage + stageIndex) % goalNotes.length]} Source ${source.name} - P${source.priorityLevel}, center ${centers[(globalIndex + stageIndex) % centers.length]}.`,
+      ...statusFields,
+      statusUpdatedAt: statusEnteredAt,
+      statusUpdatedAtMs: Date.parse(statusEnteredAt),
+      stageHistory: history,
+      initialNote: `[Demo ${status}] ${goalNotes[(indexInStage + stageIndex) % goalNotes.length]} Source ${source.name}${referralPhone ? `, referral ${referralPhone}` : ''} - P${source.priorityLevel}, center ${centers[(globalIndex + stageIndex) % centers.length]}.`,
       createdAt,
-      updatedAt: dateTime(globalIndex, 18),
+      updatedAt: statusEnteredAt,
     };
   }),
 );

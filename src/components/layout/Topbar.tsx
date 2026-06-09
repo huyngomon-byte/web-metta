@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
+import { appointmentService } from '@/services/appointmentService';
+import { leadService } from '@/services/leadService';
 import { notificationService } from '@/services/notificationService';
 import type { AppNotification } from '@/types/notification';
 
@@ -22,14 +24,22 @@ export function Topbar() {
 
   const unread = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
 
-  const refreshNotifications = useCallback(() => {
-    setNotifications(notificationService.getForUser(user?.id).slice(0, 8));
-  }, [user?.id]);
+  const refreshNotifications = useCallback(async () => {
+    if (!user?.id) {
+      setNotifications([]);
+      return;
+    }
+    const [leads, appointments] = await Promise.all([
+      leadService.getLeads().catch(() => []),
+      appointmentService.getAppointments().catch(() => []),
+    ]);
+    setNotifications(notificationService.getCombinedForUser(user, leads, appointments).slice(0, 10));
+  }, [user]);
 
   useEffect(() => {
-    refreshNotifications();
-    const interval = window.setInterval(refreshNotifications, 4000);
-    const onStorage = () => refreshNotifications();
+    void refreshNotifications();
+    const interval = window.setInterval(() => void refreshNotifications(), 4000);
+    const onStorage = () => void refreshNotifications();
     window.addEventListener('storage', onStorage);
     window.addEventListener('metta-notifications-updated', onStorage);
     window.addEventListener('focus', onStorage);
@@ -51,21 +61,21 @@ export function Topbar() {
 
   function openNotification(item: AppNotification) {
     notificationService.markRead(item.id);
-    refreshNotifications();
+    void refreshNotifications();
     setOpen(false);
     if (item.url) navigate(item.url);
   }
 
   function markAllRead() {
     notificationService.markAllRead(user?.id);
-    refreshNotifications();
+    void refreshNotifications();
   }
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-8">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 lg:hidden">
-          <Button variant="outline" size="icon"><Menu /></Button>
+          <Button variant="outline" size="icon" aria-label="Mở menu"><Menu /></Button>
           <span className="font-bold text-slate-950">METTA Admin</span>
         </div>
         <div className="hidden w-full max-w-xl items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 lg:flex">
@@ -74,7 +84,7 @@ export function Topbar() {
         </div>
         <div className="ml-auto flex items-center gap-3">
           <div ref={dropdownRef} className="relative">
-            <Button variant="outline" size="icon" onClick={() => setOpen((value) => !value)} className="relative">
+            <Button variant="outline" size="icon" aria-label="Mở notifications" onClick={() => setOpen((value) => !value)} className="relative">
               <Bell />
               {unread > 0 && (
                 <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-extrabold text-white">

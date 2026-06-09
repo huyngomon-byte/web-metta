@@ -9,14 +9,16 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { STAGE_DEMO_LEAD_PREFIX } from '@/data/stageDemoLeads';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
+import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
 import { financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
 import { chooseAutoAssignedSales } from '@/services/assignmentRuleService';
 import { currentUser } from '@/services/authService';
+import { lmsSyncService } from '@/services/lmsSyncService';
 import { notificationService } from '@/services/notificationService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { delay, store } from '@/services/store';
@@ -33,6 +35,8 @@ const LS_LEADS = 'metta_leads';
 const LS_ACTIVITIES = 'metta_lead_activities';
 const LS_FINANCE_DEMO_MIGRATION = 'metta_lead_finance_demo_seed_v1';
 const LS_STAGE_DEMO_MIGRATION = 'metta_lead_stage_demo_seed_v1';
+const LS_DEMO_RESET_LOCAL = 'metta_lead_demo_reset_v6';
+const LS_DEMO_RESET_FIRESTORE = 'metta_lead_demo_firestore_reset_v6';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const financeDemoSeedLeads = store.leads.filter((lead) => lead.id.startsWith(FINANCE_DEMO_ID_PREFIX));
@@ -66,9 +70,88 @@ function pendingWarmth(reason?: string) {
   return pendingReasonOptions.find((item) => item.reason === reason)?.warmthPercent;
 }
 
+function isDemoLead(lead: Partial<Lead>) {
+  const id = String(lead.id || '');
+  const email = String(lead.email || '').toLowerCase();
+  return id.startsWith(STAGE_DEMO_LEAD_PREFIX)
+    || id.startsWith(FINANCE_DEMO_ID_PREFIX)
+    || /^lead-[1-5]$/.test(id)
+    || /^lead-x\d+$/.test(id)
+    || email.includes('@metta.test')
+    || email.includes('@example.com');
+}
+
 function salesNameById(id?: string) {
   if (!id) return '';
   return store.users.find((user) => user.id === id)?.fullName || id;
+}
+
+function activeSalesUsers() {
+  return store.users.filter((user) => user.role === 'sales' && user.active);
+}
+
+function findSalesByNameHint(hint: string, fallbackIndex: number) {
+  const salesUsers = activeSalesUsers();
+  const normalizedHint = hint.toLowerCase();
+  return salesUsers.find((sales) => sales.fullName.toLowerCase().includes(normalizedHint))
+    || salesUsers[fallbackIndex]
+    || salesUsers[0];
+}
+
+function legacySalesUser(idOrName?: string, displayName?: string) {
+  const key = `${idOrName || ''} ${displayName || ''}`.toLowerCase();
+  if (key.includes('ms. linh') || key.includes('linh') || key.includes('u2')) return findSalesByNameHint('linh', 1);
+  if (key.includes('teacher an') || key.includes('u3')) return findSalesByNameHint('chi', 0);
+  return undefined;
+}
+
+function shouldRepointSales(idOrName: string | undefined, displayName: string | undefined, sales: AdminUser) {
+  const key = `${idOrName || ''} ${displayName || ''}`.toLowerCase();
+  return key.includes('ms. linh')
+    || key.includes('teacher an')
+    || key.includes('u2')
+    || key.includes('u3')
+    || Boolean(displayName && displayName === sales.fullName && idOrName !== sales.id);
+}
+
+function normalizeLeadSales(lead: Lead) {
+  const assigned = legacySalesUser(lead.assignedTo, lead.assignedToName);
+  if (assigned && shouldRepointSales(lead.assignedTo, lead.assignedToName, assigned)) {
+    lead.assignedTo = assigned.id;
+    lead.assignedToName = assigned.fullName;
+  }
+
+  const failedAssigned = legacySalesUser(lead.failedAssignedTo, lead.failedAssignedToName);
+  if (failedAssigned && shouldRepointSales(lead.failedAssignedTo, lead.failedAssignedToName, failedAssigned)) {
+    lead.failedAssignedTo = failedAssigned.id;
+    lead.failedAssignedToName = failedAssigned.fullName;
+  }
+}
+
+function demoPhoneFromIndex(globalIndex: number) {
+  return `09${String(71000000 + globalIndex * 13791).padStart(8, '0').slice(0, 8)}`;
+}
+
+function referralPhoneFromDemoLeadId(id?: string) {
+  const match = String(id || '').match(/^lead-demo-stage-(\d+)-(\d+)$/);
+  if (!match) return '';
+  const stageIndex = Number(match[1]) - 1;
+  const indexInStage = Number(match[2]) - 1;
+  if (!Number.isFinite(stageIndex) || !Number.isFinite(indexInStage) || stageIndex < 0 || indexInStage < 0) return '';
+  const globalIndex = stageIndex * 10 + indexInStage;
+  const referrerIndex = Math.max(0, globalIndex - ((globalIndex % 9) + 1));
+  return demoPhoneFromIndex(referrerIndex);
+}
+
+function repairReferralPhone(lead: Lead) {
+  if (!isReferralSource(lead.source)) {
+    lead.referralPhone = lead.referralPhone || '';
+    return;
+  }
+
+  if (String(lead.referralPhone || '').replace(/\D/g, '').length >= 9) return;
+  const demoReferralPhone = referralPhoneFromDemoLeadId(lead.id);
+  if (demoReferralPhone) lead.referralPhone = demoReferralPhone;
 }
 
 function notifyLeadAssignment(lead: Lead, salesId?: string, assignedByName?: string, auto = false) {
@@ -124,6 +207,8 @@ function normalizeDealFields<T extends Partial<Lead>>(input: T): T {
 
 function normalizeLead(raw: Lead): Lead {
   const lead = { ...raw, interestedCourse: normalizeCourse(raw.interestedCourse) as InterestedCourse | '' };
+  normalizeLeadSales(lead);
+  repairReferralPhone(lead);
   if (!lead.studentName && lead.contactType === 'student' && lead.fullName) lead.studentName = lead.fullName;
   if (!lead.parentName && lead.contactType !== 'student' && lead.fullName) lead.parentName = lead.fullName;
   if (!lead.fullName) lead.fullName = leadDisplayName(lead);
@@ -138,9 +223,8 @@ function normalizeLead(raw: Lead): Lead {
   }
   if (!lead.dealCurrency && (lead.dealSize !== undefined || lead.expectedRevenue !== undefined)) lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
   if (lead.dealSize !== undefined && lead.expectedRevenue === undefined) lead.expectedRevenue = lead.dealSize;
-  if (!lead.assignedToName && lead.assignedTo && !lead.assignedTo.includes('-') && !lead.assignedTo.startsWith('uid')) {
-    lead.assignedToName = lead.assignedTo;
-  }
+  if (!lead.assignedToName && lead.assignedTo) lead.assignedToName = salesNameById(lead.assignedTo);
+  lead.stageHistory = normalizeStageHistory(lead);
   return lead;
 }
 
@@ -182,15 +266,44 @@ function mergeDemoSeeds(current: Lead[]) {
   return mergeMissingSeedLeads(mergedFinanceDemo, stageDemoSeedLeads);
 }
 
+function replaceLocalDemoLeads(current: Lead[]) {
+  if (!ENABLE_STAGE_DEMO_SEED || localStorage.getItem(LS_DEMO_RESET_LOCAL)) return current;
+  localStorage.setItem(LS_FINANCE_DEMO_MIGRATION, '1');
+  localStorage.setItem(LS_STAGE_DEMO_MIGRATION, '1');
+  localStorage.setItem(LS_DEMO_RESET_LOCAL, '1');
+  const nonDemo = current.filter((lead) => !isDemoLead(lead));
+  return [...stageDemoSeedLeads, ...nonDemo];
+}
+
+async function replaceFirestoreDemoLeads(current: Lead[]) {
+  if (!USE_FIREBASE || !ENABLE_STAGE_DEMO_SEED || localStorage.getItem(LS_DEMO_RESET_FIRESTORE)) return current;
+  if (!auth?.currentUser) {
+    localStorage.setItem(LS_DEMO_RESET_FIRESTORE, '1');
+    const nonDemo = current.filter((lead) => !isDemoLead(lead));
+    return [...stageDemoSeedLeads.map(normalizeLead), ...nonDemo];
+  }
+  const demoLeads = current.filter((lead) => isDemoLead(lead));
+  try {
+    await Promise.all(demoLeads.map((lead) => deleteDoc(doc(db!, COL_LEADS, lead.id)).catch(() => {})));
+    await Promise.all(stageDemoSeedLeads.map((lead) => writeFirestoreLead(normalizeLead(lead))));
+    localStorage.setItem(LS_DEMO_RESET_FIRESTORE, '1');
+    const nonDemo = current.filter((lead) => !isDemoLead(lead));
+    return [...stageDemoSeedLeads.map(normalizeLead), ...nonDemo];
+  } catch (error) {
+    console.warn('[Leads] Demo reset failed, keeping current data:', error);
+    return current;
+  }
+}
+
 function loadLeads() {
   try {
     const raw = localStorage.getItem(LS_LEADS);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length) {
-        const merged = mergeDemoSeeds(parsed);
-        store.leads = merged;
-        if (merged.length !== parsed.length) persistLeads();
+        const merged = mergeDemoSeeds(replaceLocalDemoLeads(parsed));
+        store.leads = merged.map((lead) => normalizeLead(lead as Lead));
+        persistLeads();
       }
     }
   } catch {}
@@ -233,6 +346,21 @@ async function writeFirestoreActivity(activity: LeadActivity) {
   } catch (error) {
     console.warn('[Leads] Firestore activity write failed, keeping local:', error);
   }
+}
+
+async function appendLeadActivity(activity: Partial<LeadActivity>) {
+  const entry: LeadActivity = {
+    id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    leadId: activity.leadId!,
+    type: activity.type || 'note',
+    content: activity.content || '',
+    createdBy: activity.createdBy || currentUser()?.fullName || 'Admin',
+    createdAt: now(),
+  };
+  store.leadActivities.unshift(entry);
+  persistActivities();
+  await writeFirestoreActivity(entry);
+  return entry;
 }
 
 async function writeAuditLog(data: Record<string, unknown>) {
@@ -278,6 +406,12 @@ function validatePendingReason(lead: Partial<Lead>) {
   throw new Error('Vui lòng chọn lý do pending trước khi chuyển trạng thái Đã báo phí/Chờ chốt.');
 }
 
+function validateReferralPhone(lead: Partial<Lead>) {
+  if (!isReferralSource(lead.source)) return;
+  if (String(lead.referralPhone || '').replace(/\D/g, '').length >= 9) return;
+  throw new Error('Lead source Referral cần có SĐT phụ huynh/người giới thiệu.');
+}
+
 async function expireOverdueAssignments(user: AdminUser | null) {
   if (!canViewAllLeads(user)) return;
   const expired = store.leads.filter((lead) => leadAssignmentExpired(lead));
@@ -307,6 +441,37 @@ function visibleLeads(user: AdminUser | null) {
   return store.leads.map(normalizeLead).filter((lead) => canViewLead(user, lead));
 }
 
+async function syncEnrollmentToLms(lead: Lead) {
+  try {
+    const [activities, appointments] = await Promise.all([
+      leadService.getActivities(lead.id).catch(() => []),
+      appointmentService.getByLead(lead.id).catch(() => []),
+    ]);
+    const result = await lmsSyncService.syncEnrollmentLead(lead, activities, appointments);
+    if (result.externalId && !lead.convertedToStudentId) {
+      const updatedLead = normalizeLead({ ...lead, convertedToStudentId: result.externalId, updatedAt: now() });
+      store.leads = store.leads.map((item) => (item.id === lead.id ? updatedLead : item));
+      persistLeads();
+      await writeFirestoreLead(updatedLead);
+    }
+    await appendLeadActivity({
+      leadId: lead.id,
+      type: 'update',
+      content: result.skipped ? 'LMS sync dry-run: payload enrollment da duoc build va luu log local.' : 'Da sync enrollment sang LMS.',
+      createdBy: 'system',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Khong sync duoc LMS.';
+    console.warn('[LMS] Enrollment sync failed:', error);
+    await appendLeadActivity({
+      leadId: lead.id,
+      type: 'note',
+      content: `LMS sync failed: ${message}`,
+      createdBy: 'system',
+    }).catch(() => {});
+  }
+}
+
 export const leadService = {
   getLeads: async () => {
     const user = currentUser();
@@ -330,7 +495,8 @@ export const leadService = {
           if (remoteLeads.length || !store.leads.length) store.leads = ENABLE_STAGE_DEMO_SEED ? mergeDemoSeeds(remoteLeads) : remoteLeads;
         } else {
           const snap = await getDocs(query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc')));
-          const remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+          let remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+          remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
           if (remoteLeads.length || !store.leads.length) {
             store.leads = ENABLE_STAGE_DEMO_SEED ? mergeDemoSeeds(remoteLeads) : remoteLeads;
             await syncMissingStageDemoLeadsToFirestore(remoteLeads);
@@ -385,6 +551,8 @@ export const leadService = {
       ...(warmthPercent !== undefined ? { pendingWarmthPercent: warmthPercent } : {}),
     };
     let assignmentNotification: { salesId: string; assignedByName?: string; auto?: boolean } | null = null;
+    const activityQueue: Partial<LeadActivity>[] = [];
+    let shouldSyncLms = false;
 
     if (lead.id) {
       const prev = store.leads.find((item) => item.id === lead.id);
@@ -396,6 +564,34 @@ export const leadService = {
         lead.assignedTo !== undefined &&
         lead.assignedTo !== prev.assignedTo,
       );
+      if (prev && statusChanged) {
+        activityQueue.push({
+          leadId: prev.id,
+          type: 'status_change',
+          content: `Chuyển trạng thái từ "${prev.status}" sang "${lead.status}".`,
+        });
+      }
+      if (prev && assignmentChanged && lead.assignedTo) {
+        activityQueue.push({
+          leadId: prev.id,
+          type: 'assignment',
+          content: `Phân lead cho ${lead.assignedToName || salesNameById(lead.assignedTo)}.`,
+        });
+      }
+      if (prev && lead.status === DEAL_QUOTED_STATUS && lead.pendingReason && lead.pendingReason !== prev.pendingReason) {
+        activityQueue.push({
+          leadId: prev.id,
+          type: 'note',
+          content: `Cập nhật lý do pending: ${lead.pendingReason}.`,
+        });
+      }
+      if (prev && lead.status === WON_LEAD_STATUS && statusChanged) {
+        activityQueue.push({
+          leadId: prev.id,
+          type: 'update',
+          content: `Lead đã đăng ký học. Revenue: ${revenueAmount({ ...prev, ...lead } as Lead).toLocaleString('vi-VN')} VND.`,
+        });
+      }
       const patch: Partial<Lead> = {
         ...lead,
         updatedAt: timestamp,
@@ -403,15 +599,18 @@ export const leadService = {
           statusUpdatedAt: timestamp,
           statusUpdatedAtMs: nowMs,
           assignedStatus: prev?.assignedTo ? 'accepted' : prev?.assignedStatus,
+          stageHistory: updateStageHistory(prev || {}, lead.status!, timestamp),
         } : {}),
       };
       const mergedForValidation = normalizeLead({ ...(prev || {}), ...patch } as Lead);
+      validateReferralPhone(mergedForValidation);
       validateLostReason(mergedForValidation);
       validatePendingReason(mergedForValidation);
       if (mergedForValidation.status === DEAL_QUOTED_STATUS) {
         Object.assign(patch, financeDefaultsForLead(mergedForValidation), { revenue: undefined, revenueAt: undefined });
       }
       if (mergedForValidation.status === WON_LEAD_STATUS) {
+        if (statusChanged || !prev?.revenueAt) shouldSyncLms = true;
         patch.wonAt = lead.wonAt || prev?.wonAt || timestamp;
         Object.assign(patch, financeDefaultsForLead(mergedForValidation), {
           revenue: revenueAmount(mergedForValidation),
@@ -476,6 +675,7 @@ export const leadService = {
         currentLevel: lead.currentLevel || '',
         targetGoal: lead.targetGoal || '',
         source: leadSource,
+        referralPhone: lead.referralPhone || '',
         centerName: lead.centerName || '',
         priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel),
         status: lead.status || leadStatuses[0],
@@ -507,9 +707,12 @@ export const leadService = {
         initialNote: lead.initialNote || '',
         createdAt: timestamp,
         updatedAt: timestamp,
+        stageHistory: [{ status: lead.status || leadStatuses[0], enteredAt: timestamp }],
       } as Lead);
+      validateReferralPhone(draftForValidation);
       validateLostReason(draftForValidation);
       validatePendingReason(draftForValidation);
+      if (draftForValidation.status === WON_LEAD_STATUS) shouldSyncLms = true;
       store.leads.unshift(normalizeLead({
         ...draftForValidation,
       }));
@@ -520,6 +723,11 @@ export const leadService = {
           auto: Boolean(autoAssignedSales),
         };
       }
+      activityQueue.push({
+        leadId: draftForValidation.id,
+        type: 'update',
+        content: `Tạo lead mới từ nguồn ${draftForValidation.source || leadSource}.`,
+      });
     }
     const saved = store.leads.find((item) => item.id === lead.id) || store.leads[0];
     persistLeads();
@@ -527,6 +735,10 @@ export const leadService = {
     if (assignmentNotification) {
       notifyLeadAssignment(saved, assignmentNotification.salesId, assignmentNotification.assignedByName, assignmentNotification.auto);
     }
+    for (const activity of activityQueue) {
+      await appendLeadActivity({ ...activity, leadId: activity.leadId || saved.id });
+    }
+    if (shouldSyncLms && saved?.id) await syncEnrollmentToLms(saved);
     return delay(visibleLeads(user));
   },
 
@@ -562,17 +774,7 @@ export const leadService = {
   },
 
   addActivity: async (activity: Partial<LeadActivity>) => {
-    const entry: LeadActivity = {
-      id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      leadId: activity.leadId!,
-      type: activity.type || 'note',
-      content: activity.content || '',
-      createdBy: activity.createdBy || currentUser()?.fullName || 'Admin',
-      createdAt: now(),
-    };
-    store.leadActivities.unshift(entry);
-    persistActivities();
-    await writeFirestoreActivity(entry);
+    await appendLeadActivity(activity);
     return delay(store.leadActivities);
   },
 
@@ -607,9 +809,12 @@ export const leadService = {
     const assignedAtMs = Date.now();
     const assignedExpiresAtMs = assignedAtMs + DAY_MS;
     const changed: Lead[] = [];
+    const reassignedLeadIds = new Set<string>();
 
     store.leads = store.leads.map((lead) => {
       if (!leadIds.includes(lead.id)) return lead;
+      const wasAssigned = Boolean(lead.assignedTo || lead.assignedToName);
+      if (wasAssigned) reassignedLeadIds.add(lead.id);
       const next: Lead = {
         ...lead,
         assignedTo: sales.id,
@@ -634,7 +839,7 @@ export const leadService = {
     await Promise.all(changed.map(async (lead) => {
       await writeFirestoreLead(lead);
       await writeAuditLog({
-        type: lead.failedAssignedTo ? 'lead_reassigned' : 'lead_assigned',
+        type: reassignedLeadIds.has(lead.id) ? 'lead_reassigned' : 'lead_assigned',
         leadId: lead.id,
         assignedTo: sales.id,
         assignedToName: sales.fullName,

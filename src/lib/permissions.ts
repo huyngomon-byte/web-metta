@@ -75,9 +75,11 @@ export function canAccessPath(user: AdminUser | null | undefined, path: string) 
   if (path === '/dashboard') return user.role !== 'design';
   if (path.startsWith('/cms') || path === '/media') return canManageCms(user);
   if (path.startsWith('/crm/lead-assignment')) return canAssignLead(user);
+  if (path.startsWith('/crm/tasks')) return ['admin', 'manager', 'sales'].includes(user.role);
+  if (path.startsWith('/crm/database')) return canViewAllLeads(user);
   if (path.startsWith('/crm/leads')) return ['manager', 'sales'].includes(user.role);
   if (path === '/appointments') return ['manager', 'sales'].includes(user.role);
-  if (path.startsWith('/capi') || path === '/reports') return canManageMarketing(user);
+  if (path.startsWith('/capi') || path.startsWith('/marketing') || path === '/reports') return canManageMarketing(user);
   if (path === '/users') return canManageUsers(user);
   if (path === '/settings') return ['manager', 'ads'].includes(user.role);
   return false;

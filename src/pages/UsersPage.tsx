@@ -50,7 +50,7 @@ export default function UsersPage() {
   }
 
   async function remove(id: string) {
-    if (!confirm('Khóa tài khoản này? User sẽ bị inactive và Auth sẽ bị disable.')) return;
+    if (!confirm('Xóa hoàn toàn user này? Tài khoản Auth và hồ sơ user sẽ bị xóa khỏi hệ thống.')) return;
     await userService.deleteUser(id);
     refresh();
   }

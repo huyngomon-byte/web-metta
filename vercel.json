@@ -3,11 +3,11 @@
   "crons": [
     {
       "path": "/api/cron-return-expired-leads",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 17 * * *"
     },
     {
       "path": "/api/cron-overdue-appointments",
-      "schedule": "*/30 * * * *"
+      "schedule": "15 17 * * *"
     }
   ],
   "rewrites": [

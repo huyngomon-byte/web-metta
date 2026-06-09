@@ -18,13 +18,19 @@ import type { SalesAssignmentRule } from '@/types/assignment';
 import type { Lead } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
-type GroupKey = 'unassigned' | 'returned' | 'assigned';
+type GroupKey = 'all' | 'unassigned' | 'stale' | 'returned' | 'assigned';
 
 const groupTabs: { key: GroupKey; title: string }[] = [
+  { key: 'all', title: 'Tất cả lead' },
   { key: 'unassigned', title: 'Chưa phân sale' },
+  { key: 'stale', title: 'Sales cũ/đã xóa' },
   { key: 'returned', title: 'Bị trả về' },
   { key: 'assigned', title: 'Đã phân sale' },
 ];
+
+const FILTER_UNASSIGNED = '__unassigned__';
+const FILTER_STALE = '__stale__';
+const FILTER_LEGACY_PREFIX = 'legacy:';
 
 const CONTACTED_STATUSES: readonly string[] = [leadStatuses[1], leadStatuses[3], leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS, LOST_LEAD_STATUS];
 const TEST_STATUSES: readonly string[] = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
@@ -66,9 +72,18 @@ function deltaPct(value: number, previous: number) {
   return Math.round(((value - previous) / previous) * 100);
 }
 
-function groupLead(lead: Lead): GroupKey {
+function hasAssignment(lead: Lead) {
+  return Boolean(lead.assignedTo || lead.assignedToName);
+}
+
+function leadAssignedToActiveSales(lead: Lead, salesUsers: AdminUser[]) {
+  return salesUsers.some((sales) => leadBelongsToSales(lead, sales));
+}
+
+function groupLead(lead: Lead, salesUsers: AdminUser[]): GroupKey {
   if (lead.assignedStatus === 'returned' || lead.failedReason) return 'returned';
-  if (!lead.assignedTo) return 'unassigned';
+  if (!hasAssignment(lead)) return 'unassigned';
+  if (!leadAssignedToActiveSales(lead, salesUsers)) return 'stale';
   return 'assigned';
 }
 
@@ -105,6 +120,7 @@ export default function LeadAssignmentPage() {
   const [salesId, setSalesId] = useState('');
   const [activeGroup, setActiveGroup] = useState<GroupKey>('unassigned');
   const [search, setSearch] = useState('');
+  const [currentSalesFilter, setCurrentSalesFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(daysAgo(29));
   const [dateTo, setDateTo] = useState(todayStr());
   const [message, setMessage] = useState('');
@@ -117,18 +133,41 @@ export default function LeadAssignmentPage() {
   const rulesValid = rulesTotal === 100;
 
   const groups = useMemo(() => {
-    const result: Record<GroupKey, Lead[]> = { unassigned: [], returned: [], assigned: [] };
-    leads.forEach((lead) => result[groupLead(lead)].push(lead));
+    const result: Record<GroupKey, Lead[]> = { all: [], unassigned: [], stale: [], returned: [], assigned: [] };
+    leads.forEach((lead) => {
+      result.all.push(lead);
+      result[groupLead(lead, salesUsers)].push(lead);
+    });
     return result;
-  }, [leads]);
+  }, [leads, salesUsers]);
+
+  const legacySalesOptions = useMemo(() => {
+    const activeNames = new Set(salesUsers.map((sales) => sales.fullName.toLowerCase()));
+    const activeIds = new Set(salesUsers.map((sales) => sales.id));
+    return Array.from(new Set(leads
+      .filter((lead) => hasAssignment(lead) && !leadAssignedToActiveSales(lead, salesUsers))
+      .map((lead) => String(lead.assignedToName || lead.assignedTo || '').trim())
+      .filter((name) => name && !activeNames.has(name.toLowerCase()) && !activeIds.has(name))))
+      .sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [leads, salesUsers]);
 
   const visibleLeads = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return groups[activeGroup].filter((lead) => {
-      if (!keyword) return true;
-      return `${lead.fullName} ${lead.studentName} ${lead.parentName} ${lead.phone} ${lead.email} ${lead.assignedToName}`.toLowerCase().includes(keyword);
+      const matchesKeyword = !keyword
+        || `${lead.fullName} ${lead.studentName} ${lead.parentName} ${lead.phone} ${lead.email} ${lead.assignedTo} ${lead.assignedToName}`.toLowerCase().includes(keyword);
+      if (!matchesKeyword) return false;
+      if (!currentSalesFilter) return true;
+      if (currentSalesFilter === FILTER_UNASSIGNED) return !hasAssignment(lead);
+      if (currentSalesFilter === FILTER_STALE) return hasAssignment(lead) && !leadAssignedToActiveSales(lead, salesUsers);
+      if (currentSalesFilter.startsWith(FILTER_LEGACY_PREFIX)) {
+        const legacyName = currentSalesFilter.slice(FILTER_LEGACY_PREFIX.length);
+        return String(lead.assignedToName || lead.assignedTo || '') === legacyName;
+      }
+      const sales = salesUsers.find((item) => item.id === currentSalesFilter);
+      return sales ? leadBelongsToSales(lead, sales) : true;
     });
-  }, [activeGroup, groups, search]);
+  }, [activeGroup, currentSalesFilter, groups, salesUsers, search]);
 
   const rangeLeads = useMemo(() => leads.filter((lead) => inRange(lead.createdAt, dateFrom, dateTo)), [dateFrom, dateTo, leads]);
   const [prevFrom, prevTo] = useMemo(() => previousRange(dateFrom, dateTo), [dateFrom, dateTo]);
@@ -365,7 +404,7 @@ export default function LeadAssignmentPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {groupTabs.map((tab) => (
           <button
             key={tab.key}
@@ -383,15 +422,25 @@ export default function LeadAssignmentPage() {
       </div>
 
       <Card>
-        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center">
-          <div className="relative flex-1">
+        <CardContent className="grid gap-3 p-4 xl:grid-cols-[minmax(260px,1fr)_240px_240px_auto_auto_auto] xl:items-center">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <Input className="pl-10" placeholder="Tìm tên / SĐT / email / sales" value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
-          <Select className="lg:max-w-xs" value={salesId} onChange={(event) => setSalesId(event.target.value)}>
-            <option value="">Manual override: chọn sales</option>
+          <Select value={currentSalesFilter} onChange={(event) => setCurrentSalesFilter(event.target.value)}>
+            <option value="">Lọc PIC hiện tại: tất cả</option>
+            <option value={FILTER_UNASSIGNED}>Chưa có PIC</option>
+            <option value={FILTER_STALE}>Sales cũ/đã xóa</option>
+            {salesUsers.map((sales) => <option key={sales.id} value={sales.id}>PIC: {sales.fullName}</option>)}
+            {legacySalesOptions.map((name) => <option key={name} value={`${FILTER_LEGACY_PREFIX}${name}`}>PIC cũ: {name}</option>)}
+          </Select>
+          <Select value={salesId} onChange={(event) => setSalesId(event.target.value)}>
+            <option value="">Assign sang sales...</option>
             {salesUsers.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
           </Select>
+          <Button variant="outline" onClick={toggleAllVisible} disabled={!visibleLeads.length}>
+            {allVisibleSelected ? 'Bỏ chọn kết quả' : `Chọn ${visibleLeads.length} kết quả`}
+          </Button>
           <Button onClick={assignSelected} disabled={!selected.length || !salesId}>
             <UserCheck /> Phân {selected.length ? `${selected.length} lead` : 'lead'}
           </Button>
@@ -437,30 +486,37 @@ export default function LeadAssignmentPage() {
               </TR>
             </THead>
             <TBody>
-              {visibleLeads.map((lead) => (
-                <TR key={lead.id}>
-                  <TD><input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggle(lead.id)} /></TD>
-                  <TD className="font-semibold text-slate-900">{lead.studentName || lead.fullName}</TD>
-                  <TD>{lead.phone}</TD>
-                  <TD><Badge tone="blue">{lead.status}</Badge></TD>
-                  <TD>{lead.source}</TD>
-                  <TD>{lead.assignedToName || salesNameById.get(lead.assignedTo) || 'Chưa phân'}</TD>
-                  <TD>{lead.assignedAt ? formatDate(lead.assignedAt, true) : '-'}</TD>
-                  <TD>{activeGroup === 'returned' ? returnedReason(lead) : (lead.failedAt ? formatDate(lead.failedAt, true) : '-')}</TD>
-                  {canDelete && (
-                    <TD className="text-right">
-                      <button
-                        type="button"
-                        onClick={() => deleteOne(lead)}
-                        className="text-slate-400 transition hover:text-red-500"
-                        title="Xóa lead"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+              {visibleLeads.map((lead) => {
+                const currentSalesName = lead.assignedToName || salesNameById.get(lead.assignedTo) || lead.assignedTo || '';
+                const isStaleSales = hasAssignment(lead) && !leadAssignedToActiveSales(lead, salesUsers);
+                return (
+                  <TR key={lead.id}>
+                    <TD><input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggle(lead.id)} /></TD>
+                    <TD className="font-semibold text-slate-900">{lead.studentName || lead.fullName}</TD>
+                    <TD>{lead.phone}</TD>
+                    <TD><Badge tone="blue">{lead.status}</Badge></TD>
+                    <TD>{lead.source}</TD>
+                    <TD>
+                      {currentSalesName || 'Chưa phân'}
+                      {isStaleSales && <span className="ml-2 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-bold text-orange-700">Sales cũ</span>}
                     </TD>
-                  )}
-                </TR>
-              ))}
+                    <TD>{lead.assignedAt ? formatDate(lead.assignedAt, true) : '-'}</TD>
+                    <TD>{activeGroup === 'returned' ? returnedReason(lead) : (lead.failedAt ? formatDate(lead.failedAt, true) : '-')}</TD>
+                    {canDelete && (
+                      <TD className="text-right">
+                        <button
+                          type="button"
+                          onClick={() => deleteOne(lead)}
+                          className="text-slate-400 transition hover:text-red-500"
+                          title="Xóa lead"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </TD>
+                    )}
+                  </TR>
+                );
+              })}
               {!visibleLeads.length && (
                 <TR><TD colSpan={canDelete ? 9 : 8} className="py-10 text-center font-semibold text-slate-400">Không có lead trong nhóm này.</TD></TR>
               )}
