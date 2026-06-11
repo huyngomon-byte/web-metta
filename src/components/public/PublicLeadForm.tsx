@@ -15,15 +15,19 @@ export function PublicLeadForm({
   title?: string;
 }) {
   const [form, setForm] = useState({ parentName: '', studentName: '', phone: '' });
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const set = (key: keyof typeof form, value: string) =>
+  const set = (key: keyof typeof form, value: string) => {
+    if (error) setError('');
     setForm((current) => ({ ...current, [key]: value }));
+  };
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setMessage('');
+    setError('');
+    setDone(false);
     const formData = new FormData(e.currentTarget as HTMLFormElement);
 
     const parentName = form.parentName.trim();
@@ -31,15 +35,15 @@ export function PublicLeadForm({
     const phoneNormalized = normalizePhone(form.phone);
 
     if (!parentName) {
-      setMessage('Vui lòng nhập họ tên phụ huynh.');
+      setError('Vui lòng nhập họ tên phụ huynh.');
       return;
     }
     if (!studentName) {
-      setMessage('Vui lòng nhập họ tên bé.');
+      setError('Vui lòng nhập họ tên bé.');
       return;
     }
     if (!phoneRegex.test(phoneNormalized)) {
-      setMessage('Vui lòng nhập số điện thoại phụ huynh hợp lệ.');
+      setError('Vui lòng nhập số điện thoại phụ huynh hợp lệ.');
       return;
     }
 
@@ -59,9 +63,9 @@ export function PublicLeadForm({
         formId,
       );
       setForm({ parentName: '', studentName: '', phone: '' });
-      setMessage('METTA đã nhận thông tin. Tư vấn viên sẽ liên hệ sớm!');
+      setDone(true);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Không gửi được thông tin. Vui lòng thử lại.');
+      setError(error instanceof Error ? error.message : 'Không gửi được thông tin. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -99,57 +103,71 @@ export function PublicLeadForm({
           </div>
 
           <div className="bg-pure-white p-8 lg:p-12">
-            <form onSubmit={submit} className="grid grid-cols-1 gap-4">
-              <input className="hidden" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-              <input className="hidden" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
-              <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Họ tên phụ huynh *</label>
-                <input
-                  className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
-                  placeholder="VD: Nguyễn Thị Hương"
-                  value={form.parentName}
-                  onChange={(e) => set('parentName', e.target.value)}
-                  autoComplete="name"
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Họ tên bé *</label>
-                <input
-                  className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
-                  placeholder="VD: Nguyễn Minh Anh"
-                  value={form.studentName}
-                  onChange={(e) => set('studentName', e.target.value)}
-                  autoComplete="off"
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Số điện thoại phụ huynh *</label>
-                <input
-                  className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
-                  placeholder="090 123 4567"
-                  inputMode="tel"
-                  value={form.phone}
-                  onChange={(e) => set('phone', e.target.value)}
-                  autoComplete="tel"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex items-center justify-center gap-2 bg-cta-orange text-pure-white py-3.5 font-bold text-sm rounded-sm hover:opacity-90 active:scale-[0.99] transition-all shadow-lg shadow-cta-orange/20 disabled:opacity-60"
-              >
-                <span className="material-symbols-outlined text-[18px]">send</span>
-                {loading ? 'Đang gửi...' : 'Đăng ký tư vấn'}
-              </button>
-              {message && (
-                <p className="text-center text-sm font-semibold text-navy-deep bg-primary-fixed rounded-sm px-4 py-3">
-                  {message}
+            {done ? (
+              <div className="flex min-h-[360px] flex-col items-center justify-center px-2 text-center">
+                <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-primary-fixed">
+                  <span className="material-symbols-outlined text-[42px] text-navy-deep">check_circle</span>
+                </div>
+                <h3 className="font-montserrat text-2xl font-extrabold leading-tight text-navy-deep">
+                  Đã nhận thông tin của ba mẹ!
+                </h3>
+                <p className="mt-3 max-w-[360px] text-[15px] leading-7 text-navy-deep">
+                  METTA Academy sẽ liên hệ tư vấn lộ trình phù hợp cho bé trong thời gian sớm nhất.
                 </p>
-              )}
-            </form>
+              </div>
+            ) : (
+              <form onSubmit={submit} className="grid grid-cols-1 gap-4">
+                <input className="hidden" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+                <input className="hidden" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Họ tên phụ huynh *</label>
+                  <input
+                    className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
+                    placeholder="VD: Nguyễn Thị Hương"
+                    value={form.parentName}
+                    onChange={(e) => set('parentName', e.target.value)}
+                    autoComplete="name"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Họ tên bé *</label>
+                  <input
+                    className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
+                    placeholder="VD: Nguyễn Minh Anh"
+                    value={form.studentName}
+                    onChange={(e) => set('studentName', e.target.value)}
+                    autoComplete="off"
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Số điện thoại phụ huynh *</label>
+                  <input
+                    className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
+                    placeholder="090 123 4567"
+                    inputMode="tel"
+                    value={form.phone}
+                    onChange={(e) => set('phone', e.target.value)}
+                    autoComplete="tel"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex items-center justify-center gap-2 bg-cta-orange text-pure-white py-3.5 font-bold text-sm rounded-sm hover:opacity-90 active:scale-[0.99] transition-all shadow-lg shadow-cta-orange/20 disabled:opacity-60"
+                >
+                  <span className="material-symbols-outlined text-[18px]">send</span>
+                  {loading ? 'Đang gửi...' : 'Đăng ký tư vấn'}
+                </button>
+                {error && (
+                  <p className="text-center text-sm font-semibold text-red-600 bg-red-50 rounded-sm px-4 py-3">
+                    {error}
+                  </p>
+                )}
+              </form>
+            )}
           </div>
         </div>
       </div>
