@@ -15,7 +15,7 @@ import type { BlockType, CmsPage, PageSection } from '@/types/cms';
 const BLOCK_TYPES: BlockType[] = [
   'Hero', 'Stats', 'Benefits', 'Courses', 'Facilities', 'Testimonials', 'Teachers', 'News',
   'Lead Form', 'FAQ', 'CTA', 'About', 'Contact', 'Footer',
-  'Ebook Hero', 'Ebook Skills', 'Ebook Why',
+  'Ebook Hero', 'Ebook Skills', 'Ebook Why', 'Metta+ Landing',
 ];
 
 /* ── ImageUploader (full-size – dùng cho Hero, About) ───────────────── */
@@ -940,6 +940,203 @@ function EbookWhyEditor({ value, onChange }: { value: string; onChange: (v: stri
 }
 
 /* ── Section Editor ─────────────────────────────────────────────────── */
+type MettaPlusColor = 'orange' | 'green' | 'purple' | 'yellow' | 'blue' | 'pink';
+type MettaPlusIcon =
+  | 'BadgeCheck' | 'Bot' | 'CalendarCheck' | 'CheckCircle2' | 'ClipboardList' | 'Compass'
+  | 'FileBadge2' | 'GraduationCap' | 'Lightbulb' | 'Mic2' | 'Palette' | 'Rocket'
+  | 'Send' | 'Sparkles' | 'Star' | 'Trophy' | 'Users';
+type MettaPlusCard = { title: string; desc: string; icon: MettaPlusIcon; color: MettaPlusColor };
+type MettaPlusData = {
+  heroBadge: string;
+  headline: string;
+  subHeadline: string;
+  shortDescription: string;
+  heroTags: string[];
+  heroPrimaryCta: string;
+  heroSecondaryCta: string;
+  heroImage: string;
+  heroImageAlt: string;
+  benefitsTitle: string;
+  benefitsDesc: string;
+  benefits: MettaPlusCard[];
+  agesTitle: string;
+  agesDesc: string;
+  ageGroups: MettaPlusCard[];
+  passTitle: string;
+  passDesc: string;
+  passCardTitle: string;
+  passCardMeta: string;
+  passItems: string[];
+  passCta: string;
+  journeyTitle: string;
+  journeyDesc: string;
+  journey: MettaPlusCard[];
+  reasonsTitle: string;
+  reasonsDesc: string;
+  reasons: MettaPlusCard[];
+  formTitle: string;
+  formDesc: string;
+  formHighlights: string[];
+  formCta: string;
+  footerSubtitle: string;
+  footerCta: string;
+};
+
+const METTA_PLUS_ICON_OPTIONS: MettaPlusIcon[] = ['Sparkles', 'Star', 'Users', 'Bot', 'Mic2', 'Lightbulb', 'FileBadge2', 'CalendarCheck', 'Palette', 'Rocket', 'GraduationCap', 'ClipboardList', 'Compass', 'Trophy', 'BadgeCheck', 'CheckCircle2'];
+const METTA_PLUS_COLOR_OPTIONS: { value: MettaPlusColor; label: string }[] = [
+  { value: 'orange', label: 'Cam' },
+  { value: 'green', label: 'Xanh lá' },
+  { value: 'purple', label: 'Tím' },
+  { value: 'yellow', label: 'Vàng' },
+  { value: 'blue', label: 'Xanh dương' },
+  { value: 'pink', label: 'Hồng' },
+];
+
+const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
+  heroBadge: 'METTA+ PASS',
+  headline: 'Mở khóa mùa hè quốc tế cho con',
+  subHeadline: 'Trải nghiệm CLB Tiếng Anh, Kỹ năng và STEM Robotics tại Metta Academy.',
+  shortDescription: 'Học vui - làm thật - tự tin thể hiện bản thân.',
+  heroTags: ['4-15 tuổi', 'GVNN', 'STEM Robotics', 'Metta Passport'],
+  heroPrimaryCta: 'Đăng ký tư vấn ngay',
+  heroSecondaryCta: 'Giữ suất trải nghiệm cho bé',
+  heroImage: '/brand/hero-classroom.png',
+  heroImageAlt: 'Học sinh Metta Academy học tập vui vẻ',
+  benefitsTitle: 'Con nhận được gì tại Metta+?',
+  benefitsDesc: 'Một chương trình - nhiều kỹ năng nền tảng.',
+  benefits: [
+    { title: 'GVNN 100%', desc: 'Phản xạ tự nhiên.', icon: 'Users', color: 'blue' },
+    { title: 'STEM & Robotics', desc: 'Học bằng thực hành.', icon: 'Bot', color: 'green' },
+    { title: 'Tự tin thuyết trình', desc: 'Dám nói, dám thể hiện.', icon: 'Mic2', color: 'pink' },
+    { title: 'Học qua dự án', desc: 'Có sản phẩm thật.', icon: 'Lightbulb', color: 'yellow' },
+    { title: 'Metta Passport', desc: 'Lưu dấu tiến bộ.', icon: 'FileBadge2', color: 'purple' },
+    { title: 'Trải nghiệm trước', desc: 'Dễ chọn lộ trình.', icon: 'CalendarCheck', color: 'orange' },
+  ],
+  agesTitle: 'Chọn CLB theo độ tuổi của bé',
+  agesDesc: 'Mỗi độ tuổi có một hành trình khám phá riêng.',
+  ageGroups: [
+    { title: 'Mầm non', desc: 'Show & Tell, Phonics, Tiny Builders.', icon: 'Star', color: 'orange' },
+    { title: 'Tiểu học bé', desc: 'Storytelling, Writing, Robo Code.', icon: 'Palette', color: 'green' },
+    { title: 'Tiểu học lớn', desc: 'Public Speaking, Grammar, STEM.', icon: 'Rocket', color: 'blue' },
+    { title: 'THCS', desc: 'Debate, Essay, AI & Robotics.', icon: 'GraduationCap', color: 'purple' },
+  ],
+  passTitle: 'Một chiếc Pass - nhiều trải nghiệm',
+  passDesc: 'Cho con thử môi trường học thật trước khi đăng ký khóa dài hạn.',
+  passCardTitle: 'Summer Club',
+  passCardMeta: '4-15 tuổi · CLB hè · Showcase Day',
+  passItems: ['Tham gia CLB phù hợp độ tuổi', 'Học kỹ năng với GVNN', 'Thực hành STEM Robotics', 'Có Metta Passport cá nhân', 'Tham gia Showcase cuối khóa'],
+  passCta: 'Nhận tư vấn Metta+ Pass',
+  journeyTitle: 'Hành trình Metta+ của bé',
+  journeyDesc: 'Từ trải nghiệm đến tự tin thể hiện.',
+  journey: [
+    { title: 'Đăng ký Pass', desc: 'Nhận tư vấn lộ trình.', icon: 'ClipboardList', color: 'orange' },
+    { title: 'Chọn CLB', desc: 'Theo tuổi và sở thích.', icon: 'Compass', color: 'blue' },
+    { title: 'Học & thực hành', desc: 'Làm dự án thật.', icon: 'Bot', color: 'green' },
+    { title: 'Showcase Day', desc: 'Tỏa sáng trước bố mẹ.', icon: 'Trophy', color: 'pink' },
+  ],
+  reasonsTitle: 'Vì sao phụ huynh chọn Metta+?',
+  reasonsDesc: 'Trải nghiệm gọn, đầu ra rõ, con học thật.',
+  reasons: [
+    { title: 'Môi trường quốc tế', desc: 'Học tập chủ động.', icon: 'Sparkles', color: 'blue' },
+    { title: 'Giáo viên chất lượng', desc: 'Đồng hành sát sao.', icon: 'BadgeCheck', color: 'green' },
+    { title: 'Nội dung thực tế', desc: 'Không học chay.', icon: 'Lightbulb', color: 'yellow' },
+    { title: 'Có đầu ra rõ ràng', desc: 'Dự án, chứng chỉ, passport.', icon: 'Trophy', color: 'purple' },
+    { title: 'Phụ huynh dễ quyết định', desc: 'Trải nghiệm trước, chọn sau.', icon: 'CheckCircle2', color: 'orange' },
+  ],
+  formTitle: 'Đăng ký tư vấn Metta+ Pass',
+  formDesc: 'Để lại thông tin, Metta Academy sẽ tư vấn CLB phù hợp cho bé.',
+  formHighlights: ['Tư vấn CLB theo tuổi', 'Giữ suất trải nghiệm', 'Gợi ý lộ trình hè'],
+  formCta: 'Nhận tư vấn ngay',
+  footerSubtitle: 'Metta+ Summer Club',
+  footerCta: 'Nhận tư vấn ngay',
+};
+
+function MettaPlusCardsEditor({ label, cards, onChange }: { label: string; cards: MettaPlusCard[]; onChange: (next: MettaPlusCard[]) => void }) {
+  function update(index: number, patch: Partial<MettaPlusCard>) {
+    onChange(cards.map((card, i) => (i === index ? { ...card, ...patch } : card)));
+  }
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div className="flex flex-col gap-2">
+        {cards.map((card, index) => (
+          <div key={index} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Card {index + 1}</span>
+              <button type="button" onClick={() => onChange(cards.filter((_, i) => i !== index))} className="text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div><Label>Tiêu đề</Label><Input value={card.title} onChange={(e) => update(index, { title: e.target.value })} /></div>
+              <div><Label>Mô tả 1 dòng</Label><Input value={card.desc} onChange={(e) => update(index, { desc: e.target.value })} /></div>
+              <div><Label>Icon</Label><Select value={card.icon} onChange={(e) => update(index, { icon: e.target.value as MettaPlusIcon })}>{METTA_PLUS_ICON_OPTIONS.map((icon) => <option key={icon} value={icon}>{icon}</option>)}</Select></div>
+              <div><Label>Màu card</Label><Select value={card.color} onChange={(e) => update(index, { color: e.target.value as MettaPlusColor })}>{METTA_PLUS_COLOR_OPTIONS.map((color) => <option key={color.value} value={color.value}>{color.label}</option>)}</Select></div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...cards, { title: 'Card mới', desc: 'Mô tả ngắn.', icon: 'Star', color: 'orange' }])} className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"><Plus size={13} /> Thêm card</button>
+      </div>
+    </div>
+  );
+}
+
+function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [data, setData] = useState<MettaPlusData>(() => ({ ...DEFAULT_METTA_PLUS_DATA, ...parseObj(value, DEFAULT_METTA_PLUS_DATA) }));
+  function sync(next: MettaPlusData) { setData(next); onChange(JSON.stringify(next)); }
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-orange-200 bg-orange-50/40 p-3">
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Badge hero</Label><Input value={data.heroBadge} onChange={(e) => sync({ ...data, heroBadge: e.target.value })} /></FieldCol>
+        <FieldCol><Label>CTA chính hero</Label><Input value={data.heroPrimaryCta} onChange={(e) => sync({ ...data, heroPrimaryCta: e.target.value })} /></FieldCol>
+        <FieldCol span2><Label>Headline</Label><Textarea value={data.headline} onChange={(e) => sync({ ...data, headline: e.target.value })} className="h-16" /></FieldCol>
+        <FieldCol span2><Label>Sub headline</Label><Textarea value={data.subHeadline} onChange={(e) => sync({ ...data, subHeadline: e.target.value })} className="h-16" /></FieldCol>
+        <FieldCol span2><Label>Mô tả ngắn</Label><Input value={data.shortDescription} onChange={(e) => sync({ ...data, shortDescription: e.target.value })} /></FieldCol>
+        <FieldCol><Label>CTA phụ hero</Label><Input value={data.heroSecondaryCta} onChange={(e) => sync({ ...data, heroSecondaryCta: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Alt ảnh hero</Label><Input value={data.heroImageAlt} onChange={(e) => sync({ ...data, heroImageAlt: e.target.value })} /></FieldCol>
+      </div>
+      <ImageUploader value={data.heroImage} onChange={(heroImage) => sync({ ...data, heroImage })} sizeNote="Hero ngang 4:3 · 1200 x 900 px" label="Ảnh hero bên phải" />
+      <StringListEditor label="Tag nhỏ hero" items={data.heroTags} placeholder="VD: STEM Robotics" onChange={(heroTags) => sync({ ...data, heroTags })} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề section lợi ích</Label><Input value={data.benefitsTitle} onChange={(e) => sync({ ...data, benefitsTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả section lợi ích</Label><Input value={data.benefitsDesc} onChange={(e) => sync({ ...data, benefitsDesc: e.target.value })} /></FieldCol>
+      </div>
+      <MettaPlusCardsEditor label="6 card: Con nhận được gì?" cards={data.benefits} onChange={(benefits) => sync({ ...data, benefits })} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề section độ tuổi</Label><Input value={data.agesTitle} onChange={(e) => sync({ ...data, agesTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả section độ tuổi</Label><Input value={data.agesDesc} onChange={(e) => sync({ ...data, agesDesc: e.target.value })} /></FieldCol>
+      </div>
+      <MettaPlusCardsEditor label="4 card: CLB theo độ tuổi" cards={data.ageGroups} onChange={(ageGroups) => sync({ ...data, ageGroups })} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề Pass</Label><Input value={data.passTitle} onChange={(e) => sync({ ...data, passTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả Pass</Label><Input value={data.passDesc} onChange={(e) => sync({ ...data, passDesc: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Tên trên card Pass</Label><Input value={data.passCardTitle} onChange={(e) => sync({ ...data, passCardTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Meta trên card Pass</Label><Input value={data.passCardMeta} onChange={(e) => sync({ ...data, passCardMeta: e.target.value })} /></FieldCol>
+        <FieldCol span2><Label>CTA Pass</Label><Input value={data.passCta} onChange={(e) => sync({ ...data, passCta: e.target.value })} /></FieldCol>
+      </div>
+      <StringListEditor label="Checklist trong Pass" items={data.passItems} placeholder="VD: Tham gia CLB phù hợp độ tuổi" onChange={(passItems) => sync({ ...data, passItems })} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề hành trình</Label><Input value={data.journeyTitle} onChange={(e) => sync({ ...data, journeyTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả hành trình</Label><Input value={data.journeyDesc} onChange={(e) => sync({ ...data, journeyDesc: e.target.value })} /></FieldCol>
+      </div>
+      <MettaPlusCardsEditor label="4 bước hành trình" cards={data.journey} onChange={(journey) => sync({ ...data, journey })} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề vì sao chọn</Label><Input value={data.reasonsTitle} onChange={(e) => sync({ ...data, reasonsTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả vì sao chọn</Label><Input value={data.reasonsDesc} onChange={(e) => sync({ ...data, reasonsDesc: e.target.value })} /></FieldCol>
+      </div>
+      <MettaPlusCardsEditor label="5 card: Vì sao phụ huynh chọn?" cards={data.reasons} onChange={(reasons) => sync({ ...data, reasons })} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề form</Label><Input value={data.formTitle} onChange={(e) => sync({ ...data, formTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>CTA form</Label><Input value={data.formCta} onChange={(e) => sync({ ...data, formCta: e.target.value })} /></FieldCol>
+        <FieldCol span2><Label>Mô tả form</Label><Textarea value={data.formDesc} onChange={(e) => sync({ ...data, formDesc: e.target.value })} className="h-16" /></FieldCol>
+      </div>
+      <StringListEditor label="Gạch đầu dòng cạnh form" items={data.formHighlights} placeholder="VD: Tư vấn CLB theo tuổi" onChange={(formHighlights) => sync({ ...data, formHighlights })} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Footer subtitle</Label><Input value={data.footerSubtitle} onChange={(e) => sync({ ...data, footerSubtitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Footer CTA</Label><Input value={data.footerCta} onChange={(e) => sync({ ...data, footerCta: e.target.value })} /></FieldCol>
+      </div>
+    </div>
+  );
+}
+
 const TYPE_COLOR: Record<string, string> = {
   Hero: 'bg-orange-100 text-orange-800',
   Stats: 'bg-cyan-100 text-cyan-800',
@@ -954,6 +1151,7 @@ const TYPE_COLOR: Record<string, string> = {
   'Ebook Hero': 'bg-sky-100 text-sky-800',
   'Ebook Skills': 'bg-blue-100 text-blue-800',
   'Ebook Why': 'bg-indigo-100 text-indigo-800',
+  'Metta+ Landing': 'bg-orange-100 text-orange-800',
 };
 
 function SectionEditor({
@@ -1129,6 +1327,14 @@ function SectionEditor({
           <>
             <FieldCol><Label>Tiêu đề form *</Label><Input value={val.title} onChange={(e) => set({ title: e.target.value })} /></FieldCol>
             <FieldCol><Label>Form ID</Label><Input value={val.formId || ''} onChange={(e) => set({ formId: e.target.value })} /></FieldCol>
+          </>
+        )}
+
+        {val.type === 'Metta+ Landing' && (
+          <>
+            <FieldCol><Label>Tên section trong admin</Label><Input value={val.title} onChange={(e) => set({ title: e.target.value })} /></FieldCol>
+            <FieldCol><Label>Form ID</Label><Input value={val.formId || ''} onChange={(e) => set({ formId: e.target.value })} placeholder="metta-plus-pass" /></FieldCol>
+            <MettaPlusEditor value={val.extraData || ''} onChange={(v) => set({ extraData: v })} />
           </>
         )}
 

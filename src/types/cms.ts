@@ -17,7 +17,8 @@ export type BlockType =
   // Landing "Sách tiền tiểu học" (ebook) — dùng cho trang landing-page-phonics
   | 'Ebook Hero'
   | 'Ebook Skills'
-  | 'Ebook Why';
+  | 'Ebook Why'
+  | 'Metta+ Landing';
 
 export interface HighlightCard {
   icon: string;        // Lucide icon name, e.g. "Music", "BookOpen"

@@ -414,6 +414,8 @@ export const pages: CmsPage[] = [
   { id: 'page-home', title: 'Homepage', slug: 'homepage', metaTitle: 'METTA Academy', metaDescription: 'Trung tâm tiếng Anh trẻ em.', status: 'published', createdAt: now, updatedAt: now },
   { id: 'page-phonics', title: 'Landing Page Phonics', slug: 'landing-page-phonics', metaTitle: 'Phonics METTA', metaDescription: 'Chương trình phát âm và ghép âm.', status: 'published', createdAt: now, updatedAt: now },
   { id: 'page-ebook', title: 'Landing Page Ebook', slug: 'landing-page-ebook', metaTitle: 'Ebook học tiếng Anh', metaDescription: 'Tải ebook mi�&n phí.', status: 'draft', createdAt: now, updatedAt: now }
+  ,
+  { id: 'page-metta-plus', title: 'Metta+ Pass', slug: 'metta-plus', metaTitle: 'Metta+ Pass | METTA Academy', metaDescription: 'Dang ky tu van CLB he Metta+ voi Tieng Anh, Ky nang va STEM Robotics tai METTA Academy.', status: 'published', createdAt: now, updatedAt: now }
 ];
 
 export const sections: PageSection[] = [
@@ -519,6 +521,7 @@ export const sections: PageSection[] = [
   /* ���� Phonics landing page ���� */
   { id: 'sec-p1', pageId: 'page-phonics', type: 'Hero', title: 'Phonics tại METTA', subtitle: 'Nền tảng phát âm chuẩn bản xứ', description: 'Giúp học sinh nhận di�!n âm, ghép âm, �ọc và phát âm tiếng Anh tự tin như người bản ngữ.', imageUrl: '/brand/hero-classroom.png', buttonText: 'ĐĒng ký học thử', buttonLink: '#lead-form', order: 1, visible: true, createdAt: now, updatedAt: now },
   { id: 'sec-p2', pageId: 'page-phonics', type: 'Lead Form', title: 'Nhận tư vấn khóa Phonics', formId: 'phonics-form', order: 2, visible: true, createdAt: now, updatedAt: now },
+  { id: 'sec-metta-plus-1', pageId: 'page-metta-plus', type: 'Metta+ Landing', title: 'Landing Metta+ Pass', imageUrl: '/brand/hero-classroom.png', formId: 'metta-plus-pass', extraData: '', order: 1, visible: true, createdAt: now, updatedAt: now },
 ];
 
 export const mediaItems: MediaItem[] = [

@@ -73,6 +73,7 @@ const PublicNewsPage = lazyWithRetry(() => import('@/pages/public/PublicNewsPage
 const PublicProgramDetailPage = lazyWithRetry(() => import('@/pages/public/PublicProgramDetailPage'));
 const PublicPageRouter = lazyWithRetry(() => import('@/pages/public/PublicPageRouter'));
 const PublicEbookLanding = lazyWithRetry(() => import('@/pages/public/PublicEbookLanding'));
+const MettaPlusLanding = lazyWithRetry(() => import('@/pages/public/MettaPlusLanding'));
 
 const LoginPage = lazyWithRetry(() => import('@/pages/LoginPage'));
 
@@ -124,6 +125,9 @@ export default function App() {
             <Route path="/p/landing-page-phonics" element={<PublicEbookLanding />} />
             <Route path="/p/ebook-mam-non" element={<PublicEbookLanding />} />
             <Route path="/lp/sach-tien-tieu-hoc" element={<PublicEbookLanding />} />
+            <Route path="/metta-plus" element={<MettaPlusLanding />} />
+            <Route path="/lp/metta-plus" element={<MettaPlusLanding />} />
+            <Route path="/p/metta-plus" element={<MettaPlusLanding />} />
             <Route path="/p/:slug" element={<PublicPageRouter />} />
             <Route element={<PublicLayout />}>
               <Route path="/" element={<PublicHomePage />} />

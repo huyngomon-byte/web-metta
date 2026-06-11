@@ -351,6 +351,10 @@ function hasEbookLanding(items: PageSection[]) {
   return items.some((section) => section.type === 'Ebook Hero');
 }
 
+function hasMettaPlusLanding(items: PageSection[]) {
+  return items.some((section) => section.type === 'Metta+ Landing');
+}
+
 function fallbackSectionsForPage(pageId: string) {
   return sortSections(normalizeCmsValue(seedSections.filter((section) => section.pageId === pageId)));
 }
@@ -651,12 +655,14 @@ export const cmsService = {
       store.sections = [...otherSections, ...remote];
       persistCMS();
       if (pageId === 'page-phonics' && !hasEbookLanding(remote)) return delay(fallbackSectionsForPage(pageId));
+      if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(remote)) return delay(fallbackSectionsForPage(pageId));
       return delay(pageId === 'page-home' ? ensureFacilitiesSection(remote) : remote);
     }
     const local = sortSections(store.sections.filter((section) => section.pageId === pageId));
     const mergedLocal = pageId === 'page-home' ? ensureFacilitiesSection(mergeHomepageDefaults(local)) : local;
     if (pageId === 'page-home' && !hasUsableHomepageSections(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
     if (pageId === 'page-phonics' && !hasEbookLanding(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
+    if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
     return delay(mergedLocal);
   },
 
@@ -667,6 +673,9 @@ export const cmsService = {
       return fallbackSectionsForPage(pageId).filter((section) => section.visible);
     }
     if (pageId === 'page-phonics' && !hasEbookLanding(visible)) {
+      return fallbackSectionsForPage(pageId).filter((section) => section.visible);
+    }
+    if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(visible)) {
       return fallbackSectionsForPage(pageId).filter((section) => section.visible);
     }
     if (visible.length) return visible;
