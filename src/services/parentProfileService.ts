@@ -7,7 +7,7 @@ import {
   query,
   setDoc,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import type { Lead } from '@/types/crm';
 
 export interface ParentProfile {
@@ -176,6 +176,24 @@ function writeLocalProfiles(items: ParentProfile[], notify = true) {
   if (notify) dispatchUpdate();
 }
 
+async function parentProfilesApi<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T | null> {
+  const token = await auth?.currentUser?.getIdToken().catch(() => '');
+  if (!token) return null;
+  const response = await fetch('/api/parent-profiles', {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error || 'Parent profile sync failed.');
+  }
+  return response.json().catch(() => ({})) as Promise<T>;
+}
+
 async function writeFirestoreProfile(profile: ParentProfile) {
   if (!USE_FIREBASE) return;
   await setDoc(doc(db!, COL_PARENT_PROFILES, profile.id), stripUndefined(profile), { merge: true });
@@ -200,7 +218,39 @@ async function readFirestoreProfiles() {
   return mergeProfiles(profiles.filter((item) => !isSampleParentProfile(item)));
 }
 
-async function syncProfilesToFirestore(profiles: ParentProfile[]) {
+async function readRemoteProfiles() {
+  const apiPayload = await parentProfilesApi<{ profiles?: ParentProfile[] }>('GET').catch((error) => {
+    console.warn('[ParentProfiles] API read failed, trying Firestore:', error);
+    return null;
+  });
+  if (apiPayload?.profiles) return mergeProfiles(apiPayload.profiles);
+  return readFirestoreProfiles();
+}
+
+async function writeRemoteProfile(profile: ParentProfile) {
+  const apiPayload = await parentProfilesApi<{ profile?: ParentProfile; skipped?: boolean }>('POST', profile).catch((error) => {
+    console.warn('[ParentProfiles] API save failed, trying Firestore:', error);
+    return null;
+  });
+  if (apiPayload) return;
+  await writeFirestoreProfile(profile);
+}
+
+async function deleteRemoteProfile(id: string) {
+  const apiPayload = await parentProfilesApi<{ ok?: boolean }>('DELETE', { id }).catch((error) => {
+    console.warn('[ParentProfiles] API delete failed, trying Firestore:', error);
+    return null;
+  });
+  if (apiPayload) return;
+  await deleteFirestoreProfile(id);
+}
+
+async function syncProfilesToRemote(profiles: ParentProfile[]) {
+  const apiPayload = await parentProfilesApi<{ profiles?: ParentProfile[] }>('PUT', { profiles }).catch((error) => {
+    console.warn('[ParentProfiles] API bulk sync failed, trying Firestore:', error);
+    return null;
+  });
+  if (apiPayload) return;
   if (!USE_FIREBASE) return;
   await Promise.all(profiles.map((profile) => writeFirestoreProfile(profile).catch((error) => {
     console.warn('[ParentProfiles] Firestore write failed:', error);
@@ -213,11 +263,11 @@ export const parentProfileService = {
     if (!USE_FIREBASE) return localProfiles;
 
     try {
-      const firestoreProfiles = await readFirestoreProfiles();
-      let profiles = firestoreProfiles;
+      const remoteProfiles = await readRemoteProfiles();
+      let profiles = remoteProfiles;
       if (localProfiles.length && !localStorage.getItem(LS_FIRESTORE_MIGRATION)) {
-        profiles = mergeProfiles([...firestoreProfiles, ...localProfiles]);
-        await syncProfilesToFirestore(profiles);
+        profiles = mergeProfiles([...remoteProfiles, ...localProfiles]);
+        await syncProfilesToRemote(profiles);
         localStorage.setItem(LS_FIRESTORE_MIGRATION, '1');
       }
       writeLocalProfiles(profiles, false);
@@ -245,9 +295,9 @@ export const parentProfileService = {
     const nextProfiles = mergeProfiles([saved, ...profiles.filter((item) => item.id !== saved.id && normalizeParentPhone(item.phone) !== phone)]);
     writeLocalProfiles(nextProfiles);
     try {
-      await writeFirestoreProfile(saved);
+      await writeRemoteProfile(saved);
     } catch (error) {
-      console.warn('[ParentProfiles] Firestore save failed, keeping local cache:', error);
+      console.warn('[ParentProfiles] Remote save failed, keeping local cache:', error);
     }
     return saved;
   },
@@ -256,9 +306,9 @@ export const parentProfileService = {
     const profiles = await parentProfileService.getProfiles();
     writeLocalProfiles(profiles.filter((item) => item.id !== id));
     try {
-      await deleteFirestoreProfile(id);
+      await deleteRemoteProfile(id);
     } catch (error) {
-      console.warn('[ParentProfiles] Firestore delete failed:', error);
+      console.warn('[ParentProfiles] Remote delete failed:', error);
     }
     return true;
   },
@@ -287,7 +337,7 @@ export const parentProfileService = {
     if (!generated.length) return profiles;
     const nextProfiles = mergeProfiles([...profiles, ...generated]);
     writeLocalProfiles(nextProfiles);
-    await syncProfilesToFirestore(generated);
+    await syncProfilesToRemote(generated);
     return nextProfiles;
   },
 };
