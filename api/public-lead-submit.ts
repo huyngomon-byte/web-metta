@@ -105,13 +105,19 @@ function originFromRequest(req: VercelRequest) {
   return `${Array.isArray(proto) ? proto[0] : proto}://${Array.isArray(host) ? host[0] : host}`;
 }
 
+function cleanName(value?: string) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const lead = req.body || {};
   if (lead.company || lead.website) return res.status(200).json({ ok: true, spam: true });
-  const name = String(lead.fullName || lead.studentName || lead.parentName || '').trim();
-  if (!name || !lead.phone) return res.status(400).json({ error: 'name and phone are required' });
+  const legacyName = cleanName(lead.fullName);
+  const parentName = cleanName(lead.parentName || (lead.contactType === 'parent' ? legacyName : ''));
+  const studentName = cleanName(lead.studentName || (lead.contactType === 'student' ? legacyName : ''));
+  if (!parentName || !studentName || !lead.phone) return res.status(400).json({ error: 'parentName, studentName and phone are required' });
   if (lead.interestedCourse && !COURSE_OPTIONS.includes(lead.interestedCourse)) return res.status(400).json({ error: 'Invalid interestedCourse' });
   if (!isValidEmail(lead.email)) return res.status(400).json({ error: 'Invalid email' });
 
@@ -143,14 +149,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (String(source).toLowerCase() === 'referral' && !isValidPhone(referralPhone)) {
     return res.status(400).json({ error: 'Referral source requires a valid referralPhone' });
   }
-  const parentName = lead.parentName ? String(lead.parentName).trim() : (lead.contactType === 'parent' ? name : '');
-  const studentName = lead.studentName ? String(lead.studentName).trim() : (lead.contactType === 'student' ? name : '');
   const leadRef = db.collection('leads').doc();
   const sourceUrl = lead.sourceUrl || `${originFromRequest(req)}/${lead.pageSlug || ''}`;
 
   const payload = {
     id: leadRef.id,
-    fullName: studentName || parentName || name,
+    fullName: studentName,
     parentName,
     studentName,
     phone,
@@ -199,6 +203,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   await leadRef.set(payload);
+
+  const parentProfileId = `parent-${phone}`;
+  const parentProfileRef = db.collection('parentProfiles').doc(parentProfileId);
+  const parentProfileSnap = await parentProfileRef.get().catch(() => null);
+  const existingParentProfile = parentProfileSnap?.exists ? parentProfileSnap.data() || {} : {};
+  await parentProfileRef.set({
+    id: parentProfileId,
+    phone,
+    parentName,
+    email: payload.email || existingParentProfile.email || '',
+    occupation: existingParentProfile.occupation || '',
+    workplace: existingParentProfile.workplace || '',
+    incomeRange: existingParentProfile.incomeRange || '',
+    knownFrom: existingParentProfile.knownFrom || source,
+    numberOfChildren: existingParentProfile.numberOfChildren || '',
+    address: existingParentProfile.address || '',
+    preferredContactChannel: existingParentProfile.preferredContactChannel || 'Phone/Zalo',
+    notes: existingParentProfile.notes || '',
+    createdAt: existingParentProfile.createdAt || now,
+    updatedAt: now,
+  }, { merge: true });
 
   const capiRef = db.collection('capiEvents').doc();
   await capiRef.set({

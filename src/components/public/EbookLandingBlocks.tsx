@@ -103,7 +103,7 @@ type HeroFormConfig = {
 };
 
 function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tuổi của bé', selectPlaceholder = 'Chọn độ tuổi', selectOptions = AGE_OPTIONS, buttonText = 'Tải sách miễn phí', noteLabel = 'Tải sách tiền tiểu học (CCSS)', pixelContent = 'Preschool Ebook' }: HeroFormConfig) {
-  const [form, setForm] = useState({ parentName: '', phone: '', age: '' });
+  const [form, setForm] = useState({ parentName: '', studentName: '', phone: '', age: '' });
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
@@ -115,14 +115,16 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
     const fd = new FormData(e.currentTarget);
     if (fd.get('company') || fd.get('website')) return;
     if (!form.parentName.trim()) return setError('Vui lòng nhập họ tên phụ huynh.');
+    if (!form.studentName.trim()) return setError('Vui lòng nhập họ tên bé.');
     const phone = form.phone.replace(/[\s.\-()]/g, '').replace(/^\+84/, '0');
     if (!/^0(3|5|7|8|9|1[2689])\d{8}$/.test(phone)) return setError('Số điện thoại chưa hợp lệ.');
     setLoading(true);
     try {
       await leadService.publicSubmit(
         {
-          fullName: form.parentName.trim(),
+          fullName: form.studentName.trim(),
           parentName: form.parentName.trim(),
+          studentName: form.studentName.trim(),
           contactType: 'parent',
           phone,
           age: form.age,
@@ -169,7 +171,11 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
         <input className={inputCls} placeholder="VD: Nguyễn Thị Hương" value={form.parentName} onChange={(e) => set('parentName', e.target.value)} required />
       </label>
       <label className="block">
-        <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">Số điện thoại *</span>
+        <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">Họ tên bé *</span>
+        <input className={inputCls} placeholder="VD: Nguyễn Minh Anh" value={form.studentName} onChange={(e) => set('studentName', e.target.value)} required />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">Số điện thoại phụ huynh *</span>
         <input className={inputCls} placeholder="VD: 090 123 4567" inputMode="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} required />
       </label>
       <label className="block">

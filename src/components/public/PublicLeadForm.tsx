@@ -1,6 +1,12 @@
 import { useState } from 'react';
 import { leadService } from '@/services/leadService';
 
+const phoneRegex = /^0(3|5|7|8|9|1[2689])\d{8}$/;
+
+function normalizePhone(phone: string) {
+  return phone.replace(/[\s.\-()]/g, '').replace(/^\+84/, '0');
+}
+
 export function PublicLeadForm({
   formId = 'consultation-form',
   title = 'Đăng ký tư vấn miễn phí',
@@ -8,7 +14,7 @@ export function PublicLeadForm({
   formId?: string;
   title?: string;
 }) {
-  const [form, setForm] = useState({ fullName: '', phone: '' });
+  const [form, setForm] = useState({ parentName: '', studentName: '', phone: '' });
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -20,14 +26,20 @@ export function PublicLeadForm({
     setMessage('');
     const formData = new FormData(e.currentTarget as HTMLFormElement);
 
-    if (!form.fullName.trim()) {
-      setMessage('Vui lòng nhập họ và tên bé.');
+    const parentName = form.parentName.trim();
+    const studentName = form.studentName.trim();
+    const phoneNormalized = normalizePhone(form.phone);
+
+    if (!parentName) {
+      setMessage('Vui lòng nhập họ tên phụ huynh.');
       return;
     }
-
-    const phoneNormalized = form.phone.replace(/[\s.\-()]/g, '').replace(/^\+84/, '0');
-    if (!/^0(3|5|7|8|9|1[2689])\d{8}$/.test(phoneNormalized)) {
-      setMessage('Vui lòng nhập số điện thoại hợp lệ.');
+    if (!studentName) {
+      setMessage('Vui lòng nhập họ tên bé.');
+      return;
+    }
+    if (!phoneRegex.test(phoneNormalized)) {
+      setMessage('Vui lòng nhập số điện thoại phụ huynh hợp lệ.');
       return;
     }
 
@@ -35,7 +47,9 @@ export function PublicLeadForm({
     try {
       await leadService.publicSubmit(
         {
-          fullName: form.fullName.trim(),
+          fullName: studentName,
+          parentName,
+          studentName,
           phone: phoneNormalized,
           contactType: 'parent',
           source: 'Website',
@@ -44,7 +58,7 @@ export function PublicLeadForm({
         },
         formId,
       );
-      setForm({ fullName: '', phone: '' });
+      setForm({ parentName: '', studentName: '', phone: '' });
       setMessage('METTA đã nhận thông tin. Tư vấn viên sẽ liên hệ sớm!');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Không gửi được thông tin. Vui lòng thử lại.');
@@ -67,7 +81,7 @@ export function PublicLeadForm({
               </div>
               <h2 className="font-montserrat font-bold text-[28px] lg:text-[36px] leading-tight mb-4">{title}</h2>
               <p className="text-surface-variant text-sm leading-7 mb-8">
-                Để lại tên bé và số điện thoại, tư vấn viên METTA sẽ liên hệ trong vòng <strong className="text-pure-white">24 giờ</strong>.
+                Để lại tên phụ huynh, tên bé và số điện thoại. Tư vấn viên METTA sẽ liên hệ trong vòng <strong className="text-pure-white">24 giờ</strong>.
               </p>
               <ul className="space-y-3">
                 {[
@@ -89,23 +103,36 @@ export function PublicLeadForm({
               <input className="hidden" name="company" tabIndex={-1} autoComplete="off" aria-hidden="true" />
               <input className="hidden" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" />
               <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Họ và tên bé *</label>
+                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Họ tên phụ huynh *</label>
                 <input
                   className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
-                  placeholder="VD: Nguyễn Minh Anh"
-                  value={form.fullName}
-                  onChange={(e) => set('fullName', e.target.value)}
+                  placeholder="VD: Nguyễn Thị Hương"
+                  value={form.parentName}
+                  onChange={(e) => set('parentName', e.target.value)}
+                  autoComplete="name"
                   required
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Số điện thoại *</label>
+                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Họ tên bé *</label>
+                <input
+                  className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
+                  placeholder="VD: Nguyễn Minh Anh"
+                  value={form.studentName}
+                  onChange={(e) => set('studentName', e.target.value)}
+                  autoComplete="off"
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] font-semibold text-navy-deep tracking-wide">Số điện thoại phụ huynh *</label>
                 <input
                   className="border border-outline-variant rounded-sm px-3 py-2.5 text-sm focus:border-navy-deep focus:ring-0 outline-none"
                   placeholder="090 123 4567"
                   inputMode="tel"
                   value={form.phone}
                   onChange={(e) => set('phone', e.target.value)}
+                  autoComplete="tel"
                   required
                 />
               </div>

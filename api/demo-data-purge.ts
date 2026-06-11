@@ -53,12 +53,12 @@ function textIncludesDemo(values: unknown[]) {
 
 function isDemoLead(data: FirestoreData, id: string) {
   return isDemoLeadId(id)
-    || isSampleEmail(data.email)
+    || isSampleEmail(String(data.email || ''))
     || textIncludesDemo([data.initialNote, data.dealNote, data.lostNote, data.notes]);
 }
 
 function isDemoParentProfile(data: FirestoreData, id: string) {
-  return isSampleEmail(data.email)
+  return isSampleEmail(String(data.email || ''))
     || textIncludesDemo([id, data.email, data.notes, data.knownFrom]);
 }
 

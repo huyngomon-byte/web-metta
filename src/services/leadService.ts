@@ -288,7 +288,7 @@ async function deleteFirestoreDemoDependencies(demoLeadIds: Set<string>) {
     })
     .map((item) => item.id);
   const demoAppointments = appointmentSnap.docs
-    .filter((item) => isDemoAppointment({ id: item.id, ...(item.data() as Appointment) }, demoLeadIds))
+    .filter((item) => isDemoAppointment({ ...(item.data() as Appointment), id: item.id }, demoLeadIds))
     .map((item) => item.id);
 
   await Promise.all([
@@ -806,14 +806,17 @@ export const leadService = {
   },
 
   publicSubmit: async (lead: PublicLeadSubmitInput, formId = 'consultation-form') => {
-    const displayName = leadDisplayName(lead);
-    if (!displayName || !lead.phone) throw new Error('Thiếu họ tên hoặc số điện thoại.');
+    const parentName = String(lead.parentName || '').replace(/\s+/g, ' ').trim();
+    const studentName = String(lead.studentName || lead.fullName || '').replace(/\s+/g, ' ').trim();
+    if (!parentName || !studentName || !lead.phone) throw new Error('Thiếu họ tên phụ huynh, họ tên bé hoặc số điện thoại.');
     const response = await fetch('/api/public-lead-submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...lead,
-        fullName: displayName,
+        fullName: studentName,
+        parentName,
+        studentName,
         formId,
         sourceUrl: lead.sourceUrl || window.location.href,
         pageSlug: lead.pageSlug || window.location.pathname.replace(/^\/+/, ''),

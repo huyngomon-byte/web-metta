@@ -141,7 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (req.method === 'PUT') {
-      const profiles = Array.isArray(req.body?.profiles) ? req.body.profiles.map(normalizeProfile) : [];
+      const profiles: ParentProfile[] = Array.isArray(req.body?.profiles) ? req.body.profiles.map(normalizeProfile) : [];
       const cleanProfiles = profiles.filter((profile) => profile.phone && !isSampleParentProfile(profile));
       for (let i = 0; i < cleanProfiles.length; i += 450) {
         const batch = db.batch();
