@@ -129,7 +129,6 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
           phone,
           age: form.age,
           source: 'Landing Page',
-          interestedCourse: 'METTA on Phonics',
           initialNote: [noteLabel, form.age && `${selectLabel}: ${form.age}`].filter(Boolean).join(' · '),
           company: String(fd.get('company') || ''),
           website: String(fd.get('website') || ''),
