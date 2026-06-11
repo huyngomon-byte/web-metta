@@ -521,7 +521,83 @@ export const sections: PageSection[] = [
   /* ���� Phonics landing page ���� */
   { id: 'sec-p1', pageId: 'page-phonics', type: 'Hero', title: 'Phonics tại METTA', subtitle: 'Nền tảng phát âm chuẩn bản xứ', description: 'Giúp học sinh nhận di�!n âm, ghép âm, �ọc và phát âm tiếng Anh tự tin như người bản ngữ.', imageUrl: '/brand/hero-classroom.png', buttonText: 'ĐĒng ký học thử', buttonLink: '#lead-form', order: 1, visible: true, createdAt: now, updatedAt: now },
   { id: 'sec-p2', pageId: 'page-phonics', type: 'Lead Form', title: 'Nhận tư vấn khóa Phonics', formId: 'phonics-form', order: 2, visible: true, createdAt: now, updatedAt: now },
-  { id: 'sec-metta-plus-1', pageId: 'page-metta-plus', type: 'Metta+ Landing', title: 'Landing Metta+ Pass', imageUrl: '/brand/hero-classroom.png', formId: 'metta-plus-pass', extraData: '', order: 1, visible: true, createdAt: now, updatedAt: now },
+  {
+    id: 'sec-metta-plus-hero', pageId: 'page-metta-plus', type: 'Metta+ Hero', order: 1, visible: true, createdAt: now, updatedAt: now,
+    title: 'Mở khóa mùa hè quốc tế cho con',
+    subtitle: 'Trải nghiệm CLB Tiếng Anh, Kỹ năng và STEM Robotics tại Metta Academy.',
+    description: 'Học vui - làm thật - tự tin thể hiện bản thân.',
+    imageUrl: '/brand/hero-classroom.png',
+    buttonText: 'Đăng ký tư vấn ngay',
+    button2Text: 'Giữ suất trải nghiệm cho bé',
+    formId: 'metta-plus-pass',
+    extraData: JSON.stringify({ badge: 'METTA+ PASS', tags: ['4-15 tuổi', 'GVNN', 'STEM Robotics', 'Metta Passport'], imageAlt: 'Học sinh Metta Academy học tập vui vẻ' }),
+  },
+  {
+    id: 'sec-metta-plus-benefits', pageId: 'page-metta-plus', type: 'Metta+ Benefits', order: 2, visible: true, createdAt: now, updatedAt: now,
+    title: 'Con nhận được gì tại Metta+?',
+    subtitle: 'Một chương trình - nhiều kỹ năng nền tảng.',
+    extraData: JSON.stringify([
+      { title: 'GVNN 100%', desc: 'Phản xạ tự nhiên.', icon: 'Users', color: 'blue' },
+      { title: 'STEM & Robotics', desc: 'Học bằng thực hành.', icon: 'Bot', color: 'green' },
+      { title: 'Tự tin thuyết trình', desc: 'Dám nói, dám thể hiện.', icon: 'Mic2', color: 'pink' },
+      { title: 'Học qua dự án', desc: 'Có sản phẩm thật.', icon: 'Lightbulb', color: 'yellow' },
+      { title: 'Metta Passport', desc: 'Lưu dấu tiến bộ.', icon: 'FileBadge2', color: 'purple' },
+      { title: 'Trải nghiệm trước', desc: 'Dễ chọn lộ trình.', icon: 'CalendarCheck', color: 'orange' },
+    ]),
+  },
+  {
+    id: 'sec-metta-plus-ages', pageId: 'page-metta-plus', type: 'Metta+ Age Clubs', order: 3, visible: true, createdAt: now, updatedAt: now,
+    title: 'Chọn CLB theo độ tuổi của bé',
+    subtitle: 'Mỗi độ tuổi có một hành trình khám phá riêng.',
+    extraData: JSON.stringify([
+      { title: 'Mầm non', desc: 'Show & Tell, Phonics, Tiny Builders.', icon: 'Star', color: 'orange' },
+      { title: 'Tiểu học bé', desc: 'Storytelling, Writing, Robo Code.', icon: 'Palette', color: 'green' },
+      { title: 'Tiểu học lớn', desc: 'Public Speaking, Grammar, STEM.', icon: 'Rocket', color: 'blue' },
+      { title: 'THCS', desc: 'Debate, Essay, AI & Robotics.', icon: 'GraduationCap', color: 'purple' },
+    ]),
+  },
+  {
+    id: 'sec-metta-plus-pass', pageId: 'page-metta-plus', type: 'Metta+ Pass', order: 4, visible: true, createdAt: now, updatedAt: now,
+    title: 'Một chiếc Pass - nhiều trải nghiệm',
+    subtitle: 'Cho con thử môi trường học thật trước khi đăng ký khóa dài hạn.',
+    buttonText: 'Nhận tư vấn Metta+ Pass',
+    extraData: JSON.stringify({
+      passCardTitle: 'Summer Club',
+      passCardMeta: '4-15 tuổi · CLB hè · Showcase Day',
+      passItems: ['Tham gia CLB phù hợp độ tuổi', 'Học kỹ năng với GVNN', 'Thực hành STEM Robotics', 'Có Metta Passport cá nhân', 'Tham gia Showcase cuối khóa'],
+    }),
+  },
+  {
+    id: 'sec-metta-plus-journey', pageId: 'page-metta-plus', type: 'Metta+ Journey', order: 5, visible: true, createdAt: now, updatedAt: now,
+    title: 'Hành trình Metta+ của bé',
+    subtitle: 'Từ trải nghiệm đến tự tin thể hiện.',
+    extraData: JSON.stringify([
+      { title: 'Đăng ký Pass', desc: 'Nhận tư vấn lộ trình.', icon: 'ClipboardList', color: 'orange' },
+      { title: 'Chọn CLB', desc: 'Theo tuổi và sở thích.', icon: 'Compass', color: 'blue' },
+      { title: 'Học & thực hành', desc: 'Làm dự án thật.', icon: 'Bot', color: 'green' },
+      { title: 'Showcase Day', desc: 'Tỏa sáng trước bố mẹ.', icon: 'Trophy', color: 'pink' },
+    ]),
+  },
+  {
+    id: 'sec-metta-plus-reasons', pageId: 'page-metta-plus', type: 'Metta+ Reasons', order: 6, visible: true, createdAt: now, updatedAt: now,
+    title: 'Vì sao phụ huynh chọn Metta+?',
+    subtitle: 'Trải nghiệm gọn, đầu ra rõ, con học thật.',
+    extraData: JSON.stringify([
+      { title: 'Môi trường quốc tế', desc: 'Học tập chủ động.', icon: 'Sparkles', color: 'blue' },
+      { title: 'Giáo viên chất lượng', desc: 'Đồng hành sát sao.', icon: 'BadgeCheck', color: 'green' },
+      { title: 'Nội dung thực tế', desc: 'Không học chay.', icon: 'Lightbulb', color: 'yellow' },
+      { title: 'Có đầu ra rõ ràng', desc: 'Dự án, chứng chỉ, passport.', icon: 'Trophy', color: 'purple' },
+      { title: 'Phụ huynh dễ quyết định', desc: 'Trải nghiệm trước, chọn sau.', icon: 'CheckCircle2', color: 'orange' },
+    ]),
+  },
+  {
+    id: 'sec-metta-plus-form', pageId: 'page-metta-plus', type: 'Metta+ Form', order: 7, visible: true, createdAt: now, updatedAt: now,
+    title: 'Đăng ký tư vấn Metta+ Pass',
+    subtitle: 'Để lại thông tin, Metta Academy sẽ tư vấn CLB phù hợp cho bé.',
+    buttonText: 'Nhận tư vấn ngay',
+    formId: 'metta-plus-pass',
+    extraData: JSON.stringify({ highlights: ['Tư vấn CLB theo tuổi', 'Giữ suất trải nghiệm', 'Gợi ý lộ trình hè'] }),
+  },
 ];
 
 export const mediaItems: MediaItem[] = [

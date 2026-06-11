@@ -15,7 +15,9 @@ import type { BlockType, CmsPage, PageSection } from '@/types/cms';
 const BLOCK_TYPES: BlockType[] = [
   'Hero', 'Stats', 'Benefits', 'Courses', 'Facilities', 'Testimonials', 'Teachers', 'News',
   'Lead Form', 'FAQ', 'CTA', 'About', 'Contact', 'Footer',
-  'Ebook Hero', 'Ebook Skills', 'Ebook Why', 'Metta+ Landing',
+  'Ebook Hero', 'Ebook Skills', 'Ebook Why',
+  'Metta+ Hero', 'Metta+ Benefits', 'Metta+ Age Clubs', 'Metta+ Pass',
+  'Metta+ Journey', 'Metta+ Reasons', 'Metta+ Form',
 ];
 
 /* ── ImageUploader (full-size – dùng cho Hero, About) ───────────────── */
@@ -1137,6 +1139,84 @@ function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
+type MettaPlusHeroExtra = { badge?: string; tags?: string[]; imageAlt?: string };
+type MettaPlusPassExtra = { passCardTitle?: string; passCardMeta?: string; passItems?: string[] };
+type MettaPlusFormExtra = { highlights?: string[] };
+
+function MettaPlusHeroSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
+  const extra = parseObj<MettaPlusHeroExtra>(section.extraData, { badge: 'METTA+ PASS', tags: [], imageAlt: '' });
+  const syncExtra = (patch: Partial<MettaPlusHeroExtra>) => onChange({ extraData: JSON.stringify({ ...extra, ...patch }) });
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Badge nhỏ</Label><Input value={extra.badge || ''} onChange={(e) => syncExtra({ badge: e.target.value })} placeholder="METTA+ PASS" /></FieldCol>
+        <FieldCol><Label>CTA chính</Label><Input value={section.buttonText || ''} onChange={(e) => onChange({ buttonText: e.target.value })} /></FieldCol>
+        <FieldCol span2><Label>Headline *</Label><Textarea value={section.title} onChange={(e) => onChange({ title: e.target.value })} className="h-16" /></FieldCol>
+        <FieldCol span2><Label>Sub headline</Label><Textarea value={section.subtitle || ''} onChange={(e) => onChange({ subtitle: e.target.value })} className="h-16" /></FieldCol>
+        <FieldCol span2><Label>Mô tả ngắn</Label><Input value={section.description || ''} onChange={(e) => onChange({ description: e.target.value })} /></FieldCol>
+        <FieldCol><Label>CTA phụ</Label><Input value={section.button2Text || ''} onChange={(e) => onChange({ button2Text: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Alt ảnh hero</Label><Input value={extra.imageAlt || ''} onChange={(e) => syncExtra({ imageAlt: e.target.value })} /></FieldCol>
+      </div>
+      <ImageUploader value={section.imageUrl || ''} onChange={(imageUrl) => onChange({ imageUrl })} sizeNote="Hero ngang 4:3 · 1200 x 900 px" label="Ảnh hero bên phải" />
+      <StringListEditor label="Tag nhỏ hero" items={extra.tags || []} placeholder="VD: STEM Robotics" onChange={(tags) => syncExtra({ tags })} />
+    </>
+  );
+}
+
+function MettaPlusCardsSectionEditor({
+  section,
+  label,
+  fallback,
+  onChange,
+}: {
+  section: PageSection;
+  label: string;
+  fallback: MettaPlusCard[];
+  onChange: (patch: Partial<PageSection>) => void;
+}) {
+  const cards = parseArr<MettaPlusCard>(section.extraData, fallback);
+  return (
+    <>
+      <FieldCol><Label>Tiêu đề section *</Label><Input value={section.title} onChange={(e) => onChange({ title: e.target.value })} /></FieldCol>
+      <FieldCol><Label>Mô tả ngắn</Label><Input value={section.subtitle || section.description || ''} onChange={(e) => onChange({ subtitle: e.target.value, description: e.target.value })} /></FieldCol>
+      <MettaPlusCardsEditor label={label} cards={cards} onChange={(next) => onChange({ extraData: JSON.stringify(next) })} />
+    </>
+  );
+}
+
+function MettaPlusPassSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
+  const extra = parseObj<MettaPlusPassExtra>(section.extraData, { passCardTitle: 'Summer Club', passCardMeta: '', passItems: [] });
+  const syncExtra = (patch: Partial<MettaPlusPassExtra>) => onChange({ extraData: JSON.stringify({ ...extra, ...patch }) });
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề section *</Label><Input value={section.title} onChange={(e) => onChange({ title: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả ngắn</Label><Input value={section.subtitle || section.description || ''} onChange={(e) => onChange({ subtitle: e.target.value, description: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Tên trên card Pass</Label><Input value={extra.passCardTitle || ''} onChange={(e) => syncExtra({ passCardTitle: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Meta trên card Pass</Label><Input value={extra.passCardMeta || ''} onChange={(e) => syncExtra({ passCardMeta: e.target.value })} /></FieldCol>
+        <FieldCol span2><Label>CTA Pass</Label><Input value={section.buttonText || ''} onChange={(e) => onChange({ buttonText: e.target.value })} /></FieldCol>
+      </div>
+      <StringListEditor label="Checklist trong Pass" items={extra.passItems || []} placeholder="VD: Tham gia CLB phù hợp độ tuổi" onChange={(passItems) => syncExtra({ passItems })} />
+    </>
+  );
+}
+
+function MettaPlusFormSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
+  const extra = parseObj<MettaPlusFormExtra>(section.extraData, { highlights: [] });
+  const syncExtra = (patch: Partial<MettaPlusFormExtra>) => onChange({ extraData: JSON.stringify({ ...extra, ...patch }) });
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề form *</Label><Input value={section.title} onChange={(e) => onChange({ title: e.target.value })} /></FieldCol>
+        <FieldCol><Label>CTA form</Label><Input value={section.buttonText || ''} onChange={(e) => onChange({ buttonText: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Form ID</Label><Input value={section.formId || ''} onChange={(e) => onChange({ formId: e.target.value })} placeholder="metta-plus-pass" /></FieldCol>
+        <FieldCol span2><Label>Mô tả form</Label><Textarea value={section.subtitle || section.description || ''} onChange={(e) => onChange({ subtitle: e.target.value, description: e.target.value })} className="h-16" /></FieldCol>
+      </div>
+      <StringListEditor label="Gạch đầu dòng cạnh form" items={extra.highlights || []} placeholder="VD: Tư vấn CLB theo tuổi" onChange={(highlights) => syncExtra({ highlights })} />
+    </>
+  );
+}
+
 const TYPE_COLOR: Record<string, string> = {
   Hero: 'bg-orange-100 text-orange-800',
   Stats: 'bg-cyan-100 text-cyan-800',
@@ -1151,6 +1231,13 @@ const TYPE_COLOR: Record<string, string> = {
   'Ebook Hero': 'bg-sky-100 text-sky-800',
   'Ebook Skills': 'bg-blue-100 text-blue-800',
   'Ebook Why': 'bg-indigo-100 text-indigo-800',
+  'Metta+ Hero': 'bg-orange-100 text-orange-800',
+  'Metta+ Benefits': 'bg-green-100 text-green-800',
+  'Metta+ Age Clubs': 'bg-purple-100 text-purple-800',
+  'Metta+ Pass': 'bg-yellow-100 text-yellow-800',
+  'Metta+ Journey': 'bg-blue-100 text-blue-800',
+  'Metta+ Reasons': 'bg-pink-100 text-pink-800',
+  'Metta+ Form': 'bg-red-100 text-red-800',
   'Metta+ Landing': 'bg-orange-100 text-orange-800',
 };
 
@@ -1329,6 +1416,28 @@ function SectionEditor({
             <FieldCol><Label>Form ID</Label><Input value={val.formId || ''} onChange={(e) => set({ formId: e.target.value })} /></FieldCol>
           </>
         )}
+
+        {val.type === 'Metta+ Hero' && <MettaPlusHeroSectionEditor section={val} onChange={set} />}
+
+        {val.type === 'Metta+ Benefits' && (
+          <MettaPlusCardsSectionEditor section={val} label="6 card: Con nhận được gì?" fallback={DEFAULT_METTA_PLUS_DATA.benefits} onChange={set} />
+        )}
+
+        {val.type === 'Metta+ Age Clubs' && (
+          <MettaPlusCardsSectionEditor section={val} label="4 card: CLB theo độ tuổi" fallback={DEFAULT_METTA_PLUS_DATA.ageGroups} onChange={set} />
+        )}
+
+        {val.type === 'Metta+ Pass' && <MettaPlusPassSectionEditor section={val} onChange={set} />}
+
+        {val.type === 'Metta+ Journey' && (
+          <MettaPlusCardsSectionEditor section={val} label="4 bước hành trình" fallback={DEFAULT_METTA_PLUS_DATA.journey} onChange={set} />
+        )}
+
+        {val.type === 'Metta+ Reasons' && (
+          <MettaPlusCardsSectionEditor section={val} label="5 card: Vì sao phụ huynh chọn?" fallback={DEFAULT_METTA_PLUS_DATA.reasons} onChange={set} />
+        )}
+
+        {val.type === 'Metta+ Form' && <MettaPlusFormSectionEditor section={val} onChange={set} />}
 
         {val.type === 'Metta+ Landing' && (
           <>

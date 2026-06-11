@@ -351,8 +351,18 @@ function hasEbookLanding(items: PageSection[]) {
   return items.some((section) => section.type === 'Ebook Hero');
 }
 
+const METTA_PLUS_SPLIT_TYPES = new Set([
+  'Metta+ Hero',
+  'Metta+ Benefits',
+  'Metta+ Age Clubs',
+  'Metta+ Pass',
+  'Metta+ Journey',
+  'Metta+ Reasons',
+  'Metta+ Form',
+]);
+
 function hasMettaPlusLanding(items: PageSection[]) {
-  return items.some((section) => section.type === 'Metta+ Landing');
+  return items.some((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
 }
 
 function fallbackSectionsForPage(pageId: string) {

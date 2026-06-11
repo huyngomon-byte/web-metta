@@ -18,6 +18,13 @@ export type BlockType =
   | 'Ebook Hero'
   | 'Ebook Skills'
   | 'Ebook Why'
+  | 'Metta+ Hero'
+  | 'Metta+ Benefits'
+  | 'Metta+ Age Clubs'
+  | 'Metta+ Pass'
+  | 'Metta+ Journey'
+  | 'Metta+ Reasons'
+  | 'Metta+ Form'
   | 'Metta+ Landing';
 
 export interface HighlightCard {
