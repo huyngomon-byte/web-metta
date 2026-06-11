@@ -885,10 +885,6 @@ function EbookHeroEditor({ value, onChange }: { value: string; onChange: (v: str
         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Form đăng ký bên cạnh sách</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <div>
-            <Label>Badge nhỏ phía trên</Label>
-            <Input value={data.formBadge} onChange={(e) => sync({ ...data, formBadge: e.target.value })} placeholder="Miễn phí 100%" />
-          </div>
-          <div>
             <Label>Text nút gửi</Label>
             <Input value={data.submitText} onChange={(e) => sync({ ...data, submitText: e.target.value })} placeholder="Tải sách miễn phí" />
           </div>

@@ -159,10 +159,11 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
   }
 
   const inputCls =
-    'w-full rounded-xl border border-[#CFE0F2] bg-white px-3.5 py-3 text-[14.5px] text-[var(--lp-ink)] outline-none transition focus:border-[var(--lp-navy)] focus:ring-2 focus:ring-[var(--lp-navy)]/20';
+    'h-[46px] w-full rounded-xl border border-[#CFE0F2] bg-white px-3.5 text-[14.5px] text-[var(--lp-ink)] outline-none transition focus:border-[var(--lp-navy)] focus:ring-2 focus:ring-[var(--lp-navy)]/20';
+  const selectCls = `${inputCls} pr-8`;
 
   return (
-    <form onSubmit={submit} className="grid gap-3" noValidate>
+    <form onSubmit={submit} className="grid gap-2.5 sm:gap-3" noValidate>
       <input className="hidden" name="company" tabIndex={-1} autoComplete="off" aria-hidden />
       <input className="hidden" name="website" tabIndex={-1} autoComplete="off" aria-hidden />
       <label className="block">
@@ -173,18 +174,20 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
         <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">Họ tên bé *</span>
         <input className={inputCls} placeholder="VD: Nguyễn Minh Anh" value={form.studentName} onChange={(e) => set('studentName', e.target.value)} required />
       </label>
-      <label className="block">
-        <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">Số điện thoại phụ huynh *</span>
-        <input className={inputCls} placeholder="VD: 090 123 4567" inputMode="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} required />
-      </label>
-      <label className="block">
-        <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">{selectLabel}</span>
-        <select className={inputCls} value={form.age} onChange={(e) => set('age', e.target.value)}>
-          <option value="">{selectPlaceholder}</option>
-          {selectOptions.map((a) => <option key={a} value={a}>{a}</option>)}
-        </select>
-      </label>
-      <button type="submit" disabled={loading} className="lp-cta mt-1 inline-flex items-center justify-center gap-2 rounded-xl px-6 py-4 text-[16px] disabled:opacity-60">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(112px,128px)] gap-2.5 sm:gap-3">
+        <label className="block min-w-0">
+          <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">Số điện thoại *</span>
+          <input className={inputCls} placeholder="VD: 090 123 4567" inputMode="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} required />
+        </label>
+        <label className="block min-w-0">
+          <span className="mb-1 block text-[13px] font-semibold text-[var(--lp-navy-700)]">{selectLabel}</span>
+          <select className={selectCls} value={form.age} onChange={(e) => set('age', e.target.value)}>
+            <option value="">{selectPlaceholder}</option>
+            {selectOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+      </div>
+      <button type="submit" disabled={loading} className="lp-cta mt-1 inline-flex h-[52px] items-center justify-center gap-2 rounded-xl px-6 text-[16px] disabled:opacity-60">
         <Icon name={loading ? 'progress_activity' : 'download'} className={`text-[20px] ${loading ? 'animate-spin' : ''}`} />
         {loading ? 'Đang gửi...' : buttonText}
       </button>
@@ -197,20 +200,20 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
 function BookImage({ src }: { src?: string }) {
   if (src) {
     return (
-      <div className="relative mx-auto w-[260px] sm:w-[300px] lg:w-[340px]">
+      <div className="relative mx-auto w-[240px] sm:w-[290px] lg:w-[310px]">
         <img
           src={src}
           alt="Sách tiền tiểu học METTA Academy"
           loading="eager"
           decoding="async"
-          className="w-full rounded-[14px] object-cover shadow-[0_40px_80px_-20px_rgba(0,0,0,.55)]"
+          className="w-full rounded-[14px] object-cover shadow-[0_24px_50px_-18px_rgba(0,0,0,.45)]"
           style={{ aspectRatio: '3 / 4' }}
         />
       </div>
     );
   }
   return (
-    <div className="relative mx-auto w-[260px] sm:w-[300px] lg:w-[340px]">
+    <div className="relative mx-auto w-[240px] sm:w-[290px] lg:w-[310px]">
       <div
         className="grid w-full place-items-center rounded-[14px] border-2 border-dashed border-white/35 bg-white/8 text-center text-white/80 shadow-[0_30px_60px_-24px_rgba(0,0,0,.55)] backdrop-blur"
         style={{ aspectRatio: '3 / 4' }}
@@ -245,16 +248,15 @@ export function EbookHeroBlock({ section }: { section: PageSection }) {
   const extra = parseJson<HeroExtra>(section.extraData, {});
   const badges = extra.badges || [];
   const bullets = extra.bullets || [];
-  const formBadge = extra.formBadge || 'Miễn phí 100%';
   const formTitle = extra.formTitle || 'Nhận sách miễn phí ngay';
   const formSubtitle = extra.formSubtitle || 'METTA Academy sẽ gửi tài liệu và tư vấn lộ trình phù hợp với độ tuổi của bé.';
 
   return (
     <section id="top" className="relative overflow-hidden bg-[var(--lp-navy)]">
-      <div className="relative mx-auto grid max-w-[1240px] grid-cols-1 items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_auto_minmax(340px,400px)] lg:gap-8 lg:py-14">
-        <div>
+      <div className="relative mx-auto grid max-w-[1220px] grid-cols-1 items-center gap-8 px-5 py-6 sm:px-6 lg:grid-cols-[38fr_28fr_34fr] lg:gap-7 lg:py-6 lg:min-h-[600px]">
+        <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
           {badges.length > 0 && (
-            <div className="mb-4 flex flex-wrap gap-2">
+            <div className="mb-4 flex flex-wrap justify-center gap-2 lg:justify-start">
               {badges.map((b) => (
                 <span key={b} className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-[12px] font-semibold leading-none text-white ring-1 ring-white/15">
                   <Icon name="check_circle" className="text-[15px] text-[var(--lp-cta)]" />
@@ -263,20 +265,20 @@ export function EbookHeroBlock({ section }: { section: PageSection }) {
               ))}
             </div>
           )}
-          <h1 className="font-montserrat text-[26px] font-extrabold leading-[1.15] tracking-tight text-white sm:text-[32px] lg:text-[36px]">
+          <h1 className="font-montserrat text-[30px] font-extrabold leading-[1.1] tracking-tight text-white sm:text-[36px] lg:text-[44px]">
             {section.title || 'Tải miễn phí sách tiền tiểu học cho bé mầm non'}
             {extra.titleAccent && (
-              <span className="block text-[var(--lp-cta)] mt-1.5">{extra.titleAccent}</span>
+              <span className="mt-1.5 block text-[24px] leading-[1.1] text-[var(--lp-cta)] sm:text-[30px] lg:text-[36px]">{extra.titleAccent}</span>
             )}
           </h1>
           {section.subtitle && (
-            <p className="mt-5 max-w-xl text-[15px] leading-7 text-white/80 sm:text-[18px]">{section.subtitle}</p>
+            <p className="mt-4 max-w-xl text-[15px] leading-7 text-white/80 sm:text-[16px]">{section.subtitle}</p>
           )}
           {bullets.length > 0 && (
-            <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+            <ul className="mt-6 grid gap-y-3 gap-x-6 text-left sm:grid-cols-2 sm:gap-x-7">
               {bullets.map((b) => (
-                <li key={b} className="flex items-start gap-3 text-[14.5px] leading-6 text-white/90">
-                  <span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--lp-cta)]"><Icon name="check" className="text-[15px] text-white" /></span>
+                <li key={b} className="flex items-start gap-2.5 text-[15px] leading-6 text-white/90 sm:text-[16px]">
+                  <span className="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--lp-cta)]"><Icon name="check" className="text-[18px] text-white" /></span>
                   <span>{b}</span>
                 </li>
               ))}
@@ -288,12 +290,9 @@ export function EbookHeroBlock({ section }: { section: PageSection }) {
           <BookImage src={section.imageUrl} />
         </div>
 
-        <div id="dangky" className="lp-card relative z-10 mx-auto w-full max-w-[420px] p-6 sm:p-8">
-            <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-[var(--lp-cta)]/12 px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-wider text-[var(--lp-cta)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--lp-cta)]" /> {formBadge}
-            </span>
+        <div id="dangky" className="lp-card relative z-10 mx-auto w-full max-w-[400px] p-7 sm:p-8">
             <h2 className="font-montserrat text-[22px] font-extrabold text-[var(--lp-ink)]">{formTitle}</h2>
-            <p className="mb-4 mt-1 text-[13px] leading-5 text-[var(--lp-ink)]/65">
+            <p className="mb-4 mt-1.5 text-[13px] leading-5 text-[var(--lp-ink)]/65">
               {formSubtitle}
             </p>
             <HeroLeadForm
