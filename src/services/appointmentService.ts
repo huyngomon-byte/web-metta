@@ -32,9 +32,14 @@ function persist() {
 
 function isDemoAppointment(item: Partial<Appointment>) {
   const id = String(item.id || '');
+  const leadId = String(item.leadId || '');
   return id.startsWith(STAGE_DEMO_CONSULTATION_PREFIX)
     || id.startsWith(PRIORITY_DEMO_CONSULTATION_PREFIX)
-    || /^ap-[1-5]$/.test(id);
+    || /^ap-[1-5]$/.test(id)
+    || leadId.startsWith('lead-demo-stage-')
+    || leadId.startsWith('lead-demo-priority-')
+    || /^lead-[1-5]$/.test(leadId)
+    || /^lead-x\d+$/.test(leadId);
 }
 
 function loadLocal() {
@@ -43,8 +48,15 @@ function loadLocal() {
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
+      const nonDemo = parsed.filter((item: Appointment) => !isDemoAppointment(item));
+      if (nonDemo.length !== parsed.length) {
+        store.appointments = nonDemo;
+        localStorage.setItem(LS_DEMO_RESET, '1');
+        persist();
+        return;
+      }
       if (!localStorage.getItem(LS_DEMO_RESET)) {
-        store.appointments = [...demoConsultationAppointments, ...parsed.filter((item: Appointment) => !isDemoAppointment(item))];
+        store.appointments = nonDemo;
         localStorage.setItem(LS_DEMO_RESET, '1');
         persist();
         return;
@@ -111,13 +123,12 @@ async function deleteFirestore(id: string) {
 }
 
 async function replaceFirestoreDemoAppointments(current: Appointment[]) {
-  if (!USE_FIREBASE || localStorage.getItem(LS_FIRESTORE_DEMO_RESET)) return current;
+  if (!USE_FIREBASE || localStorage.getItem(LS_FIRESTORE_DEMO_RESET)) return current.filter((item) => !isDemoAppointment(item));
   const demoItems = current.filter((item) => isDemoAppointment(item));
   try {
     await Promise.all(demoItems.map((item) => deleteFirestore(item.id).catch(() => {})));
-    await Promise.all(demoConsultationAppointments.map(writeFirestore));
     localStorage.setItem(LS_FIRESTORE_DEMO_RESET, '1');
-    return [...demoConsultationAppointments, ...current.filter((item) => !isDemoAppointment(item))];
+    return current.filter((item) => !isDemoAppointment(item));
   } catch (error) {
     console.warn('[Appointments] Demo reset failed, keeping current data:', error);
     return current;

@@ -46,6 +46,123 @@ const CURRENT_PROGRAM_SLUGS = PUBLIC_PROGRAMS.map((program) => program.slug);
 
 let lastWriteError: string | null = null;
 
+const CP1252_EXTENSIONS: Record<number, number> = {
+  0x20ac: 0x80,
+  0x201a: 0x82,
+  0x0192: 0x83,
+  0x201e: 0x84,
+  0x2026: 0x85,
+  0x2020: 0x86,
+  0x2021: 0x87,
+  0x02c6: 0x88,
+  0x2030: 0x89,
+  0x0160: 0x8a,
+  0x2039: 0x8b,
+  0x0152: 0x8c,
+  0x017d: 0x8e,
+  0x2018: 0x91,
+  0x2019: 0x92,
+  0x201c: 0x93,
+  0x201d: 0x94,
+  0x2022: 0x95,
+  0x2013: 0x96,
+  0x2014: 0x97,
+  0x02dc: 0x98,
+  0x2122: 0x99,
+  0x0161: 0x9a,
+  0x203a: 0x9b,
+  0x0153: 0x9c,
+  0x017e: 0x9e,
+  0x0178: 0x9f,
+};
+
+const CLASSIC_MOJIBAKE = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â)/;
+const SUSPECT_TEXT = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â|�|Ē)/g;
+const CANONICAL_HEADER_LABELS: Record<string, string> = {
+  '/#about': 'Giới thiệu',
+  '/#programs': 'Chương trình học',
+  '/#teachers': 'Đội ngũ giáo viên',
+  '/tin-tuc': 'Tin tức',
+  '/#lead-form': 'Liên hệ',
+  '/#contact': 'Liên hệ',
+  '#about': 'Giới thiệu',
+  '#programs': 'Chương trình học',
+  '#teachers': 'Đội ngũ giáo viên',
+  '#lead-form': 'Liên hệ',
+  '#contact': 'Liên hệ',
+};
+const CANONICAL_FOOTER_LABELS: Record<string, string> = {
+  '/#about': 'Về chúng tôi',
+  '#about': 'Về chúng tôi',
+  '/#programs': 'Chương trình học',
+  '#programs': 'Chương trình học',
+  '/#method': 'Phương pháp',
+  '#method': 'Phương pháp',
+  '/tin-tuc': 'Tin tức',
+  '/chinh-sach-bao-mat': 'Chính sách bảo mật',
+  '/dieu-khoan-su-dung': 'Điều khoản sử dụng',
+};
+
+function suspiciousScore(value: string) {
+  return value.match(SUSPECT_TEXT)?.length ?? 0;
+}
+
+function encodeWindows1252(value: string) {
+  const bytes: number[] = [];
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code <= 0xff) {
+      bytes.push(code);
+    } else if (CP1252_EXTENSIONS[code]) {
+      bytes.push(CP1252_EXTENSIONS[code]);
+    } else {
+      return null;
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+function repairClassicMojibake(value: string) {
+  if (!CLASSIC_MOJIBAKE.test(value)) return value;
+  const bytes = encodeWindows1252(value);
+  if (!bytes) return value;
+  const decoded = new TextDecoder('utf-8').decode(bytes);
+  return suspiciousScore(decoded) < suspiciousScore(value) ? decoded : value;
+}
+
+function repairKnownBrokenText(value: string) {
+  return value
+    .replace(/Gi�[:›]i thi�[!‡]u/g, 'Giới thiệu')
+    .replace(/Đ�["™]i ngũ giáo viên/g, 'Đội ngũ giáo viên')
+    .replace(/Liên h�[!‡]/g, 'Liên hệ')
+    .replace(/ĐĒng ký/g, 'Đăng ký')
+    .replace(/mi�&n/g, 'miễn')
+    .replace(/qu�c/g, 'quốc')
+    .replace(/tu�"i/g, 'tuổi')
+    .replace(/bu�"i/g, 'buổi')
+    .replace(/l�:p/g, 'lớp')
+    .replace(/NĒm/g, 'Năm')
+    .replace(/nĒm/g, 'năm')
+    .replace(/kỹ nĒng/g, 'kỹ năng')
+    .replace(/d�9ch/g, 'dịch')
+    .replace(/bảo v�!/g, 'bảo vệ');
+}
+
+function normalizeText(value: string) {
+  return repairKnownBrokenText(repairClassicMojibake(value));
+}
+
+function normalizeCmsValue<T>(value: T): T {
+  if (typeof value === 'string') return normalizeText(value) as T;
+  if (Array.isArray(value)) return value.map((item) => normalizeCmsValue(item)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, normalizeCmsValue(item)]),
+    ) as T;
+  }
+  return value;
+}
+
 function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     promise,
@@ -70,33 +187,72 @@ function currentProgramSettings() {
   }));
 }
 
-function normalizeCourseSettings(settings: SiteSettings): SiteSettings {
-  const hasCurrentPrograms = CURRENT_PROGRAM_SLUGS.every((slug) =>
-    settings.programs?.some((program) => program.slug === slug),
-  );
-  const headerLinks = (settings.headerLinks || []).map((link) => {
-    const isProgramMenu = link.href?.includes('programs') || link.label?.toLowerCase().includes('chương trình');
-    if (!isProgramMenu) return link;
+function normalizeFooterColumns(columns: SiteSettings['footerColumns']) {
+  return (columns || []).map((column, index) => ({
+    ...column,
+    title: index === 0 ? 'Khám phá' : index === 1 ? 'Thông tin' : normalizeText(column.title),
+    links: column.links.map((link) => ({
+      ...link,
+      label: CANONICAL_FOOTER_LABELS[link.href] || normalizeText(link.label),
+    })),
+  }));
+}
+
+function normalizeHeaderLinks(
+  links: NonNullable<SiteSettings['headerLinks']>,
+  programs: NonNullable<SiteSettings['programs']>,
+) {
+  return links.map((link) => {
+    const label = CANONICAL_HEADER_LABELS[link.href] || normalizeText(link.label);
+    const isProgramMenu = link.href?.includes('programs') || link.href === '/#programs' || label.toLowerCase().includes('chương trình');
+    if (!isProgramMenu) {
+      return {
+        ...link,
+        label,
+        children: link.children?.map((child) => ({
+          ...child,
+          label: normalizeText(child.label),
+        })),
+      };
+    }
     return {
       ...link,
+      label: 'Chương trình học',
       href: '/#programs',
-      children: (settings.programs?.length ? settings.programs : PUBLIC_PROGRAMS)
-        .filter((program) => (program as { visible?: boolean }).visible !== false)
+      children: programs
+        .filter((program) => program.visible !== false)
         .map((program) => ({
-        label: program.title,
-        href: `/programs/${program.slug}`,
-      })),
+          label: program.title,
+          href: `/programs/${program.slug}`,
+        })),
     };
   });
+}
 
-  if (hasCurrentPrograms) {
-    return { ...settings, headerLinks };
-  }
+function normalizeCourseSettings(settings: SiteSettings): SiteSettings {
+  const normalizedSettings = normalizeCmsValue(settings);
+  const hasCurrentPrograms = CURRENT_PROGRAM_SLUGS.every((slug) =>
+    normalizedSettings.programs?.some((program) => program.slug === slug),
+  );
+  const programs = normalizeCmsValue(
+    hasCurrentPrograms && normalizedSettings.programs?.length ? normalizedSettings.programs : currentProgramSettings(),
+  ) as NonNullable<SiteSettings['programs']>;
+  const rawHeaderLinks = normalizedSettings.headerLinks?.length
+    ? normalizedSettings.headerLinks
+    : normalizeCmsValue(seedSettings.headerLinks || []);
+  const rawFooterColumns = normalizedSettings.footerColumns?.length
+    ? normalizedSettings.footerColumns
+    : normalizeCmsValue(seedSettings.footerColumns || []);
 
   return {
-    ...settings,
-    programs: currentProgramSettings(),
-    headerLinks,
+    ...normalizedSettings,
+    brandName: normalizeText(normalizedSettings.brandName || seedSettings.brandName),
+    footerText: normalizeText(normalizedSettings.footerText || seedSettings.footerText),
+    headerCtaText: normalizeText(normalizedSettings.headerCtaText || seedSettings.headerCtaText || 'Đăng ký tư vấn'),
+    address: normalizeText(normalizedSettings.address),
+    programs,
+    headerLinks: normalizeHeaderLinks(rawHeaderLinks, programs),
+    footerColumns: normalizeFooterColumns(rawFooterColumns),
   };
 }
 
@@ -138,9 +294,13 @@ function mergeRemoteWithLocalEdits(remote: PageSection[], pageId: string) {
 
 function mergeSeedPages(remote: CmsPage[]) {
   const deleted = readDeletedPages();
-  const byId = new Map(remote.filter((page) => !deleted.includes(page.id)).map((page) => [page.id, normalizeLegacyCmsPage(page)]));
+  const byId = new Map(
+    remote
+      .filter((page) => !deleted.includes(page.id))
+      .map((page) => [page.id, normalizeLegacyCmsPage(normalizeCmsValue(page))]),
+  );
   seedPages.forEach((page) => {
-    if (!deleted.includes(page.id) && !byId.has(page.id)) byId.set(page.id, page);
+    if (!deleted.includes(page.id) && !byId.has(page.id)) byId.set(page.id, normalizeCmsValue(page));
   });
   return Array.from(byId.values());
 }
@@ -192,7 +352,7 @@ function hasEbookLanding(items: PageSection[]) {
 }
 
 function fallbackSectionsForPage(pageId: string) {
-  return sortSections(seedSections.filter((section) => section.pageId === pageId));
+  return sortSections(normalizeCmsValue(seedSections.filter((section) => section.pageId === pageId)));
 }
 
 // Tự chèn section "Cơ sở vật chất" vào homepage nếu dữ liệu hiện tại chưa có
@@ -216,8 +376,10 @@ function mergeHomepageDefaults(items: PageSection[]) {
 }
 
 function ensureLocalSeed() {
-  if (!store.pages.length) store.pages = [...seedPages];
-  if (!store.sections.length) store.sections = [...seedSections];
+  if (!store.pages.length) store.pages = normalizeCmsValue([...seedPages]);
+  else store.pages = normalizeCmsValue(store.pages);
+  if (!store.sections.length) store.sections = normalizeCmsValue([...seedSections]);
+  else store.sections = normalizeCmsValue(store.sections);
   if (!store.siteSettings) store.siteSettings = normalizeCourseSettings({ ...seedSettings });
   else store.siteSettings = normalizeCourseSettings(store.siteSettings);
   persistCMS();
@@ -227,9 +389,9 @@ async function tryWriteSeedData() {
   if (!USE_FIREBASE) return;
   try {
     await Promise.all([
-      ...seedPages.map((page) => setDoc(doc(db!, COL_PAGES, page.id), stripUndefined(page))),
-      ...seedSections.map((section) => setDoc(doc(db!, COL_SECTIONS, section.id), stripUndefined(section))),
-      setDoc(doc(db!, DOC_SETTINGS), stripUndefined(seedSettings)),
+      ...normalizeCmsValue([...seedPages]).map((page) => setDoc(doc(db!, COL_PAGES, page.id), stripUndefined(page))),
+      ...normalizeCmsValue([...seedSections]).map((section) => setDoc(doc(db!, COL_SECTIONS, section.id), stripUndefined(section))),
+      setDoc(doc(db!, DOC_SETTINGS), stripUndefined(normalizeCourseSettings(seedSettings))),
       setDoc(doc(db!, DOC_INIT), { seededAt: now(), repairedAt: now() }),
     ]);
   } catch (error) {
@@ -244,7 +406,7 @@ async function readRemotePages() {
     if (snap.empty) {
       return null;
     }
-    return mergeSeedPages(snap.docs.map((item) => item.data() as CmsPage));
+    return mergeSeedPages(normalizeCmsValue(snap.docs.map((item) => item.data() as CmsPage)));
   } catch (error) {
     try {
       const snap = await withTimeout(
@@ -252,7 +414,7 @@ async function readRemotePages() {
         'Firestore published pages read',
       );
       if (!snap.empty) {
-        return mergeSeedPages(snap.docs.map((item) => item.data() as CmsPage));
+        return mergeSeedPages(normalizeCmsValue(snap.docs.map((item) => item.data() as CmsPage)));
       }
     } catch (publicError) {
       console.warn('[CMS] Cannot read published Firestore pages, using local fallback:', publicError);
@@ -271,7 +433,7 @@ async function readRemoteSections(pageId: string) {
       return null;
     }
     let remote = mergeRemoteWithLocalEdits(
-      sortSections(snap.docs.map((item) => item.data() as PageSection)),
+      sortSections(normalizeCmsValue(snap.docs.map((item) => item.data() as PageSection))),
       pageId,
     );
     if (pageId === 'page-home') remote = mergeHomepageDefaults(remote);
@@ -588,7 +750,7 @@ export const cmsService = {
   },
 
   saveSettings: async (settings: SiteSettings) => {
-    const saved = { ...settings, updatedAt: now() };
+    const saved = normalizeCourseSettings({ ...settings, updatedAt: now() });
     store.siteSettings = saved;
     persistCMS();
     await writeRemoteSettings(saved);
@@ -596,9 +758,9 @@ export const cmsService = {
   },
 
   resetToSeed: async () => {
-    store.pages = [...seedPages];
-    store.sections = [...seedSections];
-    store.siteSettings = { ...seedSettings };
+    store.pages = normalizeCmsValue([...seedPages]);
+    store.sections = normalizeCmsValue([...seedSections]);
+    store.siteSettings = normalizeCourseSettings({ ...seedSettings });
     persistCMS();
     await tryWriteSeedData();
     window.location.reload();

@@ -23,6 +23,44 @@ function now() {
   return new Date().toISOString();
 }
 
+function isSampleEmail(email?: string) {
+  const value = String(email || '').toLowerCase();
+  return value.includes('@metta.test') || value.includes('@example.com');
+}
+
+function isSampleLeadId(id?: string) {
+  const value = String(id || '');
+  return value.startsWith('lead-demo-stage-')
+    || value.startsWith('lead-demo-priority-')
+    || /^lead-[1-5]$/.test(value)
+    || /^lead-x\d+$/.test(value);
+}
+
+function isSampleParentProfile(profile: Partial<ParentProfile>) {
+  const text = [
+    profile.id,
+    profile.email,
+    profile.notes,
+    profile.knownFrom,
+  ].map((value) => String(value || '').toLowerCase()).join(' ');
+  return isSampleEmail(profile.email)
+    || text.includes('metta.test')
+    || text.includes('demo.stage')
+    || text.includes('demo parent')
+    || text.includes('demo lead');
+}
+
+function isSampleLead(lead: Partial<Lead>) {
+  const text = [
+    lead.initialNote,
+    lead.dealNote,
+    lead.lostNote,
+  ].map((value) => String(value || '').toLowerCase()).join(' ');
+  return isSampleLeadId(lead.id)
+    || isSampleEmail(lead.email)
+    || text.includes('demo lead');
+}
+
 export function normalizeParentPhone(value?: string) {
   return String(value || '').replace(/\D/g, '').replace(/^84/, '0');
 }
@@ -30,7 +68,10 @@ export function normalizeParentPhone(value?: string) {
 function readProfiles(): ParentProfile[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    const clean = parsed.filter((item) => !isSampleParentProfile(item));
+    if (clean.length !== parsed.length) localStorage.setItem(LS_KEY, JSON.stringify(clean.slice(0, 1000)));
+    return clean;
   } catch {
     return [];
   }
@@ -82,7 +123,7 @@ export const parentProfileService = {
     const profiles = readProfiles();
     const known = new Set(profiles.map((item) => normalizeParentPhone(item.phone)));
     const generated = leads
-      .filter((lead) => normalizeParentPhone(lead.phone) && !known.has(normalizeParentPhone(lead.phone)))
+      .filter((lead) => !isSampleLead(lead) && normalizeParentPhone(lead.phone) && !known.has(normalizeParentPhone(lead.phone)))
       .map((lead) => ({
         id: profileId(lead.phone),
         phone: normalizeParentPhone(lead.phone),

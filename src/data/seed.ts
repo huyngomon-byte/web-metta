@@ -714,13 +714,9 @@ const demoPriorityConsultationAppointments: Appointment[] = demoPriorityLeads
     updatedAt: lead.updatedAt,
   }));
 
-export const leads: Lead[] = [...stageDemoLeads];
+export const leads: Lead[] = [];
 
-export const leadActivities: LeadActivity[] = [
-  { id: 'act-1', leadId: 'lead-1', type: 'call', content: 'Gọi lần 1, phụ huynh mu�n nhận l�9ch học.', createdBy: 'Ms. Linh', createdAt: now },
-  { id: 'act-2', leadId: 'lead-2', type: 'zalo', content: 'Đã gửi thông tin khóa Phonics qua Zalo.', createdBy: 'Ms. Linh', createdAt: now },
-  { id: 'act-3', leadId: 'lead-4', type: 'consultation', content: 'Tư vấn l�:p Thiếu Nhi.', createdBy: 'Ms. Linh', createdAt: now }
-];
+export const leadActivities: LeadActivity[] = [];
 
 const stageDemoConsultationAppointments: Appointment[] = stageDemoLeads
   .filter((lead) => lead.consultationDate || lead.followUpDate)
@@ -739,9 +735,7 @@ const stageDemoConsultationAppointments: Appointment[] = stageDemoLeads
     updatedAt: lead.updatedAt,
   }));
 
-export const appointments: Appointment[] = [
-  ...stageDemoConsultationAppointments,
-];
+export const appointments: Appointment[] = [];
 
 export const capiSettings: CapiSettings = { id: 'capi-main', pixelId: '123456789000000', accessToken: 'mock-token-hidden-in-production', testEventCode: 'TEST12345', defaultSourceUrl: 'https://mettaacademy.vn', enableBrowserPixel: true, enableServerCapi: true, enableDeduplication: true, updatedAt: now };
 

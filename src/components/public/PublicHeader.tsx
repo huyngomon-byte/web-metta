@@ -11,6 +11,20 @@ type NavLink = {
   children?: Array<{ label: string; href: string }>;
 };
 
+const HEADER_LABELS: Record<string, string> = {
+  '/#about': 'Giới thiệu',
+  '#about': 'Giới thiệu',
+  '/#programs': 'Chương trình học',
+  '#programs': 'Chương trình học',
+  '/#teachers': 'Đội ngũ giáo viên',
+  '#teachers': 'Đội ngũ giáo viên',
+  '/tin-tuc': 'Tin tức',
+  '/#lead-form': 'Liên hệ',
+  '#lead-form': 'Liên hệ',
+  '/#contact': 'Liên hệ',
+  '#contact': 'Liên hệ',
+};
+
 function isHashHref(href: string) {
   return href.startsWith('#') || href.startsWith('/#');
 }
@@ -73,12 +87,14 @@ export function PublicHeader() {
   const rawLinks = (current.headerLinks?.length ? current.headerLinks : seedSettings.headerLinks || []) as NavLink[];
   // Auto-sync links
   const navLinks = rawLinks.map((link) => {
+    const normalizedLink = { ...link, label: HEADER_LABELS[link.href] || link.label };
     // Sync "Chương trình học" children from programs
-    if (link.children?.length && current.programs?.length) {
-      const isPrograms = link.href === '/#programs' || link.label.toLowerCase().includes('chương trình');
+    if (normalizedLink.children?.length && current.programs?.length) {
+      const lowerLabel = normalizedLink.label.toLowerCase();
+      const isPrograms = normalizedLink.href === '/#programs' || lowerLabel.includes('chương trình') || lowerLabel.includes('chuong trinh');
       if (isPrograms) {
         return {
-          ...link,
+          ...normalizedLink,
           children: current.programs.filter((p) => p.visible !== false).map((p) => ({
             label: p.title,
             href: `/programs/${p.slug}`,
@@ -87,12 +103,12 @@ export function PublicHeader() {
       }
     }
     // Force "Tin tức" to use /tin-tuc route (not hash)
-    if (link.label.toLowerCase().includes('tin tức') || link.label.toLowerCase().includes('tin tuc')) {
-      return { ...link, href: '/tin-tuc' };
+    if (normalizedLink.label.toLowerCase().includes('tin tức') || normalizedLink.label.toLowerCase().includes('tin tuc')) {
+      return { ...normalizedLink, href: '/tin-tuc' };
     }
-    return link;
+    return normalizedLink;
   });
-  const ctaText = current.headerCtaText || seedSettings.headerCtaText || 'Đăng ký tư vấn';
+  const ctaText = settings?.headerCtaText || 'Đăng ký tư vấn';
   const ctaLink = current.headerCtaLink || seedSettings.headerCtaLink || '#lead-form';
 
   const ctaClass = 'hidden lg:inline-flex items-center justify-center bg-cta-orange text-pure-white px-6 py-3 font-inter font-bold text-sm rounded-lg hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-cta-orange/20';
@@ -130,7 +146,7 @@ export function PublicHeader() {
   }
 
   return (
-    <header className="fixed top-0 w-full z-[100] h-[72px] bg-pure-white/95 backdrop-blur-md border-b border-navy-deep/10 shadow-sm">
+    <header data-public-shell="header" className="fixed top-0 w-full z-[100] h-[72px] bg-pure-white/95 backdrop-blur-md border-b border-navy-deep/10 shadow-sm">
       <nav className="flex justify-between items-center w-full px-5 lg:px-page max-w-[1440px] mx-auto h-full">
         <Link to="/" className="flex items-center gap-2.5 flex-shrink-0">
           <img

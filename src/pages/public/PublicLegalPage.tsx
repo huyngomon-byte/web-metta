@@ -23,11 +23,12 @@ function resolveLegalPage(slug: string, settings: typeof seedSettings): LegalPag
 export default function PublicLegalPage() {
   const { slug: paramSlug } = useParams();
   const location = useLocation();
-  const { settings } = useThemeSettings();
+  const { settings, loading } = useThemeSettings();
   const current = settings || seedSettings;
 
   // Slug có thể đến từ /phap-ly/:slug (param) hoặc từ URL cũ /chinh-sach-bao-mat (path)
   const slug = paramSlug || location.pathname.replace(/^\//, '').split('/')[0];
+  if (loading) return null;
   if (!slug) return <Navigate to="/" replace />;
   const page = resolveLegalPage(slug, current);
   if (!page) return <Navigate to="/" replace />;

@@ -194,7 +194,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     formId: lead.formId || 'public-lead-form',
     createdAt: now,
     updatedAt: now,
-    stageHistory: [{ status: 'Lead má»›i', enteredAt: now }],
+    stageHistory: [{ status: 'Lead mới', enteredAt: now }],
     convertedToStudentId: '',
   };
 

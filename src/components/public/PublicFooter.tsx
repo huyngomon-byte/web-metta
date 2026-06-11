@@ -2,6 +2,18 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
 import { useThemeSettings } from '@/hooks/useCms';
 
+const FOOTER_LABELS: Record<string, string> = {
+  '/#about': 'Về chúng tôi',
+  '#about': 'Về chúng tôi',
+  '/#programs': 'Chương trình học',
+  '#programs': 'Chương trình học',
+  '/#method': 'Phương pháp',
+  '#method': 'Phương pháp',
+  '/tin-tuc': 'Tin tức',
+  '/chinh-sach-bao-mat': 'Chính sách bảo mật',
+  '/dieu-khoan-su-dung': 'Điều khoản sử dụng',
+};
+
 function isHashHref(href: string) {
   return href.startsWith('#') || href.startsWith('/#');
 }
@@ -46,7 +58,7 @@ export function PublicFooter() {
   }
 
   return (
-    <footer className="w-full bg-primary border-t-4 border-cta-orange pt-16 pb-8">
+    <footer data-public-shell="footer" className="w-full bg-primary border-t-4 border-cta-orange pt-16 pb-8">
       <div className="max-w-[1440px] mx-auto px-5 lg:px-page">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10 text-pure-white">
           <div className="md:col-span-4 space-y-5">
@@ -71,23 +83,26 @@ export function PublicFooter() {
             </div>
           </div>
 
-          {footerColumns.map((column) => (
-            <div key={column.title} className="md:col-span-2 space-y-5">
-              <h5 className="font-montserrat font-bold text-base border-l-4 border-cta-orange pl-4">{column.title}</h5>
+          {footerColumns.map((column, columnIndex) => (
+            <div key={`${column.title}-${columnIndex}`} className="md:col-span-2 space-y-5">
+              <h5 className="font-montserrat font-bold text-base border-l-4 border-cta-orange pl-4">
+                {columnIndex === 0 ? 'Khám phá' : columnIndex === 1 ? 'Thông tin' : column.title}
+              </h5>
               <ul className="space-y-3 text-sm">
                 {column.links.map((link) => {
                   const href = link.href || '#';
                   const cls = 'text-surface-variant hover:text-cta-orange transition-colors';
+                  const label = FOOTER_LABELS[href] || link.label;
                   // Hash link (#about, /#about) → scroll behavior, navigate to home if needed
                   if (isHashHref(href)) {
                     return (
-                      <li key={`${column.title}-${link.label}-${href}`}>
+                      <li key={`${column.title}-${label}-${href}`}>
                         <a
                           href={`/#${hashId(href)}`}
                           className={cls}
                           onClick={(e) => { e.preventDefault(); scrollToHash(href); }}
                         >
-                          {link.label}
+                          {label}
                         </a>
                       </li>
                     );
@@ -95,15 +110,15 @@ export function PublicFooter() {
                   // Internal route (/tin-tuc, /phap-ly/...) → SPA Link
                   if (isInternalRoute(href)) {
                     return (
-                      <li key={`${column.title}-${link.label}-${href}`}>
-                        <Link to={href} className={cls}>{link.label}</Link>
+                      <li key={`${column.title}-${label}-${href}`}>
+                        <Link to={href} className={cls}>{label}</Link>
                       </li>
                     );
                   }
                   // External (https://, mailto:, tel:) → normal anchor
                   return (
-                    <li key={`${column.title}-${link.label}-${href}`}>
-                      <a href={href} target="_blank" rel="noreferrer" className={cls}>{link.label}</a>
+                    <li key={`${column.title}-${label}-${href}`}>
+                      <a href={href} target="_blank" rel="noreferrer" className={cls}>{label}</a>
                     </li>
                   );
                 })}
