@@ -9,7 +9,7 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { STAGE_DEMO_LEAD_PREFIX } from '@/data/stageDemoLeads';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
 import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
@@ -20,22 +20,24 @@ import { chooseAutoAssignedSales } from '@/services/assignmentRuleService';
 import { currentUser } from '@/services/authService';
 import { lmsSyncService } from '@/services/lmsSyncService';
 import { notificationService } from '@/services/notificationService';
+import { purgeDemoDataOnServerOnce } from '@/services/demoDataPurgeService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { delay, store } from '@/services/store';
-import type { InterestedCourse, Lead, LeadActivity } from '@/types/crm';
+import type { Appointment, InterestedCourse, Lead, LeadActivity } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 const now = () => new Date().toISOString();
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const COL_LEADS = 'leads';
 const COL_ACTIVITIES = 'leadActivities';
+const COL_APPOINTMENTS = 'appointments';
 const COL_AUDIT_LOGS = 'activityLogs';
 const LS_LEADS = 'metta_leads';
 const LS_ACTIVITIES = 'metta_lead_activities';
 const LS_FINANCE_DEMO_MIGRATION = 'metta_lead_finance_demo_seed_v1';
 const LS_STAGE_DEMO_MIGRATION = 'metta_lead_stage_demo_seed_v1';
-const LS_DEMO_RESET_LOCAL = 'metta_lead_demo_reset_v6';
-const LS_DEMO_RESET_FIRESTORE = 'metta_lead_demo_firestore_reset_v6';
+const LS_DEMO_RESET_LOCAL = 'metta_lead_demo_reset_v7';
+const LS_DEMO_RESET_FIRESTORE = 'metta_lead_demo_firestore_reset_v7';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -83,6 +85,16 @@ function isDemoLeadId(id?: string) {
     || value.startsWith(FINANCE_DEMO_ID_PREFIX)
     || /^lead-[1-5]$/.test(value)
     || /^lead-x\d+$/.test(value);
+}
+
+function isDemoAppointment(item: Partial<Appointment>, demoLeadIds = new Set<string>()) {
+  const id = String(item.id || '');
+  const leadId = String(item.leadId || '');
+  return id.startsWith('ap-demo-stage-consultation-')
+    || id.startsWith('ap-demo-priority-consultation-')
+    || /^ap-[1-5]$/.test(id)
+    || isDemoLeadId(leadId)
+    || demoLeadIds.has(leadId);
 }
 
 function salesNameById(id?: string) {
@@ -263,21 +275,48 @@ function replaceLocalDemoLeads(current: Lead[]) {
   return nonDemo;
 }
 
+async function deleteFirestoreDemoDependencies(demoLeadIds: Set<string>) {
+  if (!USE_FIREBASE) return;
+  const [activitySnap, appointmentSnap] = await Promise.all([
+    getDocs(collection(db!, COL_ACTIVITIES)),
+    getDocs(collection(db!, COL_APPOINTMENTS)),
+  ]);
+  const demoActivities = activitySnap.docs
+    .filter((item) => {
+      const leadId = String((item.data() as LeadActivity).leadId || '');
+      return isDemoLeadId(leadId) || demoLeadIds.has(leadId);
+    })
+    .map((item) => item.id);
+  const demoAppointments = appointmentSnap.docs
+    .filter((item) => isDemoAppointment({ id: item.id, ...(item.data() as Appointment) }, demoLeadIds))
+    .map((item) => item.id);
+
+  await Promise.all([
+    ...demoActivities.map((id) => deleteDoc(doc(db!, COL_ACTIVITIES, id)).catch(() => {})),
+    ...demoAppointments.map((id) => deleteDoc(doc(db!, COL_APPOINTMENTS, id)).catch(() => {})),
+  ]);
+}
+
 async function replaceFirestoreDemoLeads(current: Lead[]) {
   if (!USE_FIREBASE || localStorage.getItem(LS_DEMO_RESET_FIRESTORE)) return current.filter((lead) => !isDemoLead(lead));
-  if (!auth?.currentUser) {
-    localStorage.setItem(LS_DEMO_RESET_FIRESTORE, '1');
-    return current.filter((lead) => !isDemoLead(lead));
-  }
   const demoLeads = current.filter((lead) => isDemoLead(lead));
+  const demoLeadIds = new Set(demoLeads.map((lead) => lead.id).filter(Boolean));
   try {
     await Promise.all(demoLeads.map((lead) => deleteDoc(doc(db!, COL_LEADS, lead.id)).catch(() => {})));
+    await deleteFirestoreDemoDependencies(demoLeadIds);
     localStorage.setItem(LS_DEMO_RESET_FIRESTORE, '1');
     return current.filter((lead) => !isDemoLead(lead));
   } catch (error) {
     console.warn('[Leads] Demo reset failed, keeping current data:', error);
     return current;
   }
+}
+
+async function replaceFirestoreDemoActivities(current: LeadActivity[]) {
+  const demoActivities = current.filter((activity) => isDemoLeadId(activity.leadId));
+  if (!demoActivities.length) return current;
+  await Promise.all(demoActivities.map((activity) => deleteDoc(doc(db!, COL_ACTIVITIES, activity.id)).catch(() => {})));
+  return current.filter((activity) => !isDemoLeadId(activity.leadId));
 }
 
 function loadLeads() {
@@ -463,6 +502,7 @@ export const leadService = {
     loadLeads();
     if (USE_FIREBASE) {
       try {
+        if (canViewAllLeads(user)) await purgeDemoDataOnServerOnce();
         if (user?.role === 'sales') {
           const nowMs = Date.now();
           const activeSnap = await getDocs(query(
@@ -751,7 +791,9 @@ export const leadService = {
           ? query(collection(db!, COL_ACTIVITIES), where('leadId', '==', leadId), orderBy('createdAt', 'desc'))
           : query(collection(db!, COL_ACTIVITIES), orderBy('createdAt', 'desc'));
         const snap = await getDocs(activityQuery);
-        store.leadActivities = snap.docs.map((item) => item.data() as LeadActivity);
+        let remoteActivities = snap.docs.map((item) => ({ ...item.data(), id: item.id }) as LeadActivity);
+        if (canViewAllLeads(user)) remoteActivities = await replaceFirestoreDemoActivities(remoteActivities);
+        store.leadActivities = remoteActivities;
         persistActivities();
       } catch {}
     }

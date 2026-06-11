@@ -18,8 +18,8 @@ const now = () => new Date().toISOString();
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const COL = 'appointments';
 const LS_KEY = 'metta_appointments';
-const LS_DEMO_RESET = 'metta_appointment_demo_reset_v4';
-const LS_FIRESTORE_DEMO_RESET = 'metta_appointment_demo_firestore_reset_v4';
+const LS_DEMO_RESET = 'metta_appointment_demo_reset_v5';
+const LS_FIRESTORE_DEMO_RESET = 'metta_appointment_demo_firestore_reset_v5';
 const STAGE_DEMO_CONSULTATION_PREFIX = 'ap-demo-stage-consultation-';
 const PRIORITY_DEMO_CONSULTATION_PREFIX = 'ap-demo-priority-consultation-';
 const demoConsultationAppointments = store.appointments.filter((item) =>

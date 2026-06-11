@@ -159,6 +159,10 @@ service cloud.firestore {
       allow delete: if canManageLeads();
     }
 
+    match /parentProfiles/{id} {
+      allow read, create, update, delete: if canManageLeads();
+    }
+
     match /capiSettings/{id} {
       allow read, write: if canManageMarketing();
     }

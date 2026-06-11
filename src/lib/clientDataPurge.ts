@@ -1,5 +1,5 @@
 const PURGE_VERSION_KEY = 'metta_client_data_purge_version';
-const CURRENT_PURGE_VERSION = '2026-06-11-remove-demo-leads-and-parents-v2';
+const CURRENT_PURGE_VERSION = '2026-06-11-remove-demo-leads-and-parents-v3';
 
 function parseArray(value: string | null) {
   if (!value) return [];
@@ -66,6 +66,7 @@ function isSampleAppointment(item: Record<string, unknown>) {
 export function purgeSampleClientData() {
   if (typeof window === 'undefined') return;
   try {
+    const previousVersion = localStorage.getItem(PURGE_VERSION_KEY);
     const leads = parseArray(localStorage.getItem('metta_leads')) as Record<string, unknown>[];
     const demoLeadIds = new Set(leads.filter(isSampleLead).map((item) => String(item.id || '')).filter(Boolean));
     if (leads.length) saveArray('metta_leads', leads.filter((item) => !isSampleLead(item)));
@@ -89,9 +90,19 @@ export function purgeSampleClientData() {
       'metta_lead_stage_demo_seed_v1',
       'metta_lead_demo_reset_v6',
       'metta_lead_demo_firestore_reset_v6',
+      'metta_lead_demo_reset_v7',
       'metta_appointment_demo_reset_v4',
       'metta_appointment_demo_firestore_reset_v4',
+      'metta_appointment_demo_reset_v5',
     ].forEach((key) => localStorage.setItem(key, '1'));
+
+    if (previousVersion !== CURRENT_PURGE_VERSION && 'caches' in window) {
+      void caches.keys()
+        .then((keys) => Promise.all(keys
+          .filter((key) => /metta|vite|workbox|demo/i.test(key))
+          .map((key) => caches.delete(key))))
+        .catch(() => {});
+    }
 
     localStorage.setItem(PURGE_VERSION_KEY, CURRENT_PURGE_VERSION);
   } catch (error) {
