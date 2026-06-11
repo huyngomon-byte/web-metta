@@ -1,5 +1,5 @@
-import { adminDb } from '../_firebaseAdmin.js';
-import { normalizePhone, stringeePccAgentByUserId, verifyStringeeSignature } from '../_stringee.js';
+import { adminDb } from '../../api/_firebaseAdmin.js';
+import { normalizePhone, stringeePccAgentByUserId, verifyStringeeSignature } from '../../api/_stringee.js';
 
 type VercelRequest = {
   method?: string;

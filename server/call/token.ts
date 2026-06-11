@@ -1,5 +1,5 @@
-import { adminAuth } from '../_firebaseAdmin.js';
-import { stringeeClientToken } from '../_stringee.js';
+import { adminAuth } from '../../api/_firebaseAdmin.js';
+import { stringeeClientToken } from '../../api/_stringee.js';
 
 type VercelRequest = {
   method?: string;

@@ -5,6 +5,8 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env*
+!.env.example
 
 # Build output
 dist/
@@ -24,7 +26,3 @@ QA_Report_METTA_Academy_*
 .DS_Store
 Thumbs.db
 .claude/
-
-.vercel
-.env*
-!.env.example
