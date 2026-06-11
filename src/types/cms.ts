@@ -13,7 +13,11 @@ export type BlockType =
   | 'CTA'
   | 'About'
   | 'Contact'
-  | 'Footer';
+  | 'Footer'
+  // Landing "Sách tiền tiểu học" (ebook) — dùng cho trang landing-page-phonics
+  | 'Ebook Hero'
+  | 'Ebook Skills'
+  | 'Ebook Why';
 
 export interface HighlightCard {
   icon: string;        // Lucide icon name, e.g. "Music", "BookOpen"

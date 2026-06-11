@@ -5,12 +5,14 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import PublicLayout from '@/pages/public/PublicLayout';
 import PublicHomePage from '@/pages/public/PublicHomePage';
 
-const PublicCmsPage = lazy(() => import('@/pages/public/PublicCmsPage'));
 const PublicLegalPage = lazy(() => import('@/pages/public/PublicLegalPage'));
 const PublicContactPage = lazy(() => import('@/pages/public/PublicContactPage'));
 const PublicBlogDetailPage = lazy(() => import('@/pages/public/PublicBlogDetailPage'));
 const PublicNewsPage = lazy(() => import('@/pages/public/PublicNewsPage'));
 const PublicProgramDetailPage = lazy(() => import('@/pages/public/PublicProgramDetailPage'));
+const PublicPageRouter = lazy(() => import('@/pages/public/PublicPageRouter'));
+
+const PublicEbookLanding = lazy(() => import('@/pages/public/PublicEbookLanding'));
 
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 
@@ -57,10 +59,14 @@ export default function App() {
       <ScrollToTop />
       <Suspense fallback={<PageFallback />}>
         <Routes>
+          {/* Landing "Sách tiền tiểu học" — render từ CMS, không header/menu site */}
+          <Route path="/p/landing-page-phonics" element={<PublicEbookLanding />} />
+          <Route path="/p/ebook-mam-non" element={<PublicEbookLanding />} />
+          <Route path="/lp/sach-tien-tieu-hoc" element={<PublicEbookLanding />} />
+          <Route path="/p/:slug" element={<PublicPageRouter />} />
           <Route element={<PublicLayout />}>
             <Route path="/" element={<PublicHomePage />} />
             <Route path="/programs/:slug" element={<PublicProgramDetailPage />} />
-            <Route path="/p/:slug" element={<PublicCmsPage />} />
             <Route path="/tin-tuc" element={<PublicNewsPage />} />
             <Route path="/tin-tuc/:slug" element={<PublicBlogDetailPage />} />
             <Route path="/contact" element={<PublicContactPage />} />

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FacilitiesSection } from '@/components/public/FacilitiesSection';
+import { EbookHeroBlock, EbookSkillsBlock, EbookWhyBlock } from '@/components/public/EbookLandingBlocks';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
 import { blogService } from '@/services/blogService';
 import { siteSettings as seedSettings } from '@/data/seed';
@@ -696,6 +697,9 @@ export function SectionRenderer({ section }: { section: PageSection }) {
     case 'News':         return <NewsBlock section={section} />;
     case 'CTA':          return <CTABlock section={section} />;
     case 'Lead Form':    return <PublicLeadForm formId={section.formId} title={section.title} />;
+    case 'Ebook Hero':   return <EbookHeroBlock section={section} />;
+    case 'Ebook Skills': return <EbookSkillsBlock section={section} />;
+    case 'Ebook Why':    return <EbookWhyBlock section={section} />;
     default:             return <FallbackBlock section={section} />;
   }
 }

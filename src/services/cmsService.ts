@@ -138,11 +138,28 @@ function mergeRemoteWithLocalEdits(remote: PageSection[], pageId: string) {
 
 function mergeSeedPages(remote: CmsPage[]) {
   const deleted = readDeletedPages();
-  const byId = new Map(remote.filter((page) => !deleted.includes(page.id)).map((page) => [page.id, page]));
+  const byId = new Map(remote.filter((page) => !deleted.includes(page.id)).map((page) => [page.id, normalizeLegacyCmsPage(page)]));
   seedPages.forEach((page) => {
     if (!deleted.includes(page.id) && !byId.has(page.id)) byId.set(page.id, page);
   });
   return Array.from(byId.values());
+}
+
+function normalizeLegacyCmsPage(page: CmsPage) {
+  if (page.id !== 'page-phonics') return page;
+  const currentSeed = seedPages.find((item) => item.id === 'page-phonics');
+  if (!currentSeed) return page;
+  const isLegacyEbookPage = page.slug === 'landing-page-phonics'
+    || page.metaTitle === 'Phonics METTA'
+    || page.title === 'Landing Page Phonics';
+  if (!isLegacyEbookPage) return page;
+  return {
+    ...page,
+    title: currentSeed.title,
+    slug: currentSeed.slug,
+    metaTitle: currentSeed.metaTitle,
+    metaDescription: currentSeed.metaDescription,
+  };
 }
 
 function readDeletedPages() {
@@ -167,6 +184,11 @@ function markPageDeleted(id: string) {
 function hasUsableHomepageSections(items: PageSection[]) {
   const visibleTypes = new Set(items.filter((section) => section.visible).map((section) => section.type));
   return visibleTypes.has('Hero') && visibleTypes.has('Courses') && visibleTypes.has('Lead Form');
+}
+
+// Landing "Sách tiền tiểu học": nếu dữ liệu cũ chưa có block Ebook thì dùng seed mới.
+function hasEbookLanding(items: PageSection[]) {
+  return items.some((section) => section.type === 'Ebook Hero');
 }
 
 function fallbackSectionsForPage(pageId: string) {
@@ -224,6 +246,17 @@ async function readRemotePages() {
     }
     return mergeSeedPages(snap.docs.map((item) => item.data() as CmsPage));
   } catch (error) {
+    try {
+      const snap = await withTimeout(
+        getDocs(query(collection(db!, COL_PAGES), where('status', '==', 'published'))),
+        'Firestore published pages read',
+      );
+      if (!snap.empty) {
+        return mergeSeedPages(snap.docs.map((item) => item.data() as CmsPage));
+      }
+    } catch (publicError) {
+      console.warn('[CMS] Cannot read published Firestore pages, using local fallback:', publicError);
+    }
     console.warn('[CMS] Cannot read Firestore pages, using local fallback:', error);
     return null;
   }
@@ -265,6 +298,22 @@ async function readRemoteSettings() {
   }
 }
 
+function describeFirestoreError(error: unknown, what: string) {
+  const err = error as { code?: string; message?: string } | undefined;
+  const code = err?.code || '';
+  const msg = err?.message || '';
+  if (code === 'permission-denied' || /missing or insufficient permissions/i.test(msg)) {
+    return `Không đủ quyền ghi ${what} vào Firestore. Hãy đăng xuất rồi đăng nhập lại bằng tài khoản admin (đã được cấp role admin).`;
+  }
+  if (code === 'unavailable' || /offline|network/i.test(msg)) {
+    return `Không kết nối được Firestore (mạng yếu hoặc bị chặn). Thử lại sau ít phút.`;
+  }
+  if (code === 'invalid-argument' || /invalid|undefined/i.test(msg)) {
+    return `Dữ liệu ${what} không hợp lệ khi ghi Firestore: ${msg || code}.`;
+  }
+  return `Không ghi được ${what} vào Firestore${code ? ` (${code})` : ''}.`;
+}
+
 async function writeRemotePage(page: CmsPage) {
   lastWriteError = null;
   if (!USE_FIREBASE) return true;
@@ -272,7 +321,7 @@ async function writeRemotePage(page: CmsPage) {
     await setDoc(doc(db!, COL_PAGES, page.id), stripUndefined(page));
     return true;
   } catch (error) {
-    lastWriteError = 'Không ghi được Firestore.';
+    lastWriteError = describeFirestoreError(error, 'page');
     console.warn('[CMS] Cannot write Firestore page:', error);
     return false;
   }
@@ -285,7 +334,7 @@ async function writeRemoteSection(section: PageSection) {
     await setDoc(doc(db!, COL_SECTIONS, section.id), stripUndefined(section));
     return true;
   } catch (error) {
-    lastWriteError = 'Không ghi được Firestore.';
+    lastWriteError = describeFirestoreError(error, 'section');
     console.warn('[CMS] Cannot write Firestore section:', error);
     return false;
   }
@@ -298,7 +347,7 @@ async function writeRemoteSettings(settings: SiteSettings) {
     await setDoc(doc(db!, DOC_SETTINGS), stripUndefined(settings));
     return true;
   } catch (error) {
-    lastWriteError = 'Không ghi được Firestore.';
+    lastWriteError = describeFirestoreError(error, 'site settings');
     console.warn('[CMS] Cannot write Firestore settings:', error);
     return false;
   }
@@ -315,7 +364,11 @@ export const cmsService = {
       persistCMS();
       return delay(store.pages);
     }
-    return delay(store.pages.length ? store.pages : seedPages);
+    // Không có Firebase (localStorage-only): vẫn chuẩn hoá page ebook cũ về seed mới
+    // để mọi profile/máy không bị rơi về landing-page-phonics cũ.
+    store.pages = (store.pages.length ? store.pages : seedPages).map(normalizeLegacyCmsPage);
+    persistCMS();
+    return delay(store.pages);
   },
 
   getPage: async (id: string) => {
@@ -355,6 +408,61 @@ export const cmsService = {
     return delay(store.pages);
   },
 
+  // Sao chép 1 page (kèm toàn bộ section) sang page mới với title/slug riêng.
+  // Dùng để tạo nhanh các landing tương tự (vd: nhân bản trang Ebook mầm non).
+  duplicatePage: async (sourceId: string, override?: { title?: string; slug?: string }) => {
+    ensureLocalSeed();
+    // Đảm bảo có dữ liệu mới nhất cho page nguồn + section của nó
+    await cmsService.getPages();
+    const source = store.pages.find((page) => page.id === sourceId);
+    if (!source) throw new Error('Không tìm thấy page nguồn để sao chép.');
+    const sourceSections = await cmsService.getSections(sourceId);
+
+    const baseTitle = (override?.title?.trim()) || `${source.title} (bản sao)`;
+    const baseSlug = (override?.slug?.trim()) || `${source.slug}-copy`;
+    const existingSlugs = new Set(store.pages.map((page) => page.slug));
+    let finalSlug = baseSlug;
+    let i = 2;
+    while (existingSlugs.has(finalSlug)) {
+      finalSlug = `${baseSlug}-${i++}`;
+    }
+
+    const newPageId = `page-${Date.now()}`;
+    const timestamp = now();
+    const newPage: CmsPage = {
+      id: newPageId,
+      title: baseTitle,
+      slug: finalSlug,
+      metaTitle: baseTitle,
+      metaDescription: source.metaDescription || '',
+      status: 'draft',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    const newSections: PageSection[] = sourceSections.map((section, index) => ({
+      ...section,
+      id: `sec-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+      pageId: newPageId,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }));
+
+    store.pages = [newPage, ...store.pages];
+    store.sections = [...store.sections, ...newSections];
+    markLocalSectionEdited();
+    persistCMS();
+
+    // Ghi vào Firestore. Nếu một trong các write fail thì throw để UI hiển thị lỗi cụ thể
+    // (vd: permission-denied -> nhắc admin đăng nhập lại) thay vì dắt user vào editor "ma".
+    const pageOk = await writeRemotePage(newPage);
+    const sectionResults = await Promise.all(newSections.map((section) => writeRemoteSection(section)));
+    if (USE_FIREBASE && (!pageOk || sectionResults.some((ok) => !ok))) {
+      throw new Error(lastWriteError || 'Không ghi được Firestore khi sao chép trang.');
+    }
+    return delay(newPage);
+  },
+
   deletePage: async (id: string) => {
     markPageDeleted(id);
     store.pages = store.pages.filter((page) => page.id !== id);
@@ -380,11 +488,13 @@ export const cmsService = {
       const otherSections = store.sections.filter((section) => section.pageId !== pageId);
       store.sections = [...otherSections, ...remote];
       persistCMS();
+      if (pageId === 'page-phonics' && !hasEbookLanding(remote)) return delay(fallbackSectionsForPage(pageId));
       return delay(pageId === 'page-home' ? ensureFacilitiesSection(remote) : remote);
     }
     const local = sortSections(store.sections.filter((section) => section.pageId === pageId));
     const mergedLocal = pageId === 'page-home' ? ensureFacilitiesSection(mergeHomepageDefaults(local)) : local;
     if (pageId === 'page-home' && !hasUsableHomepageSections(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
+    if (pageId === 'page-phonics' && !hasEbookLanding(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
     return delay(mergedLocal);
   },
 
@@ -392,6 +502,9 @@ export const cmsService = {
     const sections = await cmsService.getSections(pageId);
     const visible = sections.filter((section) => section.visible);
     if (pageId === 'page-home' && !hasUsableHomepageSections(visible)) {
+      return fallbackSectionsForPage(pageId).filter((section) => section.visible);
+    }
+    if (pageId === 'page-phonics' && !hasEbookLanding(visible)) {
       return fallbackSectionsForPage(pageId).filter((section) => section.visible);
     }
     if (visible.length) return visible;

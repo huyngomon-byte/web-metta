@@ -112,3 +112,44 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Landing "Sách tiền tiểu học" (ebook) — bảng màu navy + cam, dùng global
+   để các block Ebook render đúng ở mọi route (kể cả /p/:slug generic) ── */
+:root {
+  --lp-ink: #001B3C;
+  --lp-navy: #002347;
+  --lp-navy-600: #234778;
+  --lp-navy-700: #001B3C;
+  --lp-sky: #E6F2FF;
+  --lp-sky-2: #F5F7FA;
+  --lp-cream: #DCDAD6;
+  --lp-surface: #F5F7FA;
+  --lp-surface-dim: #DCDAD6;
+  --lp-surface-cool: #E6F2FF;
+  --lp-cta: #F37021;
+  --lp-cta-700: #D95B12;
+  --lp-amber: #FFB020;
+}
+.lp-cta {
+  background: var(--lp-cta);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 12px 26px -8px rgba(255, 122, 26, .55);
+  transition: transform .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.lp-cta:hover { background: var(--lp-cta-700); transform: translateY(-2px); }
+.lp-cta:active { transform: translateY(0); }
+.lp-cta-ghost {
+  background: #fff;
+  color: var(--lp-navy-700);
+  font-weight: 700;
+  border: 1.5px solid var(--lp-navy);
+  transition: background .15s ease;
+}
+.lp-cta-ghost:hover { background: var(--lp-sky); }
+.lp-card { background: #fff; border-radius: 26px; box-shadow: 0 20px 55px -18px rgba(0, 35, 71, .45); border: 1px solid rgba(0, 35, 71, .1); }
+.lp-chip { background: var(--lp-sky); color: var(--lp-navy-700); }
+
+/* Khi landing ebook hoạt động trong cây có PublicLayout, ẩn header/footer/messenger
+   global để không trùng với mini-header/mini-footer của landing. */
+body:has(.lp-root) [data-public-shell] { display: none !important; }

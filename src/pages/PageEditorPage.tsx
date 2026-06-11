@@ -15,6 +15,7 @@ import type { BlockType, CmsPage, PageSection } from '@/types/cms';
 const BLOCK_TYPES: BlockType[] = [
   'Hero', 'Stats', 'Benefits', 'Courses', 'Facilities', 'Testimonials', 'Teachers', 'News',
   'Lead Form', 'FAQ', 'CTA', 'About', 'Contact', 'Footer',
+  'Ebook Hero', 'Ebook Skills', 'Ebook Why',
 ];
 
 /* ── ImageUploader (full-size – dùng cho Hero, About) ───────────────── */
@@ -717,6 +718,231 @@ function FacilitiesEditor({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
+/* ── Ebook landing editors (Sách tiền tiểu học) ─────────────────────── */
+function parseObj<T extends object>(json: string | undefined, fallback: T): T {
+  if (!json) return fallback;
+  try {
+    const v = JSON.parse(json);
+    return v && typeof v === 'object' && !Array.isArray(v) ? { ...fallback, ...v } : fallback;
+  } catch { return fallback; }
+}
+
+function StringListEditor({ label, hint, items, onChange, placeholder }: {
+  label: string; hint?: string; items: string[]; onChange: (next: string[]) => void; placeholder?: string;
+}) {
+  return (
+    <div>
+      <Label>{label} {hint && <span className="text-slate-400 font-normal normal-case">— {hint}</span>}</Label>
+      <div className="flex flex-col gap-2">
+        {items.map((it, i) => (
+          <div key={i} className="flex gap-2">
+            <Input value={it} onChange={(e) => onChange(items.map((x, idx) => (idx === i ? e.target.value : x)))} placeholder={placeholder} className="text-sm" />
+            <button type="button" onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600"><Trash2 size={15} /></button>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...items, ''])} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-semibold w-fit"><Plus size={13} /> Thêm dòng</button>
+      </div>
+    </div>
+  );
+}
+
+function ImagesGridEditor({ label, images, onChange, sizeNote }: { label: string; images: string[]; onChange: (next: string[]) => void; sizeNote?: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <Label>{label} <span className="text-slate-400 font-normal normal-case">— nhiều ảnh sẽ tự thành slider</span></Label>
+        {sizeNote && <span className="text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded font-mono whitespace-nowrap">📐 {sizeNote}</span>}
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {images.map((url, i) => (
+          <div key={i} className="relative bg-slate-100 border-2 border-dashed border-slate-300 rounded-xl overflow-hidden aspect-[4/3]">
+            {url
+              ? <img src={url} alt="" className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-slate-300"><ImagePlus size={24} /><span className="text-[10px] text-center px-1 leading-tight">{sizeNote || `Ảnh ${i + 1}`}</span></div>}
+            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/70 to-transparent p-2 flex gap-1 justify-between items-end">
+              <PhotoPickerButton onFile={(u) => onChange(images.map((x, idx) => (idx === i ? u : x)))} onUrl={(u) => onChange(images.map((x, idx) => (idx === i ? u : x)))} />
+            </div>
+            <button type="button" onClick={() => onChange(images.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-red-500 transition"><X size={11} /></button>
+            <span className="absolute top-1 left-1 bg-black/50 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">{i + 1}</span>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...images, ''])} className="aspect-[4/3] border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-cta-orange hover:text-cta-orange transition"><Plus size={22} /><span className="text-xs font-semibold">Thêm ảnh</span></button>
+      </div>
+    </div>
+  );
+}
+
+type EbookCard = { icon: string; title: string; desc: string; iconColor?: string; cardColor?: string; borderColor?: string };
+const DEFAULT_EBOOK_CARD: EbookCard = { icon: 'star', title: '', desc: '' };
+const EBOOK_ICON_OPTIONS = Array.from(new Set([...ICON_OPTIONS, 'abc', 'menu_book', 'calculate', 'category', 'auto_stories', 'draw']));
+const EBOOK_COLOR_OPTIONS = [
+  { value: '#F45A0A', label: 'Cam' },
+  { value: '#16A34A', label: 'Xanh la' },
+  { value: '#8B5CF6', label: 'Tim' },
+  { value: '#F59E0B', label: 'Vang' },
+  { value: '#0EA5E9', label: 'Cyan' },
+  { value: '#EC4899', label: 'Hong' },
+];
+
+function ebookEditorCardColor(value: string | undefined, index: number) {
+  const selected = EBOOK_COLOR_OPTIONS.find((item) => item.value === value);
+  return selected?.value || EBOOK_COLOR_OPTIONS[index % EBOOK_COLOR_OPTIONS.length].value;
+}
+
+function EbookCardsEditor({ cards, onChange }: { cards: EbookCard[]; onChange: (next: EbookCard[]) => void }) {
+  function update(i: number, field: keyof EbookCard, v: string) {
+    onChange(cards.map((c, idx) => (idx === i ? { ...c, [field]: v } : c)));
+  }
+  return (
+    <div>
+      <Label>Cac nhom ky nang <span className="text-slate-400 font-normal normal-case">- chon icon va mau ca khung</span></Label>
+      <div className="flex flex-col gap-2">
+        {cards.map((c, i) => {
+          const cardColor = ebookEditorCardColor(c.cardColor, i);
+          return (
+          <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Muc {i + 1}</span>
+              <button type="button" onClick={() => onChange(cards.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
+            </div>
+            <div className="relative overflow-hidden rounded-xl p-4 text-white" style={{ backgroundColor: cardColor }}>
+              <div className="absolute -right-4 -top-4 h-14 w-14 rounded-full bg-white/12" />
+              <div className="absolute -bottom-4 -left-4 h-12 w-12 rounded-full bg-white/12" />
+              <div className="relative flex items-start gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white/20">
+                  <span className="material-symbols-outlined text-[22px] text-white">{c.icon || 'star'}</span>
+                </div>
+                <div>
+                  <p className="text-sm font-extrabold">{c.title || 'Tieu de ky nang'}</p>
+                  <p className="mt-1 text-xs leading-5 text-white/80">{c.desc || 'Mo ta ngan cho nhom ky nang.'}</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Icon (Material Symbols)</Label>
+                <div className="flex gap-2 items-center">
+                  <span className="material-symbols-outlined text-[24px]" style={{ color: cardColor }}>{c.icon || 'star'}</span>
+                  <Select value={c.icon} onChange={(e) => update(i, 'icon', e.target.value)} className="flex-1 text-xs">
+                    {EBOOK_ICON_OPTIONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label>Mau khung</Label>
+                <Select value={cardColor} onChange={(e) => update(i, 'cardColor', e.target.value)} className="text-xs">
+                  {EBOOK_COLOR_OPTIONS.map((color) => <option key={color.value} value={color.value}>{color.label}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label>Tieu de</Label>
+              <Input value={c.title} onChange={(e) => update(i, 'title', e.target.value)} placeholder="Chu cai & am thanh" />
+            </div>
+            <div>
+              <Label>Mo ta ngan</Label>
+              <Textarea value={c.desc} onChange={(e) => update(i, 'desc', e.target.value)} placeholder="Sight words, doc hieu qua tranh." className="h-16 text-sm" />
+            </div>
+          </div>
+          );
+        })}
+        <button type="button" onClick={() => onChange([...cards, { ...DEFAULT_EBOOK_CARD }])} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-semibold w-fit"><Plus size={13} /> Them ky nang</button>
+      </div>
+    </div>
+  );
+}
+type HeroExtraData = {
+  badges: string[];
+  bullets: string[];
+  titleAccent: string;
+  formTitle: string;
+  formSubtitle: string;
+  formBadge: string;
+  selectLabel: string;
+  selectPlaceholder: string;
+  selectOptions: string[];
+  submitText: string;
+};
+
+function EbookHeroEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [data, setData] = useState<HeroExtraData>(() => parseObj(value, {
+    badges: [], bullets: [], titleAccent: '',
+    formTitle: '', formSubtitle: '', formBadge: '',
+    selectLabel: '', selectPlaceholder: '',
+    selectOptions: [], submitText: '',
+  }));
+  function sync(next: HeroExtraData) { setData(next); onChange(JSON.stringify(next)); }
+  return (
+    <div className="flex flex-col gap-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
+      <div>
+        <Label>Phần headline màu cam <span className="text-slate-400 font-normal normal-case">— hiện xuống dòng, dưới phần trắng (Headline)</span></Label>
+        <Input value={data.titleAccent} onChange={(e) => sync({ ...data, titleAccent: e.target.value })} placeholder="VD: Chinh Phục Tương Lai" />
+      </div>
+      <StringListEditor label="Badge (chip nhỏ)" items={data.badges} placeholder="VD: Dành cho bé 4–6 tuổi" onChange={(badges) => sync({ ...data, badges })} />
+      <StringListEditor label="Gạch đầu dòng lợi ích" items={data.bullets} placeholder="VD: Giúp bé nhận diện chữ cái..." onChange={(bullets) => sync({ ...data, bullets })} />
+
+      <div className="border-t border-slate-200 pt-3 mt-1">
+        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-2">Form đăng ký bên cạnh sách</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <Label>Badge nhỏ phía trên</Label>
+            <Input value={data.formBadge} onChange={(e) => sync({ ...data, formBadge: e.target.value })} placeholder="Miễn phí 100%" />
+          </div>
+          <div>
+            <Label>Text nút gửi</Label>
+            <Input value={data.submitText} onChange={(e) => sync({ ...data, submitText: e.target.value })} placeholder="Tải sách miễn phí" />
+          </div>
+          <FieldCol span2>
+            <Label>Tiêu đề form</Label>
+            <Input value={data.formTitle} onChange={(e) => sync({ ...data, formTitle: e.target.value })} placeholder="Nhận sách miễn phí ngay" />
+          </FieldCol>
+          <FieldCol span2>
+            <Label>Mô tả nhỏ phía dưới tiêu đề</Label>
+            <Textarea value={data.formSubtitle} onChange={(e) => sync({ ...data, formSubtitle: e.target.value })} className="h-14 text-sm" placeholder="METTA Academy sẽ gửi tài liệu và tư vấn..." />
+          </FieldCol>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div>
+            <Label>Nhãn dropdown <span className="text-slate-400 font-normal normal-case">— vd: "Độ tuổi của bé", "Lớp của bé"</span></Label>
+            <Input value={data.selectLabel} onChange={(e) => sync({ ...data, selectLabel: e.target.value })} placeholder="Độ tuổi của bé" />
+          </div>
+          <div>
+            <Label>Placeholder dropdown</Label>
+            <Input value={data.selectPlaceholder} onChange={(e) => sync({ ...data, selectPlaceholder: e.target.value })} placeholder="Chọn độ tuổi" />
+          </div>
+        </div>
+        <div className="mt-2">
+          <StringListEditor label="Tuỳ chọn dropdown" hint="vd: Lớp 1, Lớp 2, Lớp 3, Lớp 4, Lớp 5" items={data.selectOptions} placeholder="VD: Lớp 1" onChange={(selectOptions) => sync({ ...data, selectOptions })} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EbookSkillsEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [data, setData] = useState(() => parseObj(value, { images: [] as string[], cards: [] as EbookCard[] }));
+  function sync(next: typeof data) { setData(next); onChange(JSON.stringify(next)); }
+  return (
+    <div className="flex flex-col gap-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
+      <ImagesGridEditor label="Ảnh minh hoạ" images={data.images} onChange={(images) => sync({ ...data, images })} sizeNote="Ngang 4:3 · 1200×900px" />
+      <EbookCardsEditor cards={data.cards} onChange={(cards) => sync({ ...data, cards })} />
+    </div>
+  );
+}
+
+function EbookWhyEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [data, setData] = useState(() => parseObj(value, { points: [] as string[], images: [] as string[] }));
+  function sync(next: typeof data) { setData(next); onChange(JSON.stringify(next)); }
+  return (
+    <div className="flex flex-col gap-4 bg-slate-50 border border-slate-200 rounded-xl p-3">
+      <StringListEditor label="Checklist lợi ích" items={data.points} placeholder="VD: Học nhẹ nhàng qua hình ảnh..." onChange={(points) => sync({ ...data, points })} />
+      <ImagesGridEditor label="Ảnh xem trước sách" images={data.images} onChange={(images) => sync({ ...data, images })} sizeNote="Ngang 4:3 · 1200×900px" />
+      <p className="text-[11px] text-slate-400">Để trống ảnh → hiển thị khung chờ kèm kích thước đề xuất.</p>
+    </div>
+  );
+}
+
 /* ── Section Editor ─────────────────────────────────────────────────── */
 const TYPE_COLOR: Record<string, string> = {
   Hero: 'bg-orange-100 text-orange-800',
@@ -729,6 +955,9 @@ const TYPE_COLOR: Record<string, string> = {
   News: 'bg-rose-100 text-rose-800',
   'Lead Form': 'bg-violet-100 text-violet-800',
   CTA: 'bg-red-100 text-red-800',
+  'Ebook Hero': 'bg-sky-100 text-sky-800',
+  'Ebook Skills': 'bg-blue-100 text-blue-800',
+  'Ebook Why': 'bg-indigo-100 text-indigo-800',
 };
 
 function SectionEditor({
@@ -904,6 +1133,36 @@ function SectionEditor({
           <>
             <FieldCol><Label>Tiêu đề form *</Label><Input value={val.title} onChange={(e) => set({ title: e.target.value })} /></FieldCol>
             <FieldCol><Label>Form ID</Label><Input value={val.formId || ''} onChange={(e) => set({ formId: e.target.value })} /></FieldCol>
+          </>
+        )}
+
+        {val.type === 'Ebook Hero' && (
+          <>
+            <FieldCol><Label>Headline (phần chữ trắng) *</Label><Textarea value={val.title} onChange={(e) => set({ title: e.target.value })} className="h-16" /></FieldCol>
+            <FieldCol><Label>Mô tả (sub headline)</Label><Textarea value={val.subtitle || ''} onChange={(e) => set({ subtitle: e.target.value })} className="h-16" /></FieldCol>
+            <ImageUploader value={val.imageUrl || ''} onChange={(v) => set({ imageUrl: v })} sizeNote="3:4 · 900×1200px" label="Ảnh bìa sách (đứng) — để trống sẽ hiện khung chờ" />
+            <FieldCol><Label>Form ID</Label><Input value={val.formId || ''} onChange={(e) => set({ formId: e.target.value })} placeholder="preschool-ebook-hero" /></FieldCol>
+            <EbookHeroEditor value={val.extraData || ''} onChange={(v) => set({ extraData: v })} />
+          </>
+        )}
+
+        {val.type === 'Ebook Skills' && (
+          <>
+            <FieldCol><Label>Eyebrow (chữ nhỏ phía trên)</Label><Input value={val.subtitle || ''} onChange={(e) => set({ subtitle: e.target.value })} placeholder="Bên trong sách có gì?" /></FieldCol>
+            <FieldCol><Label>Tiêu đề chính *</Label><Input value={val.title} onChange={(e) => set({ title: e.target.value })} /></FieldCol>
+            <EbookSkillsEditor value={val.extraData || ''} onChange={(v) => set({ extraData: v })} />
+          </>
+        )}
+
+        {val.type === 'Ebook Why' && (
+          <>
+            <FieldCol><Label>Eyebrow (chữ nhỏ phía trên)</Label><Input value={val.subtitle || ''} onChange={(e) => set({ subtitle: e.target.value })} placeholder="Vì sao nên tải?" /></FieldCol>
+            <FieldCol><Label>Tiêu đề chính *</Label><Input value={val.title} onChange={(e) => set({ title: e.target.value })} /></FieldCol>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <FieldCol><Label>Text nút</Label><Input value={val.buttonText || ''} onChange={(e) => set({ buttonText: e.target.value })} /></FieldCol>
+              <FieldCol><Label>Link nút</Label><Input value={val.buttonLink || ''} onChange={(e) => set({ buttonLink: e.target.value })} placeholder="#dangky" /></FieldCol>
+            </div>
+            <EbookWhyEditor value={val.extraData || ''} onChange={(v) => set({ extraData: v })} />
           </>
         )}
 
