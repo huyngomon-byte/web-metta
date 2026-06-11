@@ -809,9 +809,12 @@ export const leadService = {
     const assignedAtMs = Date.now();
     const assignedExpiresAtMs = assignedAtMs + DAY_MS;
     const changed: Lead[] = [];
+    const reassignedLeadIds = new Set<string>();
 
     store.leads = store.leads.map((lead) => {
       if (!leadIds.includes(lead.id)) return lead;
+      const wasAssigned = Boolean(lead.assignedTo || lead.assignedToName);
+      if (wasAssigned) reassignedLeadIds.add(lead.id);
       const next: Lead = {
         ...lead,
         assignedTo: sales.id,
@@ -836,7 +839,7 @@ export const leadService = {
     await Promise.all(changed.map(async (lead) => {
       await writeFirestoreLead(lead);
       await writeAuditLog({
-        type: lead.failedAssignedTo ? 'lead_reassigned' : 'lead_assigned',
+        type: reassignedLeadIds.has(lead.id) ? 'lead_reassigned' : 'lead_assigned',
         leadId: lead.id,
         assignedTo: sales.id,
         assignedToName: sales.fullName,

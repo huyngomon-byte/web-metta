@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { BRAND } from '@/lib/constants';
-import { requestPasswordReset } from '@/services/authService';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -16,14 +15,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resetting, setResetting] = useState(false);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError('');
-    setMessage('');
     setLoading(true);
     try {
       await signIn(email, password);
@@ -32,20 +28,6 @@ export default function LoginPage() {
       setError(err instanceof Error ? err.message : 'Không đăng nhập được.');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function resetPassword() {
-    setError('');
-    setMessage('');
-    setResetting(true);
-    try {
-      await requestPasswordReset(email);
-      setMessage('Đã gửi email đổi mật khẩu. Kiểm tra hộp thư của bạn.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không gửi được email đổi mật khẩu.');
-    } finally {
-      setResetting(false);
     }
   }
 
@@ -71,7 +53,12 @@ export default function LoginPage() {
             <form onSubmit={submit} className="flex flex-col gap-4">
               <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
                 Email
-                <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="username"
+                />
               </label>
               <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
                 Password
@@ -79,8 +66,9 @@ export default function LoginPage() {
                   <Input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(event) => setPassword(event.target.value)}
                     className="pr-11"
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"
@@ -93,16 +81,7 @@ export default function LoginPage() {
                 </div>
               </label>
               {error && <div className="rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</div>}
-              {message && <div className="rounded-lg bg-green-50 p-3 text-sm font-semibold text-green-700">{message}</div>}
               <Button size="lg" disabled={loading}>{loading ? 'Đang đăng nhập...' : 'Đăng nhập'}</Button>
-              <button
-                type="button"
-                onClick={resetPassword}
-                disabled={resetting || !email.trim()}
-                className="text-sm font-semibold text-[#003B7A] transition hover:text-[#F45A0A] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {resetting ? 'Đang gửi email đổi mật khẩu...' : 'Đổi mật khẩu / Quên mật khẩu'}
-              </button>
             </form>
           </CardContent>
         </Card>

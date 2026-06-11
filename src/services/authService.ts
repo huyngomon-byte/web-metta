@@ -1,7 +1,6 @@
 import {
   EmailAuthProvider,
   reauthenticateWithCredential,
-  sendPasswordResetEmail,
   signInWithCustomToken,
   signInWithEmailAndPassword,
   signOut,
@@ -112,13 +111,6 @@ export async function login(email: string, password: string) {
   }
 
   throw new Error('Chưa cấu hình Firebase Auth.');
-}
-
-export async function requestPasswordReset(email: string) {
-  const emailNorm = email.toLowerCase().trim();
-  if (!emailNorm) throw new Error('Vui lòng nhập email.');
-  if (!isFirebaseConfigured || !auth) throw new Error('Chưa cấu hình Firebase Auth.');
-  await sendPasswordResetEmail(auth, emailNorm);
 }
 
 export async function changeCurrentPassword(currentPassword: string, newPassword: string) {

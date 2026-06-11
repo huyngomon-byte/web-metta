@@ -44,7 +44,7 @@ function cleanUser(input: any) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    await requireAdmin(req);
+    const decoded = await requireAdmin(req);
     const auth = adminAuth();
     const db = adminDb();
 
@@ -94,8 +94,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'DELETE') {
       const id = String(req.body?.id || '');
       if (!id) return res.status(400).json({ error: 'Missing user id' });
-      await auth.updateUser(id, { disabled: true }).catch(() => {});
-      await db.collection('users').doc(id).set({ active: false, updatedAt: new Date().toISOString() }, { merge: true });
+      if (id === decoded.uid) return res.status(400).json({ error: 'Không thể xóa chính tài khoản đang đăng nhập.' });
+
+      await auth.deleteUser(id).catch(async (error) => {
+        const code = String(error?.code || '');
+        if (!code.includes('user-not-found')) {
+          await auth.updateUser(id, { disabled: true }).catch(() => {});
+        }
+      });
+
+      await db.collection('users').doc(id).delete();
+      await db.collection('agentPresence').doc(id).delete().catch(() => {});
+
+      const settingsRef = db.collection('callCenterSettings').doc('stringee');
+      await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(settingsRef);
+        if (!snap.exists) return;
+        const data = snap.data() || {};
+        const mappings = Array.isArray(data.userMappings) ? data.userMappings : [];
+        const nextMappings = mappings.filter((mapping: any) => mapping?.crmUserId !== id);
+        const patch: Record<string, unknown> = { userMappings: nextMappings, updatedAt: new Date().toISOString() };
+        if (data.fallbackAgentId === id) {
+          patch.fallbackAgentId = '';
+          patch.fallbackAgentName = '';
+        }
+        transaction.set(settingsRef, patch, { merge: true });
+      }).catch(() => {});
+
       return res.status(200).json({ ok: true });
     }
 
