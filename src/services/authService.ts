@@ -16,6 +16,7 @@ const SESSION_CACHE_KEYS = [
   'metta_leads',
   'metta_lead_activities',
   'metta_appointments',
+  'metta_sales_manual_tasks',
 ];
 
 function persistUser(user: AdminUser) {

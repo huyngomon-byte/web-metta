@@ -233,9 +233,13 @@ function isMettaPlusSectionType(type: PageSection['type']): type is MettaPlusSec
   return METTA_PLUS_SECTION_TYPES.includes(type as MettaPlusSectionType);
 }
 
+function isMettaPlusSection(section: PageSection): section is PageSection & { type: MettaPlusSectionType } {
+  return isMettaPlusSectionType(section.type);
+}
+
 function fallbackSections() {
   return seedSections
-    .filter((section) => section.pageId === 'page-metta-plus' && section.visible && isMettaPlusSectionType(section.type))
+    .filter((section) => section.pageId === 'page-metta-plus' && section.visible && isMettaPlusSection(section))
     .sort((a, b) => a.order - b.order);
 }
 
@@ -749,7 +753,7 @@ export default function MettaPlusLanding() {
 
       <main>
         {sections
-          .filter((section) => isMettaPlusSectionType(section.type))
+          .filter(isMettaPlusSection)
           .map((section) => <div key={section.id}>{renderSection(section.type)}</div>)}
       </main>
 

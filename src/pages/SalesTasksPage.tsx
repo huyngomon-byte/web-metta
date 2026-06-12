@@ -32,6 +32,7 @@ import { useLeads } from '@/hooks/useLeads';
 import { appointmentService } from '@/services/appointmentService';
 import { callCenterService } from '@/services/callCenterService';
 import { leadService } from '@/services/leadService';
+import { salesTaskService, type ManualTask, type TaskPriority } from '@/services/salesTaskService';
 import { userService } from '@/services/userService';
 import type { CallLog } from '@/types/call';
 import type { Appointment, Lead } from '@/types/crm';
@@ -39,24 +40,9 @@ import type { AdminUser } from '@/types/user';
 
 type TaskType = 'follow_up' | 'appointment' | 'retry_call' | 'quote' | 'manual';
 type TaskStatus = 'open' | 'done';
-type TaskPriority = 'low' | 'normal' | 'high';
 type ViewMode = 'list' | 'kanban';
 type SortField = 'due' | 'priority';
 type SortDirection = 'asc' | 'desc';
-
-type ManualTask = {
-  id: string;
-  title: string;
-  notes: string;
-  dueAt: string;
-  assignedTo: string;
-  assignedToName: string;
-  leadId?: string;
-  status: TaskStatus;
-  priority: TaskPriority;
-  createdAt: string;
-  updatedAt: string;
-};
 
 type SalesTask = {
   id: string;
@@ -74,7 +60,6 @@ type SalesTask = {
   priority: TaskPriority;
 };
 
-const LS_MANUAL_TASKS = 'metta_sales_manual_tasks';
 const ACTIVE_STATUSES = leadStatuses.filter((status) => ![WON_LEAD_STATUS, LOST_LEAD_STATUS].includes(status));
 const priorityWeight: Record<TaskPriority, number> = { high: 3, normal: 2, low: 1 };
 
@@ -162,20 +147,6 @@ function isNoAnswer(log: CallLog) {
 function leadName(lead?: Lead) {
   if (!lead) return '';
   return String(lead.studentName || lead.fullName || lead.parentName || lead.phone || '').trim();
-}
-
-function readManualTasks(): ManualTask[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LS_MANUAL_TASKS) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeManualTasks(tasks: ManualTask[]) {
-  localStorage.setItem(LS_MANUAL_TASKS, JSON.stringify(tasks.slice(0, 500)));
-  window.dispatchEvent(new Event('metta-sales-tasks-updated'));
 }
 
 function latestLeadCall(logs: CallLog[], leadId: string) {
@@ -356,6 +327,8 @@ export default function SalesTasksPage() {
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
+  const [quickTaskBusy, setQuickTaskBusy] = useState(false);
+  const [quickTaskError, setQuickTaskError] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
@@ -372,23 +345,24 @@ export default function SalesTasksPage() {
     title: '',
     notes: '',
     dueAt: localInputValue(addHours(nowIso(), 2)),
-    assignedTo: user?.id || '',
-    leadId: '',
+    assignedTo: '',
+    leadIds: [] as string[],
     priority: 'normal' as TaskPriority,
   });
 
   const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
 
   async function refresh() {
-    const [nextAppointments, nextLogs, nextUsers] = await Promise.all([
+    const [nextAppointments, nextLogs, nextUsers, nextTasks] = await Promise.all([
       appointmentService.getAppointments().catch(() => []),
       callCenterService.getLogs().catch(() => []),
       userService.getUsers().catch(() => []),
+      salesTaskService.getTasks().catch(() => []),
     ]);
     setAppointments(nextAppointments);
     setCallLogs(nextLogs);
     setUsers(nextUsers);
-    setManualTasks(readManualTasks());
+    setManualTasks(nextTasks);
   }
 
   useEffect(() => {
@@ -402,11 +376,19 @@ export default function SalesTasksPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!draft.assignedTo && user?.id) setDraft((item) => ({ ...item, assignedTo: user.id }));
-  }, [draft.assignedTo, user?.id]);
-
   const salesOptions = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
+  const taskAssigneeOptions = useMemo(() => {
+    if (canViewAll) return salesOptions;
+    return user?.role === 'sales' && user.active ? [user] : [];
+  }, [canViewAll, salesOptions, user]);
+  const defaultTaskAssigneeId = taskAssigneeOptions[0]?.id || '';
+  useEffect(() => {
+    setDraft((item) => {
+      if (!defaultTaskAssigneeId) return item;
+      if (taskAssigneeOptions.some((option) => option.id === item.assignedTo)) return item;
+      return { ...item, assignedTo: defaultTaskAssigneeId };
+    });
+  }, [defaultTaskAssigneeId, taskAssigneeOptions]);
   const leadOptions = useMemo(() => ({
     sources: Array.from(new Set(leads.map((lead) => lead.source).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
     centers: Array.from(new Set(leads.map((lead) => lead.centerName || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
@@ -456,38 +438,55 @@ export default function SalesTasksPage() {
     }
   }
 
-  function saveManualTask() {
-    if (!draft.title.trim() || !draft.dueAt) return;
-    const assignedUser = salesOptions.find((item) => item.id === draft.assignedTo) || user;
-    const task: ManualTask = {
-      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      title: draft.title.trim(),
-      notes: draft.notes.trim(),
-      dueAt: fromLocalInput(draft.dueAt),
-      assignedTo: assignedUser?.id || '',
-      assignedToName: assignedUser?.fullName || '',
-      leadId: draft.leadId || '',
-      priority: draft.priority,
-      status: 'open',
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    };
-    const next = [task, ...manualTasks];
-    setManualTasks(next);
-    writeManualTasks(next);
-    setDraft({ title: '', notes: '', dueAt: localInputValue(addHours(nowIso(), 2)), assignedTo: user?.id || '', leadId: '', priority: 'normal' });
+  async function saveManualTask() {
+    setQuickTaskError('');
+    if (!draft.title.trim()) return setQuickTaskError('Vui lòng nhập nội dung task.');
+    if (!draft.dueAt) return setQuickTaskError('Vui lòng chọn hạn xử lý.');
+    const assignedUser = taskAssigneeOptions.find((item) => item.id === draft.assignedTo);
+    if (!assignedUser) return setQuickTaskError('Vui lòng chọn sales phụ trách task.');
+
+    setQuickTaskBusy(true);
+    try {
+      const timestamp = nowIso();
+      const leadIds = draft.leadIds.length ? draft.leadIds : [''];
+      const tasks = leadIds.map((leadId, index) => ({
+        id: `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+        title: draft.title.trim(),
+        notes: draft.notes.trim(),
+        dueAt: fromLocalInput(draft.dueAt),
+        assignedTo: assignedUser.id,
+        assignedToName: assignedUser.fullName,
+        leadId,
+        priority: draft.priority,
+        status: 'open' as TaskStatus,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        createdBy: user?.id || '',
+        createdByName: user?.fullName || '',
+      }));
+      const next = await salesTaskService.saveTasks(tasks);
+      setManualTasks(next);
+      setDraft({
+        title: '',
+        notes: '',
+        dueAt: localInputValue(addHours(nowIso(), 2)),
+        assignedTo: assignedUser.id,
+        leadIds: [],
+        priority: 'normal',
+      });
+    } catch (error) {
+      setQuickTaskError(error instanceof Error ? error.message : 'Không tạo được task.');
+    } finally {
+      setQuickTaskBusy(false);
+    }
   }
 
-  function updateManual(id: string, patch: Partial<ManualTask>) {
-    const next = manualTasks.map((item) => item.id === id ? { ...item, ...patch, updatedAt: nowIso() } : item);
-    setManualTasks(next);
-    writeManualTasks(next);
+  async function updateManual(id: string, patch: Partial<ManualTask>) {
+    setManualTasks(await salesTaskService.updateTask(id, patch));
   }
 
-  function deleteManual(id: string) {
-    const next = manualTasks.filter((item) => item.id !== id);
-    setManualTasks(next);
-    writeManualTasks(next);
+  async function deleteManual(id: string) {
+    setManualTasks(await salesTaskService.deleteTask(id));
   }
 
   async function saveLeadFromModal(lead: Lead) {
@@ -577,20 +576,22 @@ export default function SalesTasksPage() {
 
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Plus size={18} /> Tạo to-do nhanh</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 lg:grid-cols-[1.2fr_1fr_220px_180px_150px_auto]">
+        <CardContent className="grid gap-3 lg:grid-cols-[1.2fr_minmax(280px,1fr)_220px_180px_150px_auto]">
           <Input placeholder="Ví dụ: gửi báo giá cho phụ huynh" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
-          <Input placeholder="Lead ID nếu cần link" value={draft.leadId} onChange={(event) => setDraft({ ...draft, leadId: event.target.value })} />
+          <LeadMultiSelect leads={leads} selectedIds={draft.leadIds} onChange={(leadIds) => setDraft({ ...draft, leadIds })} />
           <Input type="datetime-local" value={draft.dueAt} onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })} />
           <Select value={draft.assignedTo} onChange={(event) => setDraft({ ...draft, assignedTo: event.target.value })} disabled={!canViewAll}>
-            {(canViewAll ? salesOptions : salesOptions.filter((item) => item.id === user?.id)).map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
+            <option value="">Chọn sales</option>
+            {taskAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
           </Select>
           <Select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as TaskPriority })}>
             <option value="normal">Normal</option>
             <option value="high">High</option>
             <option value="low">Low</option>
           </Select>
-          <Button onClick={saveManualTask}><Plus /> Thêm</Button>
+          <Button onClick={() => void saveManualTask()} disabled={quickTaskBusy || !taskAssigneeOptions.length}><Plus /> {quickTaskBusy ? 'Đang thêm' : 'Thêm'}</Button>
           <Textarea className="lg:col-span-6" rows={2} placeholder="Note chi tiết" value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} />
+          {quickTaskError && <p className="lg:col-span-6 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">{quickTaskError}</p>}
         </CardContent>
       </Card>
 
@@ -606,15 +607,15 @@ export default function SalesTasksPage() {
               sortDirection={sortDirection}
               onSort={cycleSort}
               onOpenLead={setActiveLeadId}
-              onDone={updateManual}
-              onDelete={deleteManual}
+              onDone={(id, patch) => void updateManual(id, patch)}
+              onDelete={(id) => void deleteManual(id)}
             />
           ) : (
             <TaskKanban
               groups={groupedTasks}
               onOpenLead={setActiveLeadId}
-              onDone={updateManual}
-              onDelete={deleteManual}
+              onDone={(id, patch) => void updateManual(id, patch)}
+              onDelete={(id) => void deleteManual(id)}
             />
           )}
         </CardContent>
@@ -633,6 +634,112 @@ export default function SalesTasksPage() {
           onSave={saveLeadFromModal}
           onCall={callLeadFromModal}
         />
+      )}
+    </div>
+  );
+}
+
+function LeadMultiSelect({
+  leads,
+  selectedIds,
+  onChange,
+}: {
+  leads: Lead[];
+  selectedIds: string[];
+  onChange: (leadIds: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedLeads = useMemo(() => selectedIds.map((id) => leads.find((lead) => lead.id === id)).filter(Boolean) as Lead[], [leads, selectedIds]);
+  const filtered = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    return [...leads]
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+      .filter((lead) => {
+        if (!keyword) return true;
+        return `${lead.id} ${leadName(lead)} ${lead.parentName || ''} ${lead.phone || ''} ${lead.assignedToName || ''}`.toLowerCase().includes(keyword);
+      })
+      .slice(0, 80);
+  }, [leads, search]);
+
+  function toggleLead(id: string) {
+    onChange(selectedSet.has(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
+  }
+
+  function selectFiltered() {
+    onChange(Array.from(new Set([...selectedIds, ...filtered.map((lead) => lead.id)])));
+  }
+
+  const summary = selectedLeads.length
+    ? selectedLeads.length === 1
+      ? leadName(selectedLeads[0]) || selectedLeads[0].phone || selectedLeads[0].id
+      : `${selectedLeads.length} lead đã chọn`
+    : 'Chọn lead để link task';
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 focus:border-[#003B7A] focus:outline-none focus:ring-2 focus:ring-[#003B7A]/15"
+      >
+        <span className={`truncate ${selectedLeads.length ? 'text-slate-900' : 'text-slate-400'}`}>{summary}</span>
+        <span className="text-xs font-extrabold text-slate-400">{selectedLeads.length || ''}</span>
+      </button>
+      {selectedLeads.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {selectedLeads.slice(0, 3).map((lead) => (
+            <span key={lead.id} className="inline-flex max-w-[170px] items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+              <span className="truncate">{leadName(lead) || lead.phone || lead.id}</span>
+              <button type="button" onClick={() => toggleLead(lead.id)} aria-label="Bỏ chọn lead">
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+          {selectedLeads.length > 3 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">+{selectedLeads.length - 3}</span>}
+        </div>
+      )}
+      {open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+          <div className="border-b border-slate-100 p-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 text-slate-400" size={15} />
+              <Input className="h-9 pl-8" placeholder="Tìm tên / SĐT / ID lead" value={search} onChange={(event) => setSearch(event.target.value)} autoFocus />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <button type="button" className="text-xs font-bold text-[#003B7A] hover:underline" onClick={selectFiltered}>
+                Chọn tất cả kết quả
+              </button>
+              <button type="button" className="text-xs font-bold text-slate-500 hover:text-slate-800" onClick={() => onChange([])}>
+                Bỏ chọn
+              </button>
+            </div>
+          </div>
+          <div className="max-h-72 overflow-y-auto p-1">
+            {filtered.map((lead) => {
+              const checked = selectedSet.has(lead.id);
+              return (
+                <button
+                  key={lead.id}
+                  type="button"
+                  onClick={() => toggleLead(lead.id)}
+                  className={`flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-slate-50 ${checked ? 'bg-blue-50' : ''}`}
+                >
+                  <input className="mt-1" type="checkbox" checked={checked} readOnly />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-extrabold text-slate-900">{leadName(lead) || lead.phone || lead.id}</span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                      {lead.parentName ? `PH: ${lead.parentName} · ` : ''}{lead.phone || '-'} · {lead.assignedToName || 'Chưa có sales'}
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-[10px] text-slate-400">{lead.id}</span>
+                  </span>
+                </button>
+              );
+            })}
+            {!filtered.length && <p className="py-6 text-center text-xs font-semibold text-slate-400">Không tìm thấy lead.</p>}
+          </div>
+        </div>
       )}
     </div>
   );

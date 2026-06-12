@@ -266,7 +266,7 @@ export default function LeadAssignmentPage() {
     try {
       const saved = assignmentRuleService.saveRules(users, assignmentRules);
       setAssignmentRules(saved);
-      setMessage('Đã lưu rule auto chia lead. Lead mới sẽ được phân theo tỷ lệ này.');
+      setMessage('Đã lưu rule auto chia lead. Rule áp dụng ngay khi tạo lead mới; lead đã phân có thời hạn xử lý 24 giờ.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không lưu được rule chia lead.');
     }
@@ -343,7 +343,10 @@ export default function LeadAssignmentPage() {
               <CardTitle className="flex items-center gap-2 text-base">
                 <Settings2 size={18} className="text-[#003B7A]" /> Rule auto chia lead
               </CardTitle>
-              <p className="mt-1 text-sm text-slate-500">Lead mới chưa có PIC sẽ tự vào sales theo quota. Tổng tỷ lệ active phải bằng 100%.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Rule chạy ngay khi tạo lead mới trong CRM, không có timer 30 phút. Lead đã phân sẽ giữ trong 24 giờ; nếu sales không cập nhật status thì tự trả về.
+                Tổng tỷ lệ active phải bằng 100%.
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <Badge tone={rulesValid ? 'green' : 'red'}>Tổng {rulesTotal}%</Badge>
