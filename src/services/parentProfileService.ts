@@ -29,7 +29,7 @@ export interface ParentProfile {
 
 const LS_KEY = 'metta_parent_profiles';
 const LS_FIRESTORE_MIGRATION = 'metta_parent_profiles_firestore_migration_v1';
-const LS_FIRESTORE_DEMO_RESET = 'metta_parent_profiles_demo_firestore_reset_v2';
+const LS_FIRESTORE_DEMO_RESET = 'metta_parent_profiles_demo_firestore_reset_v3';
 const COL_PARENT_PROFILES = 'parentProfiles';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 
@@ -50,6 +50,23 @@ function isSampleLeadId(id?: string) {
     || /^lead-x\d+$/.test(value);
 }
 
+function demoStagePhone(globalIndex: number) {
+  return `09${String(71000000 + globalIndex * 13791).padStart(8, '0').slice(0, 8)}`;
+}
+
+function demoPriorityPhone(index: number) {
+  return `0988${String(100000 + index * 137).slice(0, 6)}`;
+}
+
+const KNOWN_DEMO_PHONES = new Set([
+  ...Array.from({ length: 120 }, (_, index) => demoStagePhone(index)),
+  ...Array.from({ length: 20 }, (_, index) => demoPriorityPhone(index)),
+]);
+
+function isKnownDemoPhone(value?: string) {
+  return KNOWN_DEMO_PHONES.has(normalizeParentPhone(value));
+}
+
 function isSampleParentProfile(profile: Partial<ParentProfile>) {
   const text = [
     profile.id,
@@ -58,6 +75,7 @@ function isSampleParentProfile(profile: Partial<ParentProfile>) {
     profile.knownFrom,
   ].map((value) => String(value || '').toLowerCase()).join(' ');
   return isSampleEmail(profile.email)
+    || isKnownDemoPhone(profile.phone)
     || text.includes('metta.test')
     || text.includes('demo.stage')
     || text.includes('demo parent')
@@ -72,6 +90,7 @@ function isSampleLead(lead: Partial<Lead>) {
   ].map((value) => String(value || '').toLowerCase()).join(' ');
   return isSampleLeadId(lead.id)
     || isSampleEmail(lead.email)
+    || isKnownDemoPhone(lead.phone)
     || text.includes('demo lead');
 }
 
@@ -209,7 +228,7 @@ async function readFirestoreProfiles() {
   const snap = await getDocs(query(collection(db!, COL_PARENT_PROFILES), orderBy('updatedAt', 'desc')));
   const profiles = snap.docs.map((item) => normalizeProfile({ ...item.data(), id: item.id }));
   const sampleProfiles = profiles.filter(isSampleParentProfile);
-  if (sampleProfiles.length && !localStorage.getItem(LS_FIRESTORE_DEMO_RESET)) {
+  if (sampleProfiles.length) {
     await Promise.all(sampleProfiles.map((item) => deleteFirestoreProfile(item.id).catch(() => {})));
     localStorage.setItem(LS_FIRESTORE_DEMO_RESET, '1');
   } else if (!sampleProfiles.length) {

@@ -1,7 +1,7 @@
 import { auth } from '@/lib/firebase';
 import { currentUser } from '@/services/authService';
 
-const SERVER_PURGE_KEY = 'metta_demo_data_server_purge_2026_06_11_v3';
+const SERVER_PURGE_KEY = 'metta_demo_data_server_purge_2026_06_12_v4';
 
 export async function purgeDemoDataOnServerOnce() {
   const user = currentUser();

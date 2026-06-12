@@ -36,8 +36,8 @@ const LS_LEADS = 'metta_leads';
 const LS_ACTIVITIES = 'metta_lead_activities';
 const LS_FINANCE_DEMO_MIGRATION = 'metta_lead_finance_demo_seed_v1';
 const LS_STAGE_DEMO_MIGRATION = 'metta_lead_stage_demo_seed_v1';
-const LS_DEMO_RESET_LOCAL = 'metta_lead_demo_reset_v7';
-const LS_DEMO_RESET_FIRESTORE = 'metta_lead_demo_firestore_reset_v7';
+const LS_DEMO_RESET_LOCAL = 'metta_lead_demo_reset_v8';
+const LS_DEMO_RESET_FIRESTORE = 'metta_lead_demo_firestore_reset_v8';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
