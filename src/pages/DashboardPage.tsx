@@ -671,13 +671,13 @@ export default function DashboardPage() {
           {salesContributionData.length > 0 ? (
             <div className="grid gap-3 lg:grid-cols-2">
               {salesContributionData.map((item) => (
-                <div key={item.id} className="rounded-lg border border-slate-100 p-3">
+                <div key={item.id} className="min-w-0 rounded-lg border border-slate-100 p-3">
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-extrabold text-slate-900">{item.name}</p>
                       <p className="text-xs text-slate-500">{item.total} lead • {item.converted} chốt</p>
                     </div>
-                    <div className="text-right text-xs">
+                    <div className="max-w-[46%] shrink-0 break-words text-right text-xs">
                       <p className="font-extrabold text-emerald-600">{formatCurrency(item.revenue)}</p>
                       <p className="font-bold text-orange-600">{formatCurrency(item.expectedRevenue)}</p>
                     </div>
@@ -711,8 +711,8 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="pb-1"><CardTitle className="text-sm font-bold text-slate-700">Xu hướng Lead theo ngày</CardTitle></CardHeader>
           <CardContent>
-            <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
-              <div className="h-72 min-w-[520px] sm:min-w-0">
+            <div className="-mx-3 overflow-x-auto overscroll-x-contain px-3 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+              <div className="h-72 min-w-[640px] md:min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -733,8 +733,8 @@ export default function DashboardPage() {
           <CardHeader className="pb-1"><CardTitle className="text-sm font-bold text-slate-700">Lead theo nguồn</CardTitle></CardHeader>
           <CardContent>
             {sourceData.length > 0 ? (
-              <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
-                <div className="h-72 min-w-[520px] sm:min-w-0">
+              <div className="-mx-3 overflow-x-auto overscroll-x-contain px-3 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+                <div className="h-72 min-w-[620px] md:min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={sourceData} margin={{ top: 5, right: 5, left: -20, bottom: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -762,9 +762,9 @@ export default function DashboardPage() {
               <div className="flex flex-col gap-2.5 pt-1">
                 {courseData.map((c, i) => (
                   <div key={c.name}>
-                    <div className="flex justify-between mb-1">
-                      <span className="text-xs font-bold text-slate-700">{c.name}</span>
-                      <span className="text-xs text-slate-500">{c.total} lead • <span className="font-bold text-emerald-600">{c.cvRate}% chốt</span></span>
+                    <div className="mb-1 flex items-start justify-between gap-3">
+                      <span className="min-w-0 truncate text-xs font-bold text-slate-700">{c.name}</span>
+                      <span className="shrink-0 text-right text-xs text-slate-500">{c.total} lead • <span className="font-bold text-emerald-600">{c.cvRate}% chốt</span></span>
                     </div>
                     <div className="h-6 bg-slate-100 rounded-lg overflow-hidden flex">
                       <div className="h-full rounded-lg transition-all duration-500 flex items-center" style={{ width: `${Math.max((c.total / (courseData[0]?.total || 1)) * 100, 5)}%`, backgroundColor: COURSE_COLORS[i % COURSE_COLORS.length] }}>
@@ -793,9 +793,9 @@ export default function DashboardPage() {
                   const colors = ['#3B82F6', '#06B6D4', '#8B5CF6', '#F97316', '#94a3b8'];
                   return (
                     <div key={a.name}>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-xs font-bold text-slate-700">{a.name}</span>
-                        <span className="text-sm font-extrabold text-slate-800">{a.value}</span>
+                      <div className="mb-1 flex items-start justify-between gap-3">
+                        <span className="min-w-0 truncate text-xs font-bold text-slate-700">{a.name}</span>
+                        <span className="shrink-0 text-sm font-extrabold text-slate-800">{a.value}</span>
                       </div>
                       <div className="h-6 bg-slate-100 rounded-lg overflow-hidden">
                         <div className="h-full rounded-lg transition-all duration-500 flex items-center"
@@ -831,7 +831,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-700 truncate">{a.title}</p>
-                      <p className="text-[10px] text-slate-500">{a.assignedTo} • {a.type}</p>
+                      <p className="truncate text-[10px] text-slate-500">{a.assignedTo} • {a.type}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className="text-[11px] font-bold text-violet-700">
@@ -871,7 +871,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-slate-700 truncate">{t.title}</p>
-                      <p className="text-[10px] text-slate-500">{t.detail} • {t.pic || 'Chưa gán'}</p>
+                      <p className="truncate text-[10px] text-slate-500">{t.detail} • {t.pic || 'Chưa gán'}</p>
                     </div>
                     <Badge tone={t.type === 'follow-up' ? 'orange' : t.type === 'appointment' ? 'cyan' : 'red'} className="text-[9px] flex-shrink-0">
                       {t.type === 'follow-up' ? 'Follow-up' : t.type === 'appointment' ? 'Lịch hẹn' : 'Gọi lại'}
@@ -905,9 +905,9 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[11px] font-bold text-slate-700 truncate">{l.fullName}</p>
-                      <p className="text-[10px] text-slate-400">{l.phone} • {l.source}</p>
+                      <p className="truncate text-[10px] text-slate-400">{l.phone} • {l.source}</p>
                     </div>
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `${STATUS_COLORS[l.status]}15`, color: STATUS_COLORS[l.status] }}>
+                    <span className="max-w-[112px] truncate rounded-full px-1.5 py-0.5 text-[9px] font-bold flex-shrink-0" style={{ backgroundColor: `${STATUS_COLORS[l.status]}15`, color: STATUS_COLORS[l.status] }}>
                       {l.status}
                     </span>
                   </div>
@@ -925,7 +925,7 @@ export default function DashboardPage() {
 
 function StageCohortTable({ data }: { data: ReturnType<typeof buildStageCohortData> }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="-mx-3 overflow-x-auto overscroll-x-contain px-3 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
       <table className="w-full min-w-[760px] text-xs">
         <thead>
           <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-slate-400">
@@ -991,8 +991,9 @@ function ReasonShareCard({
       </CardHeader>
       <CardContent>
         {data.length > 0 ? (
-          <div className="grid gap-3 lg:grid-cols-[220px_1fr]">
-            <div className="h-56">
+          <div className="-mx-3 overflow-x-auto overscroll-x-contain px-3 pb-2 [scrollbar-width:thin] sm:mx-0 sm:px-0">
+            <div className="grid min-w-[540px] grid-cols-[190px_1fr] gap-3 lg:min-w-0 lg:grid-cols-[220px_1fr]">
+            <div className="h-56 min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -1013,19 +1014,20 @@ function ReasonShareCard({
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex flex-col justify-center gap-2.5">
+            <div className="flex min-w-0 flex-col justify-center gap-2.5">
               {data.map((item, index) => (
-                <div key={item.name} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                <div key={item.name} className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
                   <div className="mb-1 flex items-start justify-between gap-3">
                     <span className="flex min-w-0 items-start gap-2 text-xs font-bold text-slate-700">
                       <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: palette[index % palette.length] }} />
-                      <span>{item.name}</span>
+                      <span className="min-w-0 break-words">{item.name}</span>
                     </span>
                     <span className="shrink-0 text-xs font-extrabold text-slate-900">{item.rate}%</span>
                   </div>
                   <p className="pl-4 text-[10px] font-semibold text-slate-400">{item.value} lead</p>
                 </div>
               ))}
+            </div>
             </div>
           </div>
         ) : (

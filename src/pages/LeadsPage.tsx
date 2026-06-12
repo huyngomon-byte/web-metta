@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Download, GripVertical, LayoutGrid, List, PhoneCall, Plus, Save, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, GripVertical, LayoutGrid, List, PhoneCall, Plus, Save, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
@@ -305,6 +305,7 @@ export default function LeadsPage() {
   const [editing, setEditing] = useState<LeadDraft | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
+  const [quickLeadOpen, setQuickLeadOpen] = useState(false);
   const [showSourceSettings, setShowSourceSettings] = useState(false);
   const [showCenterSettings, setShowCenterSettings] = useState(false);
   const [error, setError] = useState('');
@@ -521,39 +522,50 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
-        <div>
-          <h1 className="text-3xl font-extrabold text-slate-950">Leads CRM</h1>
-          <p className="text-slate-500">Quản lý lead tuyển sinh, phân sale và lịch follow-up.</p>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-extrabold text-slate-950 sm:text-3xl">Leads CRM</h1>
+          <p className="text-sm text-slate-500 sm:text-base">Quản lý lead tuyển sinh, phân sale và lịch follow-up.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => setView('table')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold ${view === 'table' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+        <div className="grid grid-cols-2 items-center gap-2 sm:flex sm:flex-wrap">
+          <div className="col-span-2 inline-flex w-full rounded-lg border border-slate-200 bg-slate-50 p-1 sm:col-span-1 sm:w-auto">
+            <button type="button" onClick={() => setView('table')} className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold sm:flex-none ${view === 'table' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <List size={15} /> Table
             </button>
-            <button type="button" onClick={() => setView('kanban')} className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold ${view === 'kanban' ? 'bg-[#003B7A] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <button type="button" onClick={() => setView('kanban')} className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold sm:flex-none ${view === 'kanban' ? 'bg-[#003B7A] text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
               <LayoutGrid size={15} /> Kanban
             </button>
           </div>
-          <Button variant="outline" onClick={() => exportCsv('metta-leads.csv', filtered as unknown as Record<string, unknown>[])}>
+          <Button variant="outline" className="w-full sm:w-auto" onClick={() => exportCsv('metta-leads.csv', filtered as unknown as Record<string, unknown>[])}>
             <Download /> Export CSV
           </Button>
-          {canAssign && <Button variant="outline" onClick={() => setShowSourceSettings((current) => !current)}>
+          {canAssign && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowSourceSettings((current) => !current)}>
             Source priority
           </Button>}
-          {canAssign && <Button variant="outline" onClick={() => setShowCenterSettings((current) => !current)}>
+          {canAssign && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowCenterSettings((current) => !current)}>
             Trung tâm
           </Button>}
-          {canAssign && <Button onClick={() => setEditing(newLeadDraft())}><Plus /> Thêm lead</Button>}
+          {canAssign && <Button className="w-full sm:w-auto" onClick={() => setEditing(newLeadDraft())}><Plus /> Thêm lead</Button>}
         </div>
       </div>
 
       <Card>
-        <CardContent className="grid gap-3 p-4 md:grid-cols-6">
+        <CardContent className="grid gap-3 p-3 sm:p-4 md:grid-cols-6">
           {canAssign && <div className="md:col-span-6">
-            <div className="mb-1 text-xs font-bold uppercase text-slate-500">Nhập lead nhanh</div>
-            <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 md:grid-cols-[1fr_1fr_1fr_180px_220px_auto]">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="text-xs font-bold uppercase text-slate-500">Nhập lead nhanh</div>
+              <button
+                type="button"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm md:hidden"
+                aria-expanded={quickLeadOpen}
+                onClick={() => setQuickLeadOpen((open) => !open)}
+              >
+                {quickLeadOpen ? 'Thu gọn' : 'Mở'}
+                <ChevronDown className={`h-4 w-4 transition-transform ${quickLeadOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+            <div className={`${quickLeadOpen ? 'grid' : 'hidden'} gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 md:grid md:grid-cols-[1fr_1fr_1fr_180px_220px_auto]`}>
               <Input placeholder="Tên phụ huynh" value={quickLead.parentName} onChange={(event) => setQuickLead({ ...quickLead, parentName: event.target.value })} />
               <Input placeholder="Tên học sinh" value={quickLead.studentName} onChange={(event) => setQuickLead({ ...quickLead, studentName: event.target.value })} />
               <Input placeholder="Số điện thoại" value={quickLead.phone} onChange={(event) => setQuickLead({ ...quickLead, phone: event.target.value })} />
