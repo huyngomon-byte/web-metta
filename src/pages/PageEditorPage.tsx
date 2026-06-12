@@ -948,12 +948,13 @@ type MettaPlusIcon =
   | 'FileBadge2' | 'GraduationCap' | 'Lightbulb' | 'Mic2' | 'Palette' | 'Rocket'
   | 'Send' | 'Sparkles' | 'Star' | 'Trophy' | 'Users';
 type MettaPlusCard = { title: string; desc: string; icon: MettaPlusIcon; color: MettaPlusColor };
+type HeroTagItem = { label: string; color?: MettaPlusColor };
 type MettaPlusData = {
   heroBadge: string;
   headline: string;
   subHeadline: string;
   shortDescription: string;
-  heroTags: string[];
+  heroTags: HeroTagItem[];
   heroPrimaryCta: string;
   heroSecondaryCta: string;
   heroImage: string;
@@ -999,7 +1000,12 @@ const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
   headline: 'Mở khóa mùa hè quốc tế cho con',
   subHeadline: 'Trải nghiệm CLB Tiếng Anh, Kỹ năng và STEM Robotics tại Metta Academy.',
   shortDescription: 'Học vui - làm thật - tự tin thể hiện bản thân.',
-  heroTags: ['4-15 tuổi', 'GVNN', 'STEM Robotics', 'Metta Passport'],
+  heroTags: [
+    { label: '4-15 tuổi', color: 'orange' },
+    { label: 'GVNN', color: 'green' },
+    { label: 'STEM Robotics', color: 'blue' },
+    { label: 'Metta Passport', color: 'purple' },
+  ],
   heroPrimaryCta: 'Đăng ký tư vấn ngay',
   heroSecondaryCta: 'Giữ suất trải nghiệm cho bé',
   heroImage: '/brand/hero-classroom.png',
@@ -1081,6 +1087,31 @@ function MettaPlusCardsEditor({ label, cards, onChange }: { label: string; cards
   );
 }
 
+function HeroTagsEditor({ label, items, onChange }: { label: string; items: HeroTagItem[]; onChange: (next: HeroTagItem[]) => void }) {
+  function update(i: number, patch: Partial<HeroTagItem>) {
+    onChange(items.map((it, idx) => idx === i ? { ...it, ...patch } : it));
+  }
+  return (
+    <div>
+      <Label>{label} <span className="text-slate-400 font-normal normal-case">— chọn màu cho từng tag</span></Label>
+      <div className="flex flex-col gap-2">
+        {items.map((tag, i) => (
+          <div key={i} className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded p-2">
+            <Input value={tag.label} placeholder="VD: STEM Robotics" onChange={(e) => update(i, { label: e.target.value })} className="flex-1 text-sm" />
+            <Select value={tag.color || 'orange'} onChange={(e) => update(i, { color: e.target.value as MettaPlusColor })} className="w-[120px] text-xs">
+              {METTA_PLUS_COLOR_OPTIONS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </Select>
+            <button type="button" onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-600"><Trash2 size={15} /></button>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...items, { label: '', color: 'orange' }])} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 font-semibold w-fit">
+          <Plus size={13} /> Thêm tag
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [data, setData] = useState<MettaPlusData>(() => ({ ...DEFAULT_METTA_PLUS_DATA, ...parseObj(value, DEFAULT_METTA_PLUS_DATA) }));
   function sync(next: MettaPlusData) { setData(next); onChange(JSON.stringify(next)); }
@@ -1096,7 +1127,7 @@ function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: str
         <FieldCol><Label>Alt ảnh hero</Label><Input value={data.heroImageAlt} onChange={(e) => sync({ ...data, heroImageAlt: e.target.value })} /></FieldCol>
       </div>
       <ImageUploader value={data.heroImage} onChange={(heroImage) => sync({ ...data, heroImage })} sizeNote="Hero ngang 4:3 · 1200 x 900 px" label="Ảnh hero bên phải" />
-      <StringListEditor label="Tag nhỏ hero" items={data.heroTags} placeholder="VD: STEM Robotics" onChange={(heroTags) => sync({ ...data, heroTags })} />
+      <HeroTagsEditor label="Tag nhỏ hero" items={data.heroTags} onChange={(heroTags) => sync({ ...data, heroTags })} />
       <div className="grid gap-3 md:grid-cols-2">
         <FieldCol><Label>Tiêu đề section lợi ích</Label><Input value={data.benefitsTitle} onChange={(e) => sync({ ...data, benefitsTitle: e.target.value })} /></FieldCol>
         <FieldCol><Label>Mô tả section lợi ích</Label><Input value={data.benefitsDesc} onChange={(e) => sync({ ...data, benefitsDesc: e.target.value })} /></FieldCol>
@@ -1139,7 +1170,7 @@ function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
-type MettaPlusHeroExtra = { badge?: string; tags?: string[]; imageAlt?: string };
+type MettaPlusHeroExtra = { badge?: string; tags?: (string | HeroTagItem)[]; imageAlt?: string };
 type MettaPlusPassExtra = { passCardTitle?: string; passCardMeta?: string; passItems?: string[] };
 type MettaPlusFormExtra = { highlights?: string[] };
 
@@ -1158,7 +1189,11 @@ function MettaPlusHeroSectionEditor({ section, onChange }: { section: PageSectio
         <FieldCol><Label>Alt ảnh hero</Label><Input value={extra.imageAlt || ''} onChange={(e) => syncExtra({ imageAlt: e.target.value })} /></FieldCol>
       </div>
       <ImageUploader value={section.imageUrl || ''} onChange={(imageUrl) => onChange({ imageUrl })} sizeNote="Hero ngang 4:3 · 1200 x 900 px" label="Ảnh hero bên phải" />
-      <StringListEditor label="Tag nhỏ hero" items={extra.tags || []} placeholder="VD: STEM Robotics" onChange={(tags) => syncExtra({ tags })} />
+      <HeroTagsEditor
+        label="Tag nhỏ hero"
+        items={(extra.tags || []).map((t) => typeof t === 'string' ? { label: t, color: 'orange' } : t)}
+        onChange={(tags) => syncExtra({ tags })}
+      />
     </>
   );
 }
@@ -1196,6 +1231,7 @@ function MettaPlusPassSectionEditor({ section, onChange }: { section: PageSectio
         <FieldCol><Label>Meta trên card Pass</Label><Input value={extra.passCardMeta || ''} onChange={(e) => syncExtra({ passCardMeta: e.target.value })} /></FieldCol>
         <FieldCol span2><Label>CTA Pass</Label><Input value={section.buttonText || ''} onChange={(e) => onChange({ buttonText: e.target.value })} /></FieldCol>
       </div>
+      <ImageUploader value={section.imageUrl || ''} onChange={(v) => onChange({ imageUrl: v })} sizeNote="Ngang 4:3 · 1200×900px" label="Ảnh thay card Summer Club (để trống = giữ card mặc định)" />
       <StringListEditor label="Checklist trong Pass" items={extra.passItems || []} placeholder="VD: Tham gia CLB phù hợp độ tuổi" onChange={(passItems) => syncExtra({ passItems })} />
     </>
   );

@@ -11,10 +11,12 @@ import { cmsService } from '@/services/cmsService';
 import { useThemeSettings } from '@/hooks/useCms';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { CmsPage, PageSection } from '@/types/cms';
+import { BRAND_LOGOS } from '@/lib/constants';
 
 const FALLBACK_SLUG = 'ebook-mam-non';
 const LEGACY_SLUG = 'landing-page-phonics';
-const LOGO = '/brand/logo.png';
+const HEADER_LOGO = BRAND_LOGOS.onWhite;
+const FOOTER_LOGO = BRAND_LOGOS.onBlue;
 const SLOGAN = 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai';
 
 function hasEbookHero(items: PageSection[]) {
@@ -86,7 +88,9 @@ export default function PublicEbookLanding() {
     return () => { document.title = prev; };
   }, [page]);
 
-  if (page === undefined) return <div className="grid min-h-screen place-items-center text-slate-400">Đang tải...</div>;
+  if (page === undefined || (page && !sections.length)) {
+    return <div className="grid min-h-screen place-items-center text-slate-400">Đang tải...</div>;
+  }
   if (page === null) return <Navigate to="/" replace />;
 
   return (
@@ -113,8 +117,7 @@ function MiniHeader() {
     <header className={`sticky top-0 z-50 transition-all ${scrolled ? 'bg-white/95 shadow-[0_8px_30px_-12px_rgba(0,47,95,.35)] backdrop-blur' : 'bg-white/80 backdrop-blur'}`}>
       <div className="mx-auto flex max-w-[1220px] items-center justify-between gap-3 px-5 py-2.5 sm:px-6">
         <a href="#top" className="flex items-center gap-2.5">
-          <img src={LOGO} alt="METTA Academy" className="h-9 w-auto object-contain sm:h-10" />
-          <span className="hidden font-montserrat text-[15px] font-extrabold tracking-tight text-[var(--lp-navy-700)] sm:block">METTA Academy</span>
+          <img src={HEADER_LOGO} alt="METTA Academy" className="h-[46px] w-auto object-contain sm:h-[50px]" />
         </a>
         <button type="button" onClick={scrollToForm} className="lp-cta inline-flex h-[44px] items-center gap-1.5 rounded-full px-[22px] text-[13px] sm:px-[26px] sm:text-sm">
           <span className="material-symbols-outlined text-[18px]">download</span>
@@ -137,8 +140,7 @@ function MiniFooter() {
       <div className="mx-auto max-w-[1240px] px-4 py-10 sm:px-6">
         <div className="flex flex-col items-center gap-5 text-center">
           <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-white p-1.5"><img src={s.logoUrl || LOGO} alt="METTA Academy" className="h-9 w-auto object-contain" /></span>
-            <span className="font-montserrat text-lg font-extrabold tracking-tight">METTA Academy</span>
+            <img src={FOOTER_LOGO} alt="METTA Academy" className="h-[58px] w-auto max-w-[230px] object-contain sm:h-16" />
           </div>
           <p className="text-[14px] font-medium text-white/80">{s.footerText || SLOGAN}</p>
           <div className="flex flex-col items-center gap-2 text-[14px] text-white/85 sm:flex-row sm:gap-6">

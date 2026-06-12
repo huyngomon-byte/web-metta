@@ -26,8 +26,10 @@ import { cmsService } from '@/services/cmsService';
 import { useThemeSettings } from '@/hooks/useCms';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { PageSection } from '@/types/cms';
+import { BRAND_LOGOS } from '@/lib/constants';
 
-const LOGO = '/brand/logo.png';
+const HEADER_LOGO = BRAND_LOGOS.onWhite;
+const FOOTER_LOGO = BRAND_LOGOS.onBlue;
 const HERO_IMAGE = '/brand/hero-classroom.png';
 const SLOGAN = 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai';
 
@@ -63,13 +65,14 @@ type IconName =
   | 'Users';
 type ColorKey = 'orange' | 'green' | 'purple' | 'yellow' | 'blue' | 'pink';
 type MettaPlusCard = { title: string; desc: string; icon: IconName; color: ColorKey };
+type HeroTag = { label: string; color?: ColorKey };
 
 type MettaPlusConfig = {
   heroBadge: string;
   headline: string;
   subHeadline: string;
   shortDescription: string;
-  heroTags: string[];
+  heroTags: HeroTag[];
   heroPrimaryCta: string;
   heroSecondaryCta: string;
   heroImage: string;
@@ -84,6 +87,7 @@ type MettaPlusConfig = {
   passDesc: string;
   passCardTitle: string;
   passCardMeta: string;
+  passCardImage: string;
   passItems: string[];
   passCta: string;
   journeyTitle: string;
@@ -156,7 +160,12 @@ const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
   headline: 'Mở khóa mùa hè quốc tế cho con',
   subHeadline: 'Trải nghiệm CLB Tiếng Anh, Kỹ năng và STEM Robotics tại Metta Academy.',
   shortDescription: 'Học vui - làm thật - tự tin thể hiện bản thân.',
-  heroTags: ['4-15 tuổi', 'GVNN', 'STEM Robotics', 'Metta Passport'],
+  heroTags: [
+    { label: '4-15 tuổi', color: 'orange' },
+    { label: 'GVNN', color: 'green' },
+    { label: 'STEM Robotics', color: 'blue' },
+    { label: 'Metta Passport', color: 'purple' },
+  ],
   heroPrimaryCta: 'Đăng ký tư vấn ngay',
   heroSecondaryCta: 'Giữ suất trải nghiệm cho bé',
   heroImage: HERO_IMAGE,
@@ -183,6 +192,7 @@ const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
   passDesc: 'Cho con thử môi trường học thật trước khi đăng ký khóa dài hạn.',
   passCardTitle: 'Summer Club',
   passCardMeta: '4-15 tuổi · CLB hè · Showcase Day',
+  passCardImage: '',
   passItems: ['Tham gia CLB phù hợp độ tuổi', 'Học kỹ năng với GVNN', 'Thực hành STEM Robotics', 'Có Metta Passport cá nhân', 'Tham gia Showcase cuối khóa'],
   passCta: 'Nhận tư vấn Metta+ Pass',
   journeyTitle: 'Hành trình Metta+ của bé',
@@ -259,17 +269,21 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
   sections.forEach((section) => {
     switch (section.type) {
       case 'Metta+ Hero': {
-        const extra = parseObj(section.extraData, { badge: config.heroBadge, tags: config.heroTags, imageAlt: config.heroImageAlt });
-        config.heroBadge = extra.badge || config.heroBadge;
-        config.heroTags = extra.tags?.length ? extra.tags : config.heroTags;
-        config.heroImageAlt = extra.imageAlt || config.heroImageAlt;
-        config.headline = section.title || config.headline;
-        config.subHeadline = section.subtitle || config.subHeadline;
-        config.shortDescription = section.description || config.shortDescription;
-        config.heroImage = section.imageUrl || config.heroImage;
-        config.heroPrimaryCta = section.buttonText || config.heroPrimaryCta;
-        config.heroSecondaryCta = section.button2Text || config.heroSecondaryCta;
-        config.formId = section.formId || config.formId;
+        const extra = parseObj(section.extraData, { badge: config.heroBadge, tags: config.heroTags as (string | HeroTag)[], imageAlt: config.heroImageAlt });
+        // Dùng ?? (nullish) thay || để admin xóa thành chuỗi rỗng vẫn được tôn trọng
+        // (nếu dùng ||, "" sẽ rơi về default seed → field không bao giờ ẩn được).
+        config.heroBadge = extra.badge ?? config.heroBadge;
+        if (extra.tags?.length) {
+          config.heroTags = extra.tags.map((tag) => typeof tag === 'string' ? { label: tag } : tag);
+        }
+        config.heroImageAlt = extra.imageAlt ?? config.heroImageAlt;
+        config.headline = section.title ?? config.headline;
+        config.subHeadline = section.subtitle ?? config.subHeadline;
+        config.shortDescription = section.description ?? config.shortDescription;
+        config.heroImage = section.imageUrl ?? config.heroImage;
+        config.heroPrimaryCta = section.buttonText ?? config.heroPrimaryCta;
+        config.heroSecondaryCta = section.button2Text ?? config.heroSecondaryCta;
+        config.formId = section.formId ?? config.formId;
         break;
       }
       case 'Metta+ Benefits':
@@ -294,6 +308,7 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
         config.passCardTitle = extra.passCardTitle || config.passCardTitle;
         config.passCardMeta = extra.passCardMeta || config.passCardMeta;
         config.passItems = extra.passItems?.length ? extra.passItems : config.passItems;
+        config.passCardImage = section.imageUrl || config.passCardImage;
         break;
       }
       case 'Metta+ Journey':
@@ -321,10 +336,10 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
   return config;
 }
 
-function SectionHeader({ title, desc }: { title: string; desc: string }) {
+function SectionHeader({ title, desc, wide = false }: { title: string; desc: string; wide?: boolean }) {
   return (
-    <div className="mx-auto mb-8 max-w-2xl text-center sm:mb-10">
-      <h2 className="font-montserrat text-[28px] font-extrabold leading-tight text-[#08244A] sm:text-[38px]">
+    <div className={`mx-auto mb-8 text-center sm:mb-10 ${wide ? 'max-w-4xl' : 'max-w-2xl'}`}>
+      <h2 className={`font-montserrat text-[28px] font-extrabold leading-tight text-[#08244A] sm:text-[38px] ${wide ? 'lg:whitespace-nowrap' : ''}`}>
         {title}
       </h2>
       <p className="mt-3 text-[15px] font-semibold leading-6 text-[#5D6B82] sm:text-[17px]">{desc}</p>
@@ -468,10 +483,7 @@ function MiniFooter() {
       <div className="mx-auto max-w-[1240px] px-4 py-10 sm:px-6">
         <div className="flex flex-col items-center gap-5 text-center">
           <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-white p-1.5">
-              <img src={s.logoUrl || LOGO} alt="METTA Academy" className="h-9 w-auto object-contain" />
-            </span>
-            <span className="font-montserrat text-lg font-extrabold tracking-tight">METTA Academy</span>
+            <img src={FOOTER_LOGO} alt="METTA Academy" className="h-[58px] w-auto max-w-[230px] object-contain sm:h-16" />
           </div>
           <p className="text-[14px] font-medium text-white/80">{s.footerText || SLOGAN}</p>
           <div className="flex flex-col items-center gap-2 text-[14px] text-white/85 sm:flex-row sm:gap-6">
@@ -501,8 +513,9 @@ function MiniFooter() {
 }
 
 export default function MettaPlusLanding() {
-  const [sections, setSections] = useState<PageSection[]>(fallbackSections);
-  const config = useMemo(() => buildMettaPlusConfig(sections), [sections]);
+  // null = chưa load xong (hiện skeleton để tránh "flash" bản cũ).
+  const [sections, setSections] = useState<PageSection[] | null>(null);
+  const config = useMemo(() => buildMettaPlusConfig(sections ?? []), [sections]);
   const heroTags = useMemo(() => config.heroTags, [config.heroTags]);
 
   useEffect(() => {
@@ -511,7 +524,10 @@ export default function MettaPlusLanding() {
       const page = await cmsService.getPageBySlug('metta-plus')
         || await cmsService.getPage('page-metta-plus')
         || seedPages.find((item) => item.id === 'page-metta-plus');
-      if (!page) return;
+      if (!page) {
+        if (active) setSections(fallbackSections());
+        return;
+      }
       const items = await cmsService.getVisibleSections(page.id);
       const split = items.filter((item) => isMettaPlusSectionType(item.type)).sort((a, b) => a.order - b.order);
       if (active) setSections(split.length ? split : fallbackSections());
@@ -521,6 +537,8 @@ export default function MettaPlusLanding() {
     });
     return () => { active = false; };
   }, []);
+
+  if (sections === null) return <MettaPlusSkeleton />;
 
   const renderSection = (type: MettaPlusSectionType) => {
     switch (type) {
@@ -537,18 +555,23 @@ export default function MettaPlusLanding() {
                 <h1 className="font-montserrat text-[42px] font-black leading-[1.04] tracking-normal text-[#08244A] sm:text-[56px] lg:text-[68px]">
                   {config.headline}
                 </h1>
-                <p className="mt-5 max-w-[620px] text-[18px] font-bold leading-8 text-[#31435F] sm:text-[21px]">
-                  {config.subHeadline}
-                </p>
-                <p className="mt-3 text-[16px] font-extrabold text-[#F37021] sm:text-[18px]">
-                  {config.shortDescription}
-                </p>
+                {config.subHeadline && (
+                  <p className="mt-5 max-w-[620px] text-[18px] font-bold leading-8 text-[#31435F] sm:text-[21px]">
+                    {config.subHeadline}
+                  </p>
+                )}
+                {config.shortDescription && (
+                  <p className="mt-3 text-[16px] font-extrabold text-[#F37021] sm:text-[18px]">
+                    {config.shortDescription}
+                  </p>
+                )}
                 <div className="mt-6 flex flex-wrap gap-2.5">
                   {heroTags.map((tag, index) => {
-                    const colors: ColorKey[] = ['orange', 'green', 'blue', 'purple'];
+                    const cycle: ColorKey[] = ['orange', 'green', 'blue', 'purple'];
+                    const color = tag.color || cycle[index % cycle.length];
                     return (
-                      <span key={tag} className={`rounded-full px-4 py-2 text-[13px] font-extrabold ring-1 ${colorClasses[colors[index % colors.length]]}`}>
-                        {tag}
+                      <span key={`${tag.label}-${index}`} className={`rounded-full px-4 py-2 text-[13px] font-extrabold ring-1 ${colorClasses[color]}`}>
+                        {tag.label}
                       </span>
                     );
                   })}
@@ -558,9 +581,11 @@ export default function MettaPlusLanding() {
                     {config.heroPrimaryCta}
                     <ChevronRight className="h-5 w-5" />
                   </button>
-                  <button type="button" onClick={scrollToForm} className="inline-flex h-[56px] items-center justify-center rounded-2xl border-2 border-[#08244A] bg-white px-7 text-[16px] font-extrabold text-[#08244A] transition hover:-translate-y-0.5 hover:bg-[#EAF5FF]">
-                    {config.heroSecondaryCta}
-                  </button>
+                  {config.heroSecondaryCta && (
+                    <button type="button" onClick={scrollToForm} className="inline-flex h-[56px] items-center justify-center rounded-2xl border-2 border-[#08244A] bg-white px-7 text-[16px] font-extrabold text-[#08244A] transition hover:-translate-y-0.5 hover:bg-[#EAF5FF]">
+                      {config.heroSecondaryCta}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -617,32 +642,42 @@ export default function MettaPlusLanding() {
       case 'Metta+ Pass':
         return (
           <section className="bg-white px-5 py-14 sm:px-6 lg:py-18">
-            <div className="mx-auto max-w-[1060px]">
-              <SectionHeader title={config.passTitle} desc={config.passDesc} />
-              <div className="relative rounded-[38px] bg-[#08244A] p-5 text-white shadow-[0_32px_70px_-34px_rgba(8,36,74,.8)] sm:p-8 lg:p-10">
+            <div className="mx-auto max-w-[1200px]">
+              <SectionHeader title={config.passTitle} desc={config.passDesc} wide />
+              <div className="relative rounded-[38px] bg-[#08244A] p-5 text-white shadow-[0_32px_70px_-34px_rgba(8,36,74,.8)] sm:p-8 lg:p-12">
                 <div className="absolute -right-4 -top-4 rounded-[28px] bg-[#FFC83D] p-4 text-[#08244A] shadow-xl">
                   <FileBadge2 className="h-9 w-9" />
                 </div>
-                <div className="grid items-center gap-8 lg:grid-cols-[0.9fr_1.1fr]">
-                  <div className="rounded-[30px] bg-white p-6 text-[#08244A] shadow-2xl">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[12px] font-black tracking-[0.18em] text-[#F37021]">{config.heroBadge}</p>
-                        <h3 className="mt-4 font-montserrat text-[34px] font-black leading-none">{config.passCardTitle}</h3>
-                      </div>
-                      <img src={LOGO} alt="METTA Academy" className="h-10 w-auto" />
-                    </div>
-                    <div className="mt-8 grid grid-cols-3 gap-2">
-                      {['ENG', 'STEM', 'SHOW'].map((label, index) => (
-                        <div key={label} className={`rounded-2xl px-3 py-4 text-center text-[12px] font-black ${colorClasses[(['blue', 'green', 'orange'] as ColorKey[])[index]]}`}>
-                          {label}
+                <div className="grid items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
+                  {config.passCardImage ? (
+                    <img
+                      src={config.passCardImage}
+                      alt={config.passCardTitle}
+                      loading="lazy"
+                      decoding="async"
+                      className="w-full rounded-[30px] object-cover shadow-2xl"
+                    />
+                  ) : (
+                    <div className="rounded-[30px] bg-white p-8 text-[#08244A] shadow-2xl">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[12px] font-black tracking-[0.18em] text-[#F37021]">{config.heroBadge}</p>
+                          <h3 className="mt-4 font-montserrat text-[38px] font-black leading-none">{config.passCardTitle}</h3>
                         </div>
-                      ))}
+                        <img src={HEADER_LOGO} alt="METTA Academy" className="h-10 w-auto" />
+                      </div>
+                      <div className="mt-8 grid grid-cols-3 gap-2.5">
+                        {['ENG', 'STEM', 'SHOW'].map((label, index) => (
+                          <div key={label} className={`rounded-2xl px-3 py-5 text-center text-[13px] font-black ${colorClasses[(['blue', 'green', 'orange'] as ColorKey[])[index]]}`}>
+                            {label}
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-7 rounded-2xl bg-[#F6FAFF] px-4 py-3 text-[14px] font-bold text-[#5D6B82]">
+                        {config.passCardMeta}
+                      </p>
                     </div>
-                    <p className="mt-7 rounded-2xl bg-[#F6FAFF] px-4 py-3 text-[14px] font-bold text-[#5D6B82]">
-                      {config.passCardMeta}
-                    </p>
-                  </div>
+                  )}
                   <div>
                     <div className="grid gap-3">
                       {config.passItems.map((item) => (
@@ -740,9 +775,8 @@ export default function MettaPlusLanding() {
     <div className="min-h-screen overflow-hidden bg-[#FFFDF8] font-inter text-[#08244A] antialiased">
       <header className="sticky top-0 z-40 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
-          <a href="#top" className="flex items-center gap-3">
-            <img src={LOGO} alt="METTA Academy" className="h-10 w-auto object-contain" />
-            <span className="hidden font-montserrat text-[15px] font-extrabold tracking-tight text-[#08244A] sm:block">METTA Academy</span>
+          <a href="#top" className="flex items-center gap-2.5">
+            <img src={HEADER_LOGO} alt="METTA Academy" className="h-[46px] w-auto object-contain sm:h-[50px]" />
           </a>
           <button type="button" onClick={scrollToForm} className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#F37021] px-5 text-[14px] font-extrabold text-white shadow-[0_16px_28px_-18px_rgba(243,112,33,.95)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
             {config.heroPrimaryCta}
@@ -758,6 +792,46 @@ export default function MettaPlusLanding() {
       </main>
 
       <MiniFooter />
+    </div>
+  );
+}
+
+// Skeleton hiển thị trong lúc fetch CMS, đồng tone Metta+ (kem/trắng) để
+// trang load lại không bị "flash" nội dung seed cũ trước khi đè bằng dữ liệu mới.
+function MettaPlusSkeleton() {
+  return (
+    <div className="min-h-screen overflow-hidden bg-[#FFFDF8] font-inter text-[#08244A] antialiased">
+      <header className="sticky top-0 z-40 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
+          <div className="flex items-center gap-2.5">
+            <img src={HEADER_LOGO} alt="METTA Academy" className="h-[46px] w-auto object-contain sm:h-[50px]" />
+          </div>
+          <div className="h-11 w-40 animate-pulse rounded-full bg-orange-100" />
+        </div>
+      </header>
+      <main>
+        <section className="relative">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_12%,rgba(255,200,61,.26),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(123,97,255,.16),transparent_30%),linear-gradient(180deg,#FFFFFF_0%,#FFF7EC_100%)]" />
+          <div className="relative mx-auto grid max-w-[1180px] items-center gap-10 px-5 py-12 sm:px-6 lg:grid-cols-[0.92fr_1.08fr] lg:py-16">
+            <div className="space-y-5">
+              <div className="h-9 w-40 animate-pulse rounded-full bg-[#E8EEF7]" />
+              <div className="space-y-3">
+                <div className="h-14 w-full animate-pulse rounded-2xl bg-[#E8EEF7]" />
+                <div className="h-14 w-4/5 animate-pulse rounded-2xl bg-[#E8EEF7]" />
+                <div className="h-14 w-3/5 animate-pulse rounded-2xl bg-[#E8EEF7]" />
+              </div>
+              <div className="h-6 w-3/4 animate-pulse rounded-lg bg-[#E8EEF7]" />
+              <div className="flex flex-wrap gap-2.5">
+                {[0, 1, 2, 3].map((index) => (
+                  <div key={index} className="h-10 w-32 animate-pulse rounded-full bg-[#E8EEF7]" />
+                ))}
+              </div>
+              <div className="h-[56px] w-56 animate-pulse rounded-2xl bg-orange-100" />
+            </div>
+            <div className="aspect-[4/3] w-full max-w-[560px] animate-pulse justify-self-center rounded-[28px] bg-[#E8EEF7]" />
+          </div>
+        </section>
+      </main>
     </div>
   );
 }

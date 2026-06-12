@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
 import { useThemeSettings } from '@/hooks/useCms';
+import { BRAND_LOGOS } from '@/lib/constants';
 
 type NavLink = {
   label: string;
@@ -150,13 +151,10 @@ export function PublicHeader() {
       <nav className="flex justify-between items-center w-full px-5 lg:px-page max-w-[1440px] mx-auto h-full">
         <Link to="/" className="flex items-center gap-2.5 flex-shrink-0">
           <img
-            src={current.logoUrl || '/brand/logo.png'}
-            alt={current.brandName || 'METTA Academy'}
-            className="h-[52px] w-auto object-contain"
+            src={BRAND_LOGOS.onWhite}
+            alt="METTA Academy"
+            className="h-[46px] w-auto object-contain sm:h-[50px]"
           />
-          <span className="font-montserrat font-extrabold text-navy-deep tracking-tight text-[20px] hidden sm:block">
-            {(current.brandName || 'METTA Academy').toUpperCase()}
-          </span>
         </Link>
 
         <div className="hidden lg:flex items-center gap-5">

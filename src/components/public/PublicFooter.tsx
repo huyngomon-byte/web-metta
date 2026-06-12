@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
 import { useThemeSettings } from '@/hooks/useCms';
+import { BRAND_LOGOS } from '@/lib/constants';
 
 const FOOTER_LABELS: Record<string, string> = {
   '/#about': 'Về chúng tôi',
@@ -64,14 +65,10 @@ export function PublicFooter() {
           <div className="md:col-span-4 space-y-5">
             <div className="flex items-center gap-3">
               <img
-                src={current.logoUrl || '/brand/logo.png'}
-                alt={current.brandName || 'METTA Academy'}
-                className="h-14 w-14 object-cover bg-white rounded-lg"
-                style={{ objectPosition: 'center 35%' }}
+                src={BRAND_LOGOS.onBlue}
+                alt="METTA Academy"
+                className="h-[58px] w-auto max-w-[230px] object-contain sm:h-16"
               />
-              <span className="font-montserrat font-bold text-xl text-pure-white tracking-tight">
-                {(current.brandName || 'METTA Academy').toUpperCase()}
-              </span>
             </div>
             <p className="text-surface-variant text-sm leading-7 whitespace-pre-line">
               {current.footerText || 'Learn with Mind. Lead with Heart.'}

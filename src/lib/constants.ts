@@ -1,6 +1,11 @@
+export const BRAND_LOGOS = {
+  onWhite: '/brand/logo-tr%E1%BA%AFng.png',
+  onBlue: '/brand/logo-xanh.png',
+};
+
 export const BRAND = {
   name: 'METTA Academy',
-  logo: '/brand/logo.png',
+  logo: BRAND_LOGOS.onWhite,
   banner: '/brand/brand-banner.jpg',
   primary: '#003B7A',
   secondary: '#1267AE',
