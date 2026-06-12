@@ -1,6 +1,8 @@
+const LOGO_ASSET_VERSION = '20260612-1555';
+
 export const BRAND_LOGOS = {
-  onWhite: '/brand/logo-tr%E1%BA%AFng.png',
-  onBlue: '/brand/logo-xanh.png',
+  onWhite: `/brand/logo-tr%E1%BA%AFng.png?v=${LOGO_ASSET_VERSION}`,
+  onBlue: `/brand/logo-xanh.png?v=${LOGO_ASSET_VERSION}`,
 };
 
 export const BRAND = {

@@ -247,7 +247,7 @@ const DEFAULT_TERMS_OF_USE = `<h2>ĐIỬU KHOẢN SỬ DỤNG</h2>
 
 export const siteSettings: SiteSettings = {
   brandName: 'METTA Academy',
-  logoUrl: '/brand/logo-tr%E1%BA%AFng.png',
+  logoUrl: '/brand/logo-tr%E1%BA%AFng.png?v=20260612-1555',
   faviconUrl: '/favicon.svg',
   primaryColor: '#003B7A',
   secondaryColor: '#1267AE',
@@ -601,7 +601,7 @@ export const sections: PageSection[] = [
 ];
 
 export const mediaItems: MediaItem[] = [
-  { id: 'media-1', name: 'METTA Logo', fileUrl: '/brand/logo-tr%E1%BA%AFng.png', fileType: 'image/png', fileSize: 20164, uploadedBy: 'Admin', createdAt: now },
+  { id: 'media-1', name: 'METTA Logo', fileUrl: '/brand/logo-tr%E1%BA%AFng.png?v=20260612-1555', fileType: 'image/png', fileSize: 43943, uploadedBy: 'Admin', createdAt: now },
   { id: 'media-2', name: 'Brand Banner', fileUrl: '/brand/brand-banner.jpg', fileType: 'image/jpeg', fileSize: 189260, uploadedBy: 'Admin', createdAt: now },
   { id: 'media-3', name: 'Workshop Kids', fileUrl: '/brand/workshop-kids.jpg', fileType: 'image/jpeg', fileSize: 142258, uploadedBy: 'Admin', createdAt: now },
   { id: 'media-4', name: 'Hero Classroom', fileUrl: '/brand/hero-classroom.png', fileType: 'image/png', fileSize: 1984372, uploadedBy: 'Admin', createdAt: now }
