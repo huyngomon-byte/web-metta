@@ -1,5 +1,5 @@
 const PURGE_VERSION_KEY = 'metta_client_data_purge_version';
-const CURRENT_PURGE_VERSION = '2026-06-12-remove-demo-leads-and-parents-v4';
+const CURRENT_PURGE_VERSION = '2026-06-12-clear-local-crm-cache-v5';
 
 function parseArray(value: string | null) {
   if (!value) return [];
@@ -23,27 +23,6 @@ function isDemoLeadId(id?: string) {
     || /^lead-x\d+$/.test(value);
 }
 
-function demoStagePhone(globalIndex: number) {
-  return `09${String(71000000 + globalIndex * 13791).padStart(8, '0').slice(0, 8)}`;
-}
-
-function demoPriorityPhone(index: number) {
-  return `0988${String(100000 + index * 137).slice(0, 6)}`;
-}
-
-const KNOWN_DEMO_PHONES = new Set([
-  ...Array.from({ length: 120 }, (_, index) => demoStagePhone(index)),
-  ...Array.from({ length: 20 }, (_, index) => demoPriorityPhone(index)),
-]);
-
-function normalizePhone(value?: unknown) {
-  return String(value || '').replace(/\D/g, '').replace(/^84/, '0');
-}
-
-function isKnownDemoPhone(value?: unknown) {
-  return KNOWN_DEMO_PHONES.has(normalizePhone(value));
-}
-
 function isSampleEmail(email?: string) {
   const value = String(email || '').toLowerCase();
   return value.includes('@metta.test') || value.includes('@example.com');
@@ -58,7 +37,6 @@ function isSampleLead(item: Record<string, unknown>) {
   ].map((value) => String(value || '').toLowerCase()).join(' ');
   return isDemoLeadId(String(item.id || ''))
     || isSampleEmail(String(item.email || ''))
-    || isKnownDemoPhone(item.phone)
     || text.includes('demo lead');
 }
 
@@ -70,7 +48,6 @@ function isSampleParent(item: Record<string, unknown>) {
     item.knownFrom,
   ].map((value) => String(value || '').toLowerCase()).join(' ');
   return isSampleEmail(String(item.email || ''))
-    || isKnownDemoPhone(item.phone)
     || text.includes('metta.test')
     || text.includes('demo.stage')
     || text.includes('demo parent')
@@ -90,6 +67,15 @@ export function purgeSampleClientData() {
   if (typeof window === 'undefined') return;
   try {
     const previousVersion = localStorage.getItem(PURGE_VERSION_KEY);
+    if (previousVersion !== CURRENT_PURGE_VERSION) {
+      [
+        'metta_leads',
+        'metta_lead_activities',
+        'metta_appointments',
+        'metta_parent_profiles',
+      ].forEach((key) => localStorage.removeItem(key));
+    }
+
     const leads = parseArray(localStorage.getItem('metta_leads')) as Record<string, unknown>[];
     const demoLeadIds = new Set(leads.filter(isSampleLead).map((item) => String(item.id || '')).filter(Boolean));
     if (leads.length) saveArray('metta_leads', leads.filter((item) => !isSampleLead(item)));

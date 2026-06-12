@@ -50,23 +50,6 @@ function isSampleLeadId(id?: string) {
     || /^lead-x\d+$/.test(value);
 }
 
-function demoStagePhone(globalIndex: number) {
-  return `09${String(71000000 + globalIndex * 13791).padStart(8, '0').slice(0, 8)}`;
-}
-
-function demoPriorityPhone(index: number) {
-  return `0988${String(100000 + index * 137).slice(0, 6)}`;
-}
-
-const KNOWN_DEMO_PHONES = new Set([
-  ...Array.from({ length: 120 }, (_, index) => demoStagePhone(index)),
-  ...Array.from({ length: 20 }, (_, index) => demoPriorityPhone(index)),
-]);
-
-function isKnownDemoPhone(value?: string) {
-  return KNOWN_DEMO_PHONES.has(normalizeParentPhone(value));
-}
-
 function isSampleParentProfile(profile: Partial<ParentProfile>) {
   const text = [
     profile.id,
@@ -75,7 +58,6 @@ function isSampleParentProfile(profile: Partial<ParentProfile>) {
     profile.knownFrom,
   ].map((value) => String(value || '').toLowerCase()).join(' ');
   return isSampleEmail(profile.email)
-    || isKnownDemoPhone(profile.phone)
     || text.includes('metta.test')
     || text.includes('demo.stage')
     || text.includes('demo parent')
@@ -90,7 +72,6 @@ function isSampleLead(lead: Partial<Lead>) {
   ].map((value) => String(value || '').toLowerCase()).join(' ');
   return isSampleLeadId(lead.id)
     || isSampleEmail(lead.email)
-    || isKnownDemoPhone(lead.phone)
     || text.includes('demo lead');
 }
 

@@ -43,27 +43,6 @@ function isSampleEmail(email?: string) {
   return value.includes('@metta.test') || value.includes('@example.com');
 }
 
-function normalizePhone(value?: unknown) {
-  return String(value || '').replace(/\D/g, '').replace(/^84/, '0');
-}
-
-function demoStagePhone(globalIndex: number) {
-  return `09${String(71000000 + globalIndex * 13791).padStart(8, '0').slice(0, 8)}`;
-}
-
-function demoPriorityPhone(index: number) {
-  return `0988${String(100000 + index * 137).slice(0, 6)}`;
-}
-
-const KNOWN_DEMO_PHONES = new Set([
-  ...Array.from({ length: 120 }, (_, index) => demoStagePhone(index)),
-  ...Array.from({ length: 20 }, (_, index) => demoPriorityPhone(index)),
-]);
-
-function isKnownDemoPhone(value?: unknown) {
-  return KNOWN_DEMO_PHONES.has(normalizePhone(value));
-}
-
 function textIncludesDemo(values: unknown[]) {
   const text = values.map((value) => String(value || '').toLowerCase()).join(' ');
   return text.includes('demo lead')
@@ -75,15 +54,11 @@ function textIncludesDemo(values: unknown[]) {
 function isDemoLead(data: FirestoreData, id: string) {
   return isDemoLeadId(id)
     || isSampleEmail(String(data.email || ''))
-    || isKnownDemoPhone(data.phone)
     || textIncludesDemo([data.initialNote, data.dealNote, data.lostNote, data.notes]);
 }
 
-function isDemoParentProfile(data: FirestoreData, id: string, demoLeadPhones = new Set<string>()) {
-  const phone = normalizePhone(data.phone);
+function isDemoParentProfile(data: FirestoreData, id: string) {
   return isSampleEmail(String(data.email || ''))
-    || isKnownDemoPhone(phone)
-    || demoLeadPhones.has(phone)
     || textIncludesDemo([id, data.email, data.notes, data.knownFrom]);
 }
 
@@ -115,15 +90,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await requireLeadManager(req);
     const db = adminDb();
     const demoLeadIds = new Set<string>();
-    const demoLeadPhones = new Set<string>();
     const leadDeletePaths: string[] = [];
 
     const leadSnap = await db.collection('leads').get();
     leadSnap.docs.forEach((docSnap) => {
       if (!isDemoLead(docSnap.data(), docSnap.id)) return;
       demoLeadIds.add(docSnap.id);
-      const phone = normalizePhone(docSnap.data().phone);
-      if (phone) demoLeadPhones.add(phone);
       leadDeletePaths.push(docSnap.ref.path);
     });
 
@@ -142,7 +114,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const parentSnap = await db.collection('parentProfiles').get();
     const parentDeletePaths = parentSnap.docs
-      .filter((docSnap) => isDemoParentProfile(docSnap.data(), docSnap.id, demoLeadPhones))
+      .filter((docSnap) => isDemoParentProfile(docSnap.data(), docSnap.id))
       .map((docSnap) => docSnap.ref.path);
 
     const [leads, activities, appointments, parentProfiles] = await Promise.all([
