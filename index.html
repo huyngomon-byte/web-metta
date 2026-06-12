@@ -5,12 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/brand/favicon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/brand/apple-touch-icon.png" />
-    <link rel="manifest" href="/site.webmanifest" />
+    <link id="metta-manifest" rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#003B7A" />
     <meta name="application-name" content="METTA" />
     <meta name="apple-mobile-web-app-title" content="METTA" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <script>
+      (function () {
+        var path = window.location.pathname;
+        var isAdminPath = path === '/login' || path === '/admin' || path === '/dashboard' || path.indexOf('/crm') === 0 || path.indexOf('/cms') === 0 || path.indexOf('/capi') === 0 || path.indexOf('/marketing') === 0 || path === '/appointments' || path === '/media' || path === '/reports' || path === '/users' || path === '/settings';
+        if (!isAdminPath) return;
+        var manifest = document.getElementById('metta-manifest');
+        var appName = document.querySelector('meta[name="application-name"]');
+        var appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+        if (manifest) manifest.setAttribute('href', '/admin.webmanifest');
+        if (appName) appName.setAttribute('content', 'METTA Admin');
+        if (appleTitle) appleTitle.setAttribute('content', 'METTA Admin');
+      })();
+    </script>
     <title>METTA ACADEMY – Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai</title>
     <meta name="description" content="Trung tâm Anh ngữ quốc tế METTA Academy – chương trình tiếng Anh hiện đại giúp trẻ phát triển ngôn ngữ, tư duy phản biện và sự tự tin." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
