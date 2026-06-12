@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, Menu, Search } from 'lucide-react';
+import { Bell, CheckCheck, ChevronDown, LogOut, Menu, Search, UserCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -15,11 +15,13 @@ function timeLabel(value: string) {
   return date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
-export function Topbar() {
-  const { user } = useAuth();
+export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
+  const { signOut, user } = useAuth();
   const navigate = useNavigate();
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
+  const notificationRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const unread = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
@@ -53,7 +55,9 @@ export function Topbar() {
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (!dropdownRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!notificationRef.current?.contains(target)) setNotificationsOpen(false);
+      if (!accountRef.current?.contains(target)) setAccountOpen(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -62,7 +66,7 @@ export function Topbar() {
   function openNotification(item: AppNotification) {
     notificationService.markRead(item.id);
     void refreshNotifications();
-    setOpen(false);
+    setNotificationsOpen(false);
     if (item.url) navigate(item.url);
   }
 
@@ -71,20 +75,28 @@ export function Topbar() {
     void refreshNotifications();
   }
 
+  async function handleLogout() {
+    setAccountOpen(false);
+    await signOut();
+    navigate('/login');
+  }
+
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:px-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 lg:hidden">
-          <Button variant="outline" size="icon" aria-label="Mở menu"><Menu /></Button>
-          <span className="font-bold text-slate-950">METTA Admin</span>
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-3 py-2.5 backdrop-blur md:px-8 md:py-3">
+      <div className="flex min-w-0 items-center justify-between gap-2 sm:gap-4">
+        <div className="flex min-w-0 items-center gap-2 lg:hidden">
+          <Button variant="outline" size="icon" aria-label="Mở menu" onClick={onMenuClick} className="shrink-0">
+            <Menu />
+          </Button>
+          <span className="truncate font-bold text-slate-950">METTA Admin</span>
         </div>
         <div className="hidden w-full max-w-xl items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 lg:flex">
           <Search className="text-slate-400" />
           <Input className="border-0 px-0 shadow-none focus:border-0 focus:ring-0" placeholder="Tìm lead, phụ huynh, SĐT, chiến dịch..." />
         </div>
-        <div className="ml-auto flex items-center gap-3">
-          <div ref={dropdownRef} className="relative">
-            <Button variant="outline" size="icon" aria-label="Mở notifications" onClick={() => setOpen((value) => !value)} className="relative">
+        <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+          <div ref={notificationRef} className="relative">
+            <Button variant="outline" size="icon" aria-label="Mở notifications" onClick={() => setNotificationsOpen((value) => !value)} className="relative">
               <Bell />
               {unread > 0 && (
                 <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-extrabold text-white">
@@ -92,8 +104,8 @@ export function Topbar() {
                 </span>
               )}
             </Button>
-            {open && (
-              <div className="absolute right-0 mt-2 w-[360px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+            {notificationsOpen && (
+              <div className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] max-w-[360px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
                 <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                   <div>
                     <p className="text-sm font-extrabold text-slate-950">Notifications</p>
@@ -134,7 +146,41 @@ export function Topbar() {
             <p className="text-sm font-bold text-slate-950">{user?.fullName}</p>
             <p className="text-xs capitalize text-slate-500">{user?.role}</p>
           </div>
-          <div className="flex size-10 items-center justify-center rounded-full bg-[#003B7A] text-sm font-extrabold text-white">MA</div>
+          <div ref={accountRef} className="relative">
+            <button
+              type="button"
+              aria-label="Mở menu tài khoản"
+              onClick={() => setAccountOpen((value) => !value)}
+              className="flex h-10 items-center gap-1 rounded-full border border-slate-200 bg-white pl-1 pr-2 shadow-sm transition hover:bg-slate-50"
+            >
+              <span className="flex size-8 items-center justify-center rounded-full bg-[#003B7A] text-xs font-extrabold text-white">
+                {user?.fullName?.slice(0, 2).toUpperCase() || 'MA'}
+              </span>
+              <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${accountOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {accountOpen && (
+              <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-10 items-center justify-center rounded-full bg-blue-50 text-[#003B7A]">
+                      <UserCircle size={22} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-extrabold text-slate-950">{user?.fullName || 'METTA Admin'}</p>
+                      <p className="truncate text-xs capitalize text-slate-500">{user?.role}</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-bold text-red-600 transition hover:bg-red-50"
+                >
+                  <LogOut size={16} /> Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

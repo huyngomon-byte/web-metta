@@ -436,7 +436,7 @@ export default function DashboardPage() {
   /* ══════════════════════════════════════════════════════════════════════ */
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
 
       {/* ── Header ── */}
       <div>
@@ -445,20 +445,20 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Filters bar ── */}
-      <div className="bg-white border border-slate-200 rounded-xl p-3 flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-3 [scrollbar-width:none] sm:flex-wrap [&::-webkit-scrollbar]:hidden">
         {/* Date preset buttons */}
         {([['today', 'Hôm nay'], ['7d', '7 ngày'], ['30d', '30 ngày'], ['thisMonth', 'Tháng này'], ['lastMonth', 'Tháng trước']] as [Preset, string][]).map(([key, label]) => (
           <button
             key={key}
             onClick={() => setPreset(key)}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${preset === key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${preset === key ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
             {label}
           </button>
         ))}
         <button
           onClick={() => setPreset('custom')}
-          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${preset === 'custom' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${preset === 'custom' ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
           Tùy chọn
         </button>
@@ -466,43 +466,43 @@ export default function DashboardPage() {
           <>
             <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
               onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
-              className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-semibold cursor-pointer w-[120px]" />
+              className="w-[120px] shrink-0 cursor-pointer rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-semibold" />
             <span className="text-slate-400 text-xs">→</span>
             <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
               onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
-              className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-semibold cursor-pointer w-[120px]" />
+              className="w-[120px] shrink-0 cursor-pointer rounded-lg border border-slate-300 px-2 py-1.5 text-xs font-semibold" />
           </>
         )}
 
         <div className="w-px h-6 bg-slate-200 mx-1 hidden sm:block" />
 
-        <Select value={fSales} onChange={(e) => setFSales(e.target.value)} className="text-xs w-auto min-w-[100px]">
+        <Select value={fSales} onChange={(e) => setFSales(e.target.value)} className="w-auto min-w-[118px] shrink-0 text-xs">
           <option value="">Tất cả Sales</option>
           {salesOptions.map((s) => <option key={s} value={s}>{salesLabel(s)}</option>)}
         </Select>
-        <Select value={fSource} onChange={(e) => setFSource(e.target.value)} className="text-xs w-auto min-w-[100px]">
+        <Select value={fSource} onChange={(e) => setFSource(e.target.value)} className="w-auto min-w-[118px] shrink-0 text-xs">
           <option value="">Tất cả nguồn</option>
           {leadSources.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
-        <Select value={fCenter} onChange={(e) => setFCenter(e.target.value)} className="text-xs w-auto min-w-[120px]">
+        <Select value={fCenter} onChange={(e) => setFCenter(e.target.value)} className="w-auto min-w-[140px] shrink-0 text-xs">
           <option value="">Tất cả trung tâm</option>
           {centerOptions.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
-        <Select value={fCourse} onChange={(e) => setFCourse(e.target.value)} className="text-xs w-auto min-w-[100px]">
+        <Select value={fCourse} onChange={(e) => setFCourse(e.target.value)} className="w-auto min-w-[132px] shrink-0 text-xs">
           <option value="">Tất cả khóa</option>
           {COURSE_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
         </Select>
 
         {hasFilter && (
           <button onClick={() => { setFSales(''); setFSource(''); setFCourse(''); setFCenter(''); }}
-            className="text-xs text-red-500 font-semibold hover:text-red-700 ml-1">✕ Xóa filter</button>
+            className="ml-1 shrink-0 whitespace-nowrap text-xs font-semibold text-red-500 hover:text-red-700">✕ Xóa filter</button>
         )}
 
-        <span className="ml-auto text-[11px] text-slate-400 hidden sm:block">{formatVN(dateFrom)} - {formatVN(dateTo)} • {rangeLeads.length} lead theo kỳ • {pipelineLeads.length} lead pipeline</span>
+        <span className="ml-auto hidden shrink-0 text-[11px] text-slate-400 sm:block">{formatVN(dateFrom)} - {formatVN(dateTo)} • {rangeLeads.length} lead theo kỳ • {pipelineLeads.length} lead pipeline</span>
       </div>
 
       {/* ── KPI Cards ── */}
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-3">
         <KpiCard label="Lead theo kỳ" value={kpi.total} icon={UserPlus} color="bg-blue-500" trend={kpi.trend} sub={`Hôm nay ${kpi.newToday} lead`} />
         <KpiCard label="Chưa xử lý" value={kpi.untouched} icon={PhoneOff} color="bg-orange-500" sub="Chưa ai gọi" alert={kpi.untouched > 0} />
         <KpiCard label="Quá hạn follow-up" value={kpi.overdueFollowUp} icon={AlertTriangle} color="bg-red-500" sub={`${kpi.followUpToday} gọi hôm nay`} alert={kpi.overdueFollowUp > 0} />
@@ -534,8 +534,9 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="pt-2">
-            {pipelineLeads.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
+            <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+              {pipelineLeads.length > 0 ? (
+              <div className="flex min-w-[340px] flex-col gap-1.5 sm:min-w-0">
                 <div className="h-8 flex rounded-lg overflow-hidden">
                   {leadStatuses.map((s) => {
                     const count = pipelineLeads.filter((l) => l.status === s).length;
@@ -564,7 +565,8 @@ export default function DashboardPage() {
                   })}
                 </div>
               </div>
-            ) : <EmptyState />}
+              ) : <EmptyState />}
+            </div>
           </CardContent>
         </Card>
 
@@ -579,7 +581,7 @@ export default function DashboardPage() {
           <CardContent>
             {picData.length > 0 ? (
               <div className="overflow-x-auto -mx-4 px-4">
-                <table className="w-full text-xs">
+                <table className="w-full min-w-[980px] text-xs">
                   <thead>
                     <tr className="border-b-2 border-slate-200">
                       {['Sales', 'Nhận', 'Đã gọi', '% LH', 'Test/HT', 'Chốt', '% Chốt', 'Expected', 'Revenue', 'Mất', 'Bị trả về', 'Tiến độ'].map((h) => (
@@ -708,7 +710,9 @@ export default function DashboardPage() {
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader className="pb-1"><CardTitle className="text-sm font-bold text-slate-700">Xu hướng Lead theo ngày</CardTitle></CardHeader>
-          <CardContent className="h-72">
+          <CardContent>
+            <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+              <div className="h-72 min-w-[520px] sm:min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trendData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -720,13 +724,17 @@ export default function DashboardPage() {
                 <Line dataKey="Chuyển đổi" stroke="#16A34A" strokeWidth={2.5} dot={{ r: 3, fill: '#16A34A' }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-1"><CardTitle className="text-sm font-bold text-slate-700">Lead theo nguồn</CardTitle></CardHeader>
-          <CardContent className="h-72">
+          <CardContent>
             {sourceData.length > 0 ? (
+              <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+                <div className="h-72 min-w-[520px] sm:min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={sourceData} margin={{ top: 5, right: 5, left: -20, bottom: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -738,6 +746,8 @@ export default function DashboardPage() {
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+                </div>
+              </div>
             ) : <EmptyState />}
           </CardContent>
         </Card>
@@ -1035,7 +1045,7 @@ function KpiCard({ label, value, icon: Icon, color, trend, sub, alert }: {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider leading-tight">{label}</p>
-            <p className={`mt-1.5 whitespace-nowrap text-lg font-extrabold leading-tight sm:text-xl ${alert ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
+            <p className={`mt-1.5 break-words text-base font-extrabold leading-tight sm:text-xl ${alert ? 'text-red-600' : 'text-slate-900'}`}>{value}</p>
             <div className="flex items-center gap-1.5 mt-1.5">
               {trend !== undefined && trend !== 0 && (
                 <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${trend > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -1046,8 +1056,8 @@ function KpiCard({ label, value, icon: Icon, color, trend, sub, alert }: {
               {sub && <span className="text-[10px] text-slate-400 truncate">{sub}</span>}
             </div>
           </div>
-          <div className={`w-10 h-10 rounded-xl ${color} text-white flex items-center justify-center flex-shrink-0 shadow-sm`}>
-            <Icon size={20} />
+          <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl text-white shadow-sm sm:h-10 sm:w-10 ${color}`}>
+            <Icon size={18} />
           </div>
         </div>
       </CardContent>
