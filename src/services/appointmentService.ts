@@ -3,10 +3,12 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   setDoc,
   where,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { canViewAllLeads } from '@/lib/permissions';
@@ -130,6 +132,38 @@ export const appointmentService = {
     loadLocal();
     await markOverdueAppointments();
     return delay(canViewAllLeads(user) ? store.appointments : store.appointments.filter((item) => item.assignedTo === user?.id));
+  },
+
+  subscribeAppointments: (callback: (appointments: Appointment[]) => void, onError?: (error: unknown) => void): Unsubscribe => {
+    const user = currentUser();
+    if (!USE_FIREBASE) {
+      void appointmentService.getAppointments().then(callback).catch(onError);
+      return () => {};
+    }
+
+    const appointmentQuery = user?.role === 'sales'
+      ? query(collection(db!, COL), where('assignedTo', '==', user.id))
+      : query(collection(db!, COL), orderBy('startTime', 'desc'));
+
+    return onSnapshot(appointmentQuery, (snap) => {
+      void (async () => {
+        try {
+          let remoteItems = snap.docs.map((item) => item.data() as Appointment);
+          if (canViewAllLeads(user)) remoteItems = await replaceFirestoreDemoAppointments(remoteItems);
+          store.appointments = mergeAppointments([], remoteItems);
+          await markOverdueAppointments();
+          const visibleItems = canViewAllLeads(user)
+            ? store.appointments
+            : store.appointments.filter((item) => item.assignedTo === user?.id);
+          callback(visibleItems);
+        } catch (error) {
+          onError?.(error);
+        }
+      })();
+    }, (error) => {
+      console.warn('[Appointments] Realtime listener failed:', error);
+      onError?.(error);
+    });
   },
 
   saveAppointment: async (appointment: Partial<Appointment>) => {

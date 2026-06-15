@@ -1,4 +1,14 @@
-import { auth } from '@/lib/firebase';
+import {
+  collection,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+  type Unsubscribe,
+} from 'firebase/firestore';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
+import { currentUser } from '@/services/authService';
 
 export type TaskStatus = 'open' | 'done';
 export type TaskPriority = 'low' | 'normal' | 'high';
@@ -20,6 +30,8 @@ export type ManualTask = {
 };
 
 let cachedTasks: ManualTask[] = [];
+const USE_FIREBASE = isFirebaseConfigured && !!db;
+const COL_MANUAL_TASKS = 'salesManualTasks';
 
 function now() {
   return new Date().toISOString();
@@ -90,6 +102,28 @@ export const salesTaskService = {
     const tasks = mergeTasks(payload?.tasks || []);
     writeLocalTasks(tasks, false);
     return tasks;
+  },
+
+  subscribeTasks: (callback: (tasks: ManualTask[]) => void, onError?: (error: unknown) => void): Unsubscribe => {
+    const user = currentUser();
+    if (!USE_FIREBASE) {
+      void salesTaskService.getTasks().then(callback).catch(onError);
+      return () => {};
+    }
+
+    const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
+    const taskQuery = canViewAll
+      ? query(collection(db!, COL_MANUAL_TASKS), orderBy('updatedAt', 'desc'), limit(1000))
+      : query(collection(db!, COL_MANUAL_TASKS), where('assignedTo', '==', user?.id || ''), limit(1000));
+
+    return onSnapshot(taskQuery, (snap) => {
+      const tasks = mergeTasks(snap.docs.map((item) => ({ id: item.id, ...item.data() } as ManualTask)));
+      writeLocalTasks(tasks, false);
+      callback(tasks);
+    }, (error) => {
+      console.warn('[SalesTasks] Realtime listener failed:', error);
+      onError?.(error);
+    });
   },
 
   saveTasks: async (tasks: Partial<ManualTask>[]) => {

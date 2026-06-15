@@ -7,6 +7,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { appointmentService } from '@/services/appointmentService';
 import { leadService } from '@/services/leadService';
 import { notificationService } from '@/services/notificationService';
+import type { Appointment, Lead } from '@/types/crm';
 import type { AppNotification } from '@/types/notification';
 
 function timeLabel(value: string) {
@@ -23,6 +24,8 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notificationLeads, setNotificationLeads] = useState<Lead[]>([]);
+  const [notificationAppointments, setNotificationAppointments] = useState<Appointment[]>([]);
 
   const unread = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
 
@@ -31,25 +34,38 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       setNotifications([]);
       return;
     }
-    const [leads, appointments] = await Promise.all([
-      leadService.getLeads().catch(() => []),
-      appointmentService.getAppointments().catch(() => []),
-    ]);
-    setNotifications(notificationService.getCombinedForUser(user, leads, appointments).slice(0, 10));
-  }, [user]);
+    setNotifications(notificationService.getCombinedForUser(user, notificationLeads, notificationAppointments).slice(0, 10));
+  }, [notificationAppointments, notificationLeads, user]);
 
   useEffect(() => {
     void refreshNotifications();
-    const interval = window.setInterval(() => void refreshNotifications(), 4000);
-    const onStorage = () => void refreshNotifications();
-    window.addEventListener('storage', onStorage);
-    window.addEventListener('metta-notifications-updated', onStorage);
-    window.addEventListener('focus', onStorage);
+  }, [refreshNotifications]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNotificationLeads([]);
+      setNotificationAppointments([]);
+      return undefined;
+    }
+    const unsubLeads = leadService.subscribeLeads(setNotificationLeads, () => {
+      void leadService.getLeads().then(setNotificationLeads).catch(() => {});
+    });
+    const unsubAppointments = appointmentService.subscribeAppointments(setNotificationAppointments, () => {
+      void appointmentService.getAppointments().then(setNotificationAppointments).catch(() => {});
+    });
     return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('metta-notifications-updated', onStorage);
-      window.removeEventListener('focus', onStorage);
+      unsubLeads();
+      unsubAppointments();
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    const onUpdate = () => void refreshNotifications();
+    window.addEventListener('metta-notifications-updated', onUpdate);
+    window.addEventListener('focus', onUpdate);
+    return () => {
+      window.removeEventListener('metta-notifications-updated', onUpdate);
+      window.removeEventListener('focus', onUpdate);
     };
   }, [refreshNotifications]);
 

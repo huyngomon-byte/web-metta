@@ -4,10 +4,12 @@ import {
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
   orderBy,
   query,
   setDoc,
   where,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { STAGE_DEMO_LEAD_PREFIX } from '@/data/stageDemoLeads';
@@ -489,6 +491,75 @@ export const leadService = {
     }
     await expireOverdueAssignments(user);
     return delay(visibleLeads(user));
+  },
+
+  subscribeLeads: (callback: (leads: Lead[]) => void, onError?: (error: unknown) => void): Unsubscribe => {
+    const user = currentUser();
+    if (!USE_FIREBASE) {
+      void leadService.getLeads().then(callback).catch(onError);
+      return () => {};
+    }
+
+    const emit = async (items: Lead[]) => {
+      try {
+        let remoteLeads = items.map(normalizeLead);
+        if (canViewAllLeads(user)) {
+          remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
+          store.leads = mergeDemoSeeds(remoteLeads);
+          await syncMissingStageDemoLeadsToFirestore(remoteLeads);
+          await expireOverdueAssignments(user);
+        } else {
+          store.leads = mergeDemoSeeds(remoteLeads);
+        }
+        callback(visibleLeads(user));
+      } catch (error) {
+        onError?.(error);
+      }
+    };
+
+    const handleError = (error: unknown) => {
+      console.warn('[Leads] Realtime listener failed:', error);
+      onError?.(error);
+    };
+
+    if (user?.role === 'sales') {
+      let activeLeads: Lead[] = [];
+      let acceptedLeads: Lead[] = [];
+      const emitSales = () => {
+        const byId = new Map<string, Lead>();
+        [...activeLeads, ...acceptedLeads].forEach((lead) => byId.set(lead.id, lead));
+        void emit(Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+      };
+      const nowMs = Date.now();
+      const activeQuery = query(
+        collection(db!, COL_LEADS),
+        where('assignedTo', '==', user.id),
+        where('assignedStatus', '==', 'active'),
+        where('assignedExpiresAtMs', '>', nowMs),
+      );
+      const acceptedQuery = query(
+        collection(db!, COL_LEADS),
+        where('assignedTo', '==', user.id),
+        where('assignedStatus', '==', 'accepted'),
+      );
+      const unsubActive = onSnapshot(activeQuery, (snap) => {
+        activeLeads = snap.docs.map((item) => item.data() as Lead);
+        emitSales();
+      }, handleError);
+      const unsubAccepted = onSnapshot(acceptedQuery, (snap) => {
+        acceptedLeads = snap.docs.map((item) => item.data() as Lead);
+        emitSales();
+      }, handleError);
+      return () => {
+        unsubActive();
+        unsubAccepted();
+      };
+    }
+
+    const leadQuery = query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc'));
+    return onSnapshot(leadQuery, (snap) => {
+      void emit(snap.docs.map((item) => item.data() as Lead));
+    }, handleError);
   },
 
   getLead: async (id: string) => {

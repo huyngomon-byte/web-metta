@@ -243,7 +243,12 @@ export default function LeadAssignmentPage() {
     }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    void refresh();
+    return leadService.subscribeLeads(setLeads, () => {
+      void leadService.getLeads().then(setLeads).catch(() => {});
+    });
+  }, []);
 
   function toggle(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);

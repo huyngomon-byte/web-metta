@@ -353,25 +353,27 @@ export default function SalesTasksPage() {
   const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
 
   async function refresh() {
-    const [nextAppointments, nextLogs, nextUsers, nextTasks] = await Promise.all([
-      appointmentService.getAppointments().catch(() => []),
+    const [nextLogs, nextUsers] = await Promise.all([
       callCenterService.getLogs().catch(() => []),
       userService.getUsers().catch(() => []),
-      salesTaskService.getTasks().catch(() => []),
     ]);
-    setAppointments(nextAppointments);
     setCallLogs(nextLogs);
     setUsers(nextUsers);
-    setManualTasks(nextTasks);
   }
 
   useEffect(() => {
     void refresh();
+    const unsubAppointments = appointmentService.subscribeAppointments(setAppointments, () => {
+      void appointmentService.getAppointments().then(setAppointments).catch(() => {});
+    });
+    const unsubTasks = salesTaskService.subscribeTasks(setManualTasks, () => {
+      void salesTaskService.getTasks().then(setManualTasks).catch(() => {});
+    });
     const onUpdate = () => void refresh();
-    window.addEventListener('metta-sales-tasks-updated', onUpdate);
     window.addEventListener('metta-call-logs-updated', onUpdate);
     return () => {
-      window.removeEventListener('metta-sales-tasks-updated', onUpdate);
+      unsubAppointments();
+      unsubTasks();
       window.removeEventListener('metta-call-logs-updated', onUpdate);
     };
   }, []);

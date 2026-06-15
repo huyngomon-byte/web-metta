@@ -113,7 +113,11 @@ export default function AppointmentsPage() {
     setItems(appointments);
   }
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    return appointmentService.subscribeAppointments(setItems, () => {
+      void refresh();
+    });
+  }, []);
 
   const salesOptions = useMemo(
     () => Array.from(new Map(items

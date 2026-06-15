@@ -174,7 +174,7 @@ function leadMetricSummary(items: Lead[]) {
 }
 
 export default function DashboardPage() {
-  const { leads } = useLeads();
+  const { leads } = useLeads({ realtime: false, pollMs: 60000 });
   const COURSE_OPTIONS = useCourseOptions();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);

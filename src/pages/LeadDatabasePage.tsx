@@ -67,7 +67,7 @@ type ParentRow = ParentProfile & {
 };
 
 export default function LeadDatabasePage() {
-  const { leads, refresh } = useLeads();
+  const { leads, refresh } = useLeads({ realtime: false });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
