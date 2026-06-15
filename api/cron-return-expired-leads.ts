@@ -1,4 +1,5 @@
 import { adminDb } from './_firebaseAdmin.js';
+import { createAppNotification, notifyLeadManagers } from './_notifications.js';
 
 type VercelRequest = {
   method?: string;
@@ -41,10 +42,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (snap.empty) return res.status(200).json({ ok: true, returned: 0 });
 
   const batch = db.batch();
+  const managerNotifications: Promise<unknown>[] = [];
   snap.docs.forEach((docSnap) => {
     const lead = docSnap.data();
     const failedAssignedTo = String(lead.assignedTo || '');
     const failedAssignedToName = String(lead.assignedToName || failedAssignedTo);
+    const leadName = String(lead.studentName || lead.fullName || lead.parentName || lead.phone || 'Lead');
 
     batch.set(docSnap.ref, {
       assignedTo: '',
@@ -80,8 +83,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       createdAt: timestamp,
       createdAtMs: nowMs,
     });
+
+    if (failedAssignedTo) {
+      managerNotifications.push(createAppNotification(db, {
+        type: 'pipeline_alert',
+        userId: failedAssignedTo,
+        title: 'Lead đã bị trả về',
+        body: `${leadName} bị trả về do quá 24 giờ chưa cập nhật status.`,
+        leadId: docSnap.id,
+        url: '/crm/tasks',
+        createdAt: timestamp,
+      }));
+    }
+
+    managerNotifications.push(notifyLeadManagers(db, {
+      type: 'pipeline_alert',
+      title: 'Lead bị trả về từ sales',
+      body: `${leadName} bị trả về. Sales cũ: ${failedAssignedToName || 'Chưa rõ'}.`,
+      leadId: docSnap.id,
+      url: '/crm/lead-assignment',
+      createdAt: timestamp,
+    }));
   });
 
   await batch.commit();
+  await Promise.all(managerNotifications).catch((error) => console.warn('[CronReturnLeads] Notification failed:', error));
   return res.status(200).json({ ok: true, returned: snap.size });
 }

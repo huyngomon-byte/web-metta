@@ -38,6 +38,12 @@ const COL_AUDIT_LOGS = 'activityLogs';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REALTIME_LEADS_LIMIT = 1000;
+const DEFAULT_LEADS_PAGE_SIZE = 300;
+
+type LeadPageOptions = {
+  pageSize?: number;
+  cursorUpdatedAt?: string;
+};
 
 type PublicLeadSubmitInput = Partial<Lead> & {
   company?: string;
@@ -262,8 +268,26 @@ function dispatchRealtimeError(message: string) {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('metta-realtime-error', { detail: message }));
 }
 
+function dispatchRealtimeOk() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('metta-realtime-ok'));
+}
+
 function mergeDemoSeeds(current: Lead[]) {
   return current.filter((lead) => !isDemoLead(lead));
+}
+
+function mergeLeadLists(incoming: Lead[], existing: Lead[]) {
+  const byId = new Map<string, Lead>();
+  existing.forEach((lead) => byId.set(lead.id, lead));
+  incoming.forEach((lead) => byId.set(lead.id, lead));
+  return Array.from(byId.values()).sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
+}
+
+function setStoreLeads(remoteLeads: Lead[], replace = false) {
+  const normalized = remoteLeads.map(normalizeLead);
+  store.leads = replace
+    ? mergeDemoSeeds(normalized)
+    : mergeDemoSeeds(mergeLeadLists(normalized, store.leads.map(normalizeLead)));
 }
 
 function replaceLocalDemoLeads(current: Lead[]) {
@@ -499,6 +523,37 @@ export const leadService = {
     return delay(visibleLeads(user));
   },
 
+  getLeadsPage: async ({ pageSize = DEFAULT_LEADS_PAGE_SIZE, cursorUpdatedAt }: LeadPageOptions = {}) => {
+    const user = currentUser();
+    const safePageSize = Math.max(50, Math.min(1000, Math.round(pageSize)));
+
+    if (!USE_FIREBASE) {
+      loadLeads();
+      const page = visibleLeads(user).slice(0, safePageSize);
+      const last = page[page.length - 1];
+      return delay({ leads: page, hasMore: visibleLeads(user).length > page.length, nextCursor: last?.updatedAt || '' });
+    }
+
+    if (user?.role === 'sales') {
+      const leads = await leadService.getLeads();
+      return delay({ leads, hasMore: false, nextCursor: '' });
+    }
+
+    const constraints = cursorUpdatedAt
+      ? [where('updatedAt', '<', cursorUpdatedAt), orderBy('updatedAt', 'desc'), limit(safePageSize)]
+      : [orderBy('updatedAt', 'desc'), limit(safePageSize)];
+    const snap = await getDocs(query(collection(db!, COL_LEADS), ...constraints));
+    const remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+    setStoreLeads(remoteLeads, !cursorUpdatedAt);
+    persistLeads();
+    const loadedLeads = visibleLeads(user);
+    return delay({
+      leads: loadedLeads,
+      hasMore: remoteLeads.length === safePageSize,
+      nextCursor: remoteLeads[remoteLeads.length - 1]?.updatedAt || remoteLeads[remoteLeads.length - 1]?.createdAt || '',
+    });
+  },
+
   subscribeLeads: (callback: (leads: Lead[]) => void, onError?: (error: unknown) => void): Unsubscribe => {
     const user = currentUser();
     if (!USE_FIREBASE) {
@@ -506,10 +561,9 @@ export const leadService = {
       return () => {};
     }
 
-    const emit = async (items: Lead[]) => {
+    const emit = async (items: Lead[], replace = false) => {
       try {
-        const remoteLeads = items.map(normalizeLead);
-        store.leads = mergeDemoSeeds(remoteLeads);
+        setStoreLeads(items, replace);
         callback(visibleLeads(user));
       } catch (error) {
         onError?.(error);
@@ -518,7 +572,7 @@ export const leadService = {
 
     const handleError = (error: unknown) => {
       console.warn('[Leads] Realtime listener failed:', error);
-      dispatchRealtimeError('Leads realtime dang fallback');
+      dispatchRealtimeError('Leads realtime đang fallback');
       onError?.(error);
     };
 
@@ -529,7 +583,7 @@ export const leadService = {
       const emitSales = () => {
         const byId = new Map<string, Lead>();
         [...activeLeads.filter((lead) => !leadAssignmentExpired(lead)), ...acceptedLeads].forEach((lead) => byId.set(lead.id, lead));
-        void emit(Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+        void emit(Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')), true);
       };
       const scheduleExpiryRefresh = () => {
         if (expiryTimer) window.clearTimeout(expiryTimer);
@@ -555,11 +609,13 @@ export const leadService = {
         where('assignedStatus', '==', 'accepted'),
       );
       const unsubActive = onSnapshot(activeQuery, (snap) => {
+        dispatchRealtimeOk();
         activeLeads = snap.docs.map((item) => item.data() as Lead);
         scheduleExpiryRefresh();
         emitSales();
       }, handleError);
       const unsubAccepted = onSnapshot(acceptedQuery, (snap) => {
+        dispatchRealtimeOk();
         acceptedLeads = snap.docs.map((item) => item.data() as Lead);
         emitSales();
       }, handleError);
@@ -572,6 +628,7 @@ export const leadService = {
 
     const leadQuery = query(collection(db!, COL_LEADS), orderBy('updatedAt', 'desc'), limit(REALTIME_LEADS_LIMIT));
     return onSnapshot(leadQuery, (snap) => {
+      dispatchRealtimeOk();
       void emit(snap.docs.map((item) => item.data() as Lead));
     }, handleError);
   },

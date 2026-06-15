@@ -47,15 +47,18 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     const onUpdate = () => void refreshNotifications();
     const onRealtimeError = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
-      setSyncWarning(detail || 'Realtime sync dang fallback');
+      setSyncWarning(detail || 'Realtime sync đang fallback');
     };
+    const onRealtimeOk = () => setSyncWarning('');
     window.addEventListener('metta-notifications-updated', onUpdate);
     window.addEventListener('focus', onUpdate);
     window.addEventListener('metta-realtime-error', onRealtimeError);
+    window.addEventListener('metta-realtime-ok', onRealtimeOk);
     return () => {
       window.removeEventListener('metta-notifications-updated', onUpdate);
       window.removeEventListener('focus', onUpdate);
       window.removeEventListener('metta-realtime-error', onRealtimeError);
+      window.removeEventListener('metta-realtime-ok', onRealtimeOk);
     };
   }, [refreshNotifications]);
 
@@ -103,7 +106,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
           {syncWarning && (
             <span title={syncWarning} className="hidden rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 md:inline-flex">
-              Sync thu cong
+              Sync thủ công
             </span>
           )}
           <div ref={notificationRef} className="relative">

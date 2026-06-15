@@ -24,12 +24,22 @@ const STAGE_DEMO_CONSULTATION_PREFIX = 'ap-demo-stage-consultation-';
 const PRIORITY_DEMO_CONSULTATION_PREFIX = 'ap-demo-priority-consultation-';
 const REALTIME_APPOINTMENTS_LIMIT = 500;
 
+type AppointmentSubscribeOptions = {
+  dateFrom?: string;
+  dateTo?: string;
+  limit?: number;
+};
+
 function persist() {
   // Appointment data is shared state. Firestore is the only persistent store.
 }
 
 function dispatchRealtimeError(message: string) {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('metta-realtime-error', { detail: message }));
+}
+
+function dispatchRealtimeOk() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('metta-realtime-ok'));
 }
 
 function isDemoAppointment(item: Partial<Appointment>) {
@@ -140,18 +150,29 @@ export const appointmentService = {
     return delay(canViewAllLeads(user) ? store.appointments : store.appointments.filter((item) => item.assignedTo === user?.id));
   },
 
-  subscribeAppointments: (callback: (appointments: Appointment[]) => void, onError?: (error: unknown) => void): Unsubscribe => {
+  subscribeAppointments: (callback: (appointments: Appointment[]) => void, onError?: (error: unknown) => void, options: AppointmentSubscribeOptions = {}): Unsubscribe => {
     const user = currentUser();
     if (!USE_FIREBASE) {
       void appointmentService.getAppointments().then(callback).catch(onError);
       return () => {};
     }
 
+    const safeLimit = Math.max(50, Math.min(1000, Math.round(options.limit || REALTIME_APPOINTMENTS_LIMIT)));
+    const canUseDateRange = canViewAllLeads(user) && Boolean(options.dateFrom || options.dateTo);
     const appointmentQuery = user?.role === 'sales'
-      ? query(collection(db!, COL), where('assignedTo', '==', user.id), limit(REALTIME_APPOINTMENTS_LIMIT))
-      : query(collection(db!, COL), orderBy('startTime', 'desc'), limit(REALTIME_APPOINTMENTS_LIMIT));
+      ? query(collection(db!, COL), where('assignedTo', '==', user.id), limit(safeLimit))
+      : canUseDateRange
+        ? query(
+          collection(db!, COL),
+          ...(options.dateFrom ? [where('startTime', '>=', options.dateFrom)] : []),
+          ...(options.dateTo ? [where('startTime', '<=', options.dateTo)] : []),
+          orderBy('startTime', 'desc'),
+          limit(safeLimit),
+        )
+        : query(collection(db!, COL), orderBy('startTime', 'desc'), limit(safeLimit));
 
     return onSnapshot(appointmentQuery, (snap) => {
+      dispatchRealtimeOk();
       void (async () => {
         try {
           const remoteItems = snap.docs.map((item) => item.data() as Appointment);
@@ -166,7 +187,7 @@ export const appointmentService = {
       })();
     }, (error) => {
       console.warn('[Appointments] Realtime listener failed:', error);
-      dispatchRealtimeError('Appointments realtime dang fallback');
+      dispatchRealtimeError('Appointments realtime đang fallback');
       onError?.(error);
     });
   },

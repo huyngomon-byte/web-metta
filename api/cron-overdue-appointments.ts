@@ -1,4 +1,5 @@
 import { adminDb } from './_firebaseAdmin.js';
+import { createAppNotification, notifyLeadManagers } from './_notifications.js';
 
 type VercelRequest = {
   method?: string;
@@ -40,13 +41,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (snap.empty) return res.status(200).json({ ok: true, overdue: 0 });
 
   const batch = db.batch();
+  const notifications: Promise<unknown>[] = [];
   snap.docs.forEach((docSnap) => {
+    const appointment = docSnap.data();
+    const title = String(appointment.title || 'Lịch hẹn');
+    const assignedTo = String(appointment.assignedTo || '');
     batch.set(docSnap.ref, {
       status: 'overdue',
       updatedAt: timestamp,
     }, { merge: true });
+
+    if (assignedTo) {
+      notifications.push(createAppNotification(db, {
+        type: 'appointment_due',
+        userId: assignedTo,
+        title: 'Lịch hẹn đã quá hạn',
+        body: `${title} cần được cập nhật trạng thái.`,
+        leadId: String(appointment.leadId || ''),
+        url: '/crm/tasks',
+        createdAt: timestamp,
+      }));
+    }
   });
 
   await batch.commit();
+  await notifyLeadManagers(db, {
+    type: 'appointment_due',
+    title: `${snap.size} lịch hẹn quá hạn`,
+    body: 'Cần kiểm tra và nhắc sales cập nhật trạng thái lịch hẹn.',
+    url: '/appointments',
+    createdAt: timestamp,
+  }).catch((error) => console.warn('[CronOverdueAppointments] Manager notification failed:', error));
+  await Promise.all(notifications).catch((error) => console.warn('[CronOverdueAppointments] Sales notification failed:', error));
   return res.status(200).json({ ok: true, overdue: snap.size });
 }

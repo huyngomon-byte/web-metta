@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, GripVertical, LayoutGrid, List, PhoneCall, Plus, Save, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, GripVertical, LayoutGrid, List, PhoneCall, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
@@ -292,7 +292,7 @@ function callLogText(log?: CallLog) {
 export default function LeadsPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const { leads, refresh } = useLeads();
+  const { leads, refresh, loadMore, hasMore, loadingMore } = useLeads({ pageSize: 500 });
   const { startOutboundCall } = useCallCenter();
   const courseOptions = useCourseOptions();
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -540,6 +540,9 @@ export default function LeadsPage() {
           <Button variant="outline" className="w-full sm:w-auto" onClick={() => exportCsv('metta-leads.csv', filtered as unknown as Record<string, unknown>[])}>
             <Download /> Export CSV
           </Button>
+          {hasMore && <Button variant="outline" className="w-full sm:w-auto" onClick={() => void loadMore()} disabled={loadingMore}>
+            <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải' : 'Tải thêm lead'}
+          </Button>}
           {canAssign && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowSourceSettings((current) => !current)}>
             Source priority
           </Button>}

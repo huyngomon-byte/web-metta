@@ -73,6 +73,10 @@ function dispatchRealtimeError(message: string) {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('metta-realtime-error', { detail: message }));
 }
 
+function dispatchRealtimeOk() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('metta-realtime-ok'));
+}
+
 function readLocalTasks(): ManualTask[] {
   return cachedTasks;
 }
@@ -121,12 +125,13 @@ export const salesTaskService = {
       : query(collection(db!, COL_MANUAL_TASKS), where('assignedTo', '==', user?.id || ''), limit(1000));
 
     return onSnapshot(taskQuery, (snap) => {
+      dispatchRealtimeOk();
       const tasks = mergeTasks(snap.docs.map((item) => ({ id: item.id, ...item.data() } as ManualTask)));
       writeLocalTasks(tasks, false);
       callback(tasks);
     }, (error) => {
       console.warn('[SalesTasks] Realtime listener failed:', error);
-      dispatchRealtimeError('Tasks realtime dang fallback');
+      dispatchRealtimeError('Tasks realtime đang fallback');
       onError?.(error);
     });
   },

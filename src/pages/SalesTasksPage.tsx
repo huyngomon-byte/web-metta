@@ -10,6 +10,7 @@ import {
   Phone,
   PhoneCall,
   Plus,
+  RefreshCcw,
   Save,
   Search,
   Send,
@@ -322,7 +323,7 @@ function dueBucket(task: SalesTask) {
 export default function SalesTasksPage() {
   const { user } = useAuth();
   const { startOutboundCall } = useCallCenter();
-  const { leads, refresh: refreshLeads } = useLeads();
+  const { leads, refresh: refreshLeads, loadMore, hasMore, loadingMore } = useLeads({ pageSize: 500 });
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -594,6 +595,13 @@ export default function SalesTasksPage() {
           <Button onClick={() => void saveManualTask()} disabled={quickTaskBusy || !taskAssigneeOptions.length}><Plus /> {quickTaskBusy ? 'Đang thêm' : 'Thêm'}</Button>
           <Textarea className="lg:col-span-6" rows={2} placeholder="Note chi tiết" value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} />
           {quickTaskError && <p className="lg:col-span-6 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">{quickTaskError}</p>}
+          {hasMore && (
+            <div className="lg:col-span-6">
+              <Button type="button" variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
+                <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải thêm lead' : 'Tải thêm lead cho task'}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

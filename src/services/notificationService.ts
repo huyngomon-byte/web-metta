@@ -31,6 +31,10 @@ function dispatchRealtimeError(message: string) {
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('metta-realtime-error', { detail: message }));
 }
 
+function dispatchRealtimeOk() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('metta-realtime-ok'));
+}
+
 function readAll(): AppNotification[] {
   return cachedNotifications;
 }
@@ -90,6 +94,7 @@ export const notificationService = {
     const notificationQuery = query(collection(db!, COL_NOTIFICATIONS), where('userId', '==', userId));
 
     return onSnapshot(notificationQuery, (snap) => {
+      dispatchRealtimeOk();
       const items = snap.docs
         .map((item) => normalizeNotification({ id: item.id, ...item.data() }))
         .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
@@ -98,7 +103,7 @@ export const notificationService = {
       callback(items);
     }, (error) => {
       console.warn('[Notifications] Realtime listener failed:', error);
-      dispatchRealtimeError('Notification realtime dang fallback');
+      dispatchRealtimeError('Notification realtime đang fallback');
       onError?.(error);
       callback(notificationService.getForUser(userId));
     });
@@ -113,12 +118,12 @@ export const notificationService = {
 
   notifyLeadAssigned: (lead: Pick<Lead, 'id' | 'fullName' | 'studentName' | 'parentName' | 'phone'>, salesId: string, assignedByName?: string, auto = false) => {
     if (!salesId || !lead.id) return null;
-    const leadName = lead.studentName || lead.fullName || lead.parentName || lead.phone || 'Lead moi';
+    const leadName = lead.studentName || lead.fullName || lead.parentName || lead.phone || 'Lead mới';
     const notification: AppNotification = {
       id: `noti-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       type: 'lead_assigned',
       userId: salesId,
-      title: auto ? 'Lead moi duoc auto assign' : 'Lead moi duoc phan cho ban',
+      title: auto ? 'Lead mới được auto assign' : 'Lead mới được phân cho bạn',
       body: `${leadName}${assignedByName ? ` - ${assignedByName}` : ''}`,
       leadId: lead.id,
       url: leadUrl(lead.id),

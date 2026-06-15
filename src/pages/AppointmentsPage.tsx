@@ -48,6 +48,12 @@ function buildMonthDays(value: Date) {
   });
 }
 
+function monthRealtimeRange(value: Date) {
+  const from = new Date(value.getFullYear(), value.getMonth() - 1, 1, 0, 0, 0, 0);
+  const to = new Date(value.getFullYear(), value.getMonth() + 2, 0, 23, 59, 59, 999);
+  return { dateFrom: from.toISOString(), dateTo: to.toISOString() };
+}
+
 function appointmentTypeLabel(type: string) {
   if (type === 'Gọi lại' || type.includes('Gá')) return 'Gọi lại';
   if (type === 'Tư vấn' || type.includes('TÆ')) return 'Tư vấn';
@@ -114,10 +120,11 @@ export default function AppointmentsPage() {
   }
 
   useEffect(() => {
+    const range = monthRealtimeRange(month);
     return appointmentService.subscribeAppointments(setItems, () => {
       void refresh();
-    });
-  }, []);
+    }, range);
+  }, [month]);
 
   const salesOptions = useMemo(
     () => Array.from(new Map(items

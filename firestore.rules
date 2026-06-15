@@ -159,8 +159,7 @@ service cloud.firestore {
     match /appNotifications/{id} {
       allow read: if canManageLeads()
         || (activeUser() && resource.data.userId == request.auth.uid);
-      allow create: if canManageLeads()
-        || (activeUser() && request.resource.data.userId == request.auth.uid);
+      allow create: if canManageLeads();
       allow update: if canManageLeads()
         || (activeUser()
           && resource.data.userId == request.auth.uid

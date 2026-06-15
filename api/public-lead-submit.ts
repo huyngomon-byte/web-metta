@@ -1,10 +1,9 @@
 import crypto from 'node:crypto';
 import { adminAppCheck, adminDb } from './_firebaseAdmin.js';
+import { notifyLeadAssigned, notifyLeadManagers } from './_notifications.js';
 
 const COURSE_OPTIONS = [
-  'Mau giao',
   'Mẫu giáo',
-  'Thieu Nhi',
   'Thiếu Nhi',
   'Phonics',
   'METTA Kiddies',
@@ -51,6 +50,13 @@ type LeadAssignmentSnapshot = {
   assignedTo?: string;
   assignedToName?: string;
   assignedStatus?: string;
+};
+
+type LeadAssignmentCount = {
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedStatus?: string;
+  count?: number;
 };
 
 type VercelRequest = {
@@ -206,14 +212,16 @@ function salesMatches(lead: LeadAssignmentSnapshot, rule: SalesAssignmentRule) {
   return lead.assignedTo === rule.salesId || lead.assignedTo === rule.salesName || lead.assignedToName === rule.salesName;
 }
 
-function chooseAutoAssignedSales(leads: LeadAssignmentSnapshot[], users: AdminUser[], savedRules: SalesAssignmentRule[]) {
+function chooseAutoAssignedSales(leads: LeadAssignmentCount[], users: AdminUser[], savedRules: SalesAssignmentRule[]) {
   const rules = normalizeAssignmentRules(users, savedRules).filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
   if (!rules.length || assignmentRulesTotal(rules) !== 100) return null;
 
-  const assignedLeads = leads.filter((lead) => rules.some((rule) => salesMatches(lead, rule)) && lead.assignedStatus !== 'returned');
-  const totalAfter = assignedLeads.length + 1;
+  const assignedTotal = leads.reduce((sum, lead) => sum + Number(lead.count || 0), 0);
+  const totalAfter = assignedTotal + 1;
   const ranked = rules.map((rule) => {
-    const current = assignedLeads.filter((lead) => salesMatches(lead, rule)).length;
+    const current = leads
+      .filter((lead) => salesMatches(lead, rule) && lead.assignedStatus !== 'returned')
+      .reduce((sum, lead) => sum + Number(lead.count || 0), 0);
     const targetExact = (totalAfter * cleanPercent(rule.percent)) / 100;
     const targetRounded = Math.round(targetExact);
     return {
@@ -252,19 +260,27 @@ async function priorityForSource(db: ReturnType<typeof adminDb>, source: string)
 
 async function pickAutoAssignedSales(db: ReturnType<typeof adminDb>) {
   try {
-    const [usersSnap, leadsSnap, rulesSnap] = await Promise.all([
+    const [usersSnap, rulesSnap] = await Promise.all([
       db.collection('users').get(),
-      db.collection('leads').get(),
       db.collection('appConfig').doc('salesAssignmentRules').get(),
     ]);
     const users = usersSnap.docs.map((item) => {
       const data = item.data() as Partial<AdminUser>;
       return { id: item.id, fullName: data.fullName || '', role: data.role || '', active: data.active === true };
     });
-    const leads = leadsSnap.docs.map((item) => item.data() as LeadAssignmentSnapshot);
     const rulesData = rulesSnap.exists ? rulesSnap.data() : null;
     const rules = Array.isArray(rulesData?.rules) ? rulesData.rules as SalesAssignmentRule[] : [];
-    return chooseAutoAssignedSales(leads, users, rules);
+    const normalizedRules = normalizeAssignmentRules(users, rules);
+    const counts = await Promise.all(normalizedRules.map(async (rule) => {
+      const snap = await db.collection('leads').where('assignedTo', '==', rule.salesId).count().get();
+      return {
+        assignedTo: rule.salesId,
+        assignedToName: rule.salesName,
+        assignedStatus: 'active',
+        count: snap.data().count,
+      };
+    }));
+    return chooseAutoAssignedSales(counts, users, normalizedRules);
   } catch (error) {
     console.warn('[PublicLead] Auto assignment config read failed, leaving lead unassigned:', error);
     return null;
@@ -375,6 +391,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   await leadRef.set(payload);
+
+  if (assignedTo) {
+    await notifyLeadAssigned(db, {
+      leadId: leadRef.id,
+      leadName: studentName || parentName || phone,
+      salesId: assignedTo,
+      assignedByName: 'Auto rule',
+      auto: true,
+      createdAt: now,
+    }).catch((error) => console.warn('[PublicLead] Sales notification failed:', error));
+  } else {
+    await notifyLeadManagers(db, {
+      title: 'Lead mới chưa có PIC',
+      body: `${studentName || parentName || phone} từ ${source} cần được phân sales.`,
+      leadId: leadRef.id,
+      url: '/crm/lead-assignment',
+      createdAt: now,
+    }).catch((error) => console.warn('[PublicLead] Manager notification failed:', error));
+  }
 
   const parentProfileId = `parent-${phone}`;
   const parentProfileRef = db.collection('parentProfiles').doc(parentProfileId);
