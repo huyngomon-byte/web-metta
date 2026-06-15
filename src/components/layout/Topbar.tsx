@@ -4,10 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
-import { appointmentService } from '@/services/appointmentService';
-import { leadService } from '@/services/leadService';
 import { notificationService } from '@/services/notificationService';
-import type { Appointment, Lead } from '@/types/crm';
 import type { AppNotification } from '@/types/notification';
 
 function timeLabel(value: string) {
@@ -24,8 +21,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [notificationLeads, setNotificationLeads] = useState<Lead[]>([]);
-  const [notificationAppointments, setNotificationAppointments] = useState<Appointment[]>([]);
+  const [syncWarning, setSyncWarning] = useState('');
 
   const unread = useMemo(() => notifications.filter((item) => !item.read).length, [notifications]);
 
@@ -34,38 +30,32 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       setNotifications([]);
       return;
     }
-    setNotifications(notificationService.getCombinedForUser(user, notificationLeads, notificationAppointments).slice(0, 10));
-  }, [notificationAppointments, notificationLeads, user]);
-
-  useEffect(() => {
-    void refreshNotifications();
-  }, [refreshNotifications]);
-
-  useEffect(() => {
-    if (!user?.id) {
-      setNotificationLeads([]);
-      setNotificationAppointments([]);
-      return undefined;
-    }
-    const unsubLeads = leadService.subscribeLeads(setNotificationLeads, () => {
-      void leadService.getLeads().then(setNotificationLeads).catch(() => {});
-    });
-    const unsubAppointments = appointmentService.subscribeAppointments(setNotificationAppointments, () => {
-      void appointmentService.getAppointments().then(setNotificationAppointments).catch(() => {});
-    });
-    return () => {
-      unsubLeads();
-      unsubAppointments();
-    };
+    setNotifications(notificationService.getForUser(user.id).slice(0, 10));
   }, [user?.id]);
 
   useEffect(() => {
+    if (!user?.id) {
+      setNotifications([]);
+      return undefined;
+    }
+    return notificationService.subscribeForUser(user.id, (items) => setNotifications(items.slice(0, 10)), () => {
+      void refreshNotifications();
+    });
+  }, [refreshNotifications, user?.id]);
+
+  useEffect(() => {
     const onUpdate = () => void refreshNotifications();
+    const onRealtimeError = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      setSyncWarning(detail || 'Realtime sync dang fallback');
+    };
     window.addEventListener('metta-notifications-updated', onUpdate);
     window.addEventListener('focus', onUpdate);
+    window.addEventListener('metta-realtime-error', onRealtimeError);
     return () => {
       window.removeEventListener('metta-notifications-updated', onUpdate);
       window.removeEventListener('focus', onUpdate);
+      window.removeEventListener('metta-realtime-error', onRealtimeError);
     };
   }, [refreshNotifications]);
 
@@ -80,15 +70,15 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   }, []);
 
   function openNotification(item: AppNotification) {
+    setNotifications((current) => current.map((entry) => (entry.id === item.id ? { ...entry, read: true } : entry)));
     notificationService.markRead(item.id);
-    void refreshNotifications();
     setNotificationsOpen(false);
     if (item.url) navigate(item.url);
   }
 
   function markAllRead() {
+    setNotifications((current) => current.map((item) => ({ ...item, read: true })));
     notificationService.markAllRead(user?.id);
-    void refreshNotifications();
   }
 
   async function handleLogout() {
@@ -111,6 +101,11 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           <Input className="border-0 px-0 shadow-none focus:border-0 focus:ring-0" placeholder="Tìm lead, phụ huynh, SĐT, chiến dịch..." />
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+          {syncWarning && (
+            <span title={syncWarning} className="hidden rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 md:inline-flex">
+              Sync thu cong
+            </span>
+          )}
           <div ref={notificationRef} className="relative">
             <Button variant="outline" size="icon" aria-label="Mở notifications" onClick={() => setNotificationsOpen((value) => !value)} className="relative">
               <Bell />

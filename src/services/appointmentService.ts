@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -21,9 +22,14 @@ const USE_FIREBASE = isFirebaseConfigured && !!db;
 const COL = 'appointments';
 const STAGE_DEMO_CONSULTATION_PREFIX = 'ap-demo-stage-consultation-';
 const PRIORITY_DEMO_CONSULTATION_PREFIX = 'ap-demo-priority-consultation-';
+const REALTIME_APPOINTMENTS_LIMIT = 500;
 
 function persist() {
   // Appointment data is shared state. Firestore is the only persistent store.
+}
+
+function dispatchRealtimeError(message: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('metta-realtime-error', { detail: message }));
 }
 
 function isDemoAppointment(item: Partial<Appointment>) {
@@ -142,16 +148,14 @@ export const appointmentService = {
     }
 
     const appointmentQuery = user?.role === 'sales'
-      ? query(collection(db!, COL), where('assignedTo', '==', user.id))
-      : query(collection(db!, COL), orderBy('startTime', 'desc'));
+      ? query(collection(db!, COL), where('assignedTo', '==', user.id), limit(REALTIME_APPOINTMENTS_LIMIT))
+      : query(collection(db!, COL), orderBy('startTime', 'desc'), limit(REALTIME_APPOINTMENTS_LIMIT));
 
     return onSnapshot(appointmentQuery, (snap) => {
       void (async () => {
         try {
-          let remoteItems = snap.docs.map((item) => item.data() as Appointment);
-          if (canViewAllLeads(user)) remoteItems = await replaceFirestoreDemoAppointments(remoteItems);
+          const remoteItems = snap.docs.map((item) => item.data() as Appointment);
           store.appointments = mergeAppointments([], remoteItems);
-          await markOverdueAppointments();
           const visibleItems = canViewAllLeads(user)
             ? store.appointments
             : store.appointments.filter((item) => item.assignedTo === user?.id);
@@ -162,6 +166,7 @@ export const appointmentService = {
       })();
     }, (error) => {
       console.warn('[Appointments] Realtime listener failed:', error);
+      dispatchRealtimeError('Appointments realtime dang fallback');
       onError?.(error);
     });
   },

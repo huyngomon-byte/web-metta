@@ -69,6 +69,10 @@ function dispatchUpdate() {
   window.dispatchEvent(new Event('metta-sales-tasks-updated'));
 }
 
+function dispatchRealtimeError(message: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('metta-realtime-error', { detail: message }));
+}
+
 function readLocalTasks(): ManualTask[] {
   return cachedTasks;
 }
@@ -122,6 +126,7 @@ export const salesTaskService = {
       callback(tasks);
     }, (error) => {
       console.warn('[SalesTasks] Realtime listener failed:', error);
+      dispatchRealtimeError('Tasks realtime dang fallback');
       onError?.(error);
     });
   },

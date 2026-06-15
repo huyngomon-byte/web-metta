@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -36,6 +37,7 @@ const COL_APPOINTMENTS = 'appointments';
 const COL_AUDIT_LOGS = 'activityLogs';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
+const REALTIME_LEADS_LIMIT = 1000;
 
 type PublicLeadSubmitInput = Partial<Lead> & {
   company?: string;
@@ -254,6 +256,10 @@ function stripUndefined<T>(value: T): T {
 
 function persistLeads() {
   // Lead data is shared state. Firestore is the only persistent store.
+}
+
+function dispatchRealtimeError(message: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('metta-realtime-error', { detail: message }));
 }
 
 function mergeDemoSeeds(current: Lead[]) {
@@ -502,15 +508,8 @@ export const leadService = {
 
     const emit = async (items: Lead[]) => {
       try {
-        let remoteLeads = items.map(normalizeLead);
-        if (canViewAllLeads(user)) {
-          remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
-          store.leads = mergeDemoSeeds(remoteLeads);
-          await syncMissingStageDemoLeadsToFirestore(remoteLeads);
-          await expireOverdueAssignments(user);
-        } else {
-          store.leads = mergeDemoSeeds(remoteLeads);
-        }
+        const remoteLeads = items.map(normalizeLead);
+        store.leads = mergeDemoSeeds(remoteLeads);
         callback(visibleLeads(user));
       } catch (error) {
         onError?.(error);
@@ -519,16 +518,29 @@ export const leadService = {
 
     const handleError = (error: unknown) => {
       console.warn('[Leads] Realtime listener failed:', error);
+      dispatchRealtimeError('Leads realtime dang fallback');
       onError?.(error);
     };
 
     if (user?.role === 'sales') {
       let activeLeads: Lead[] = [];
       let acceptedLeads: Lead[] = [];
+      let expiryTimer: number | undefined;
       const emitSales = () => {
         const byId = new Map<string, Lead>();
-        [...activeLeads, ...acceptedLeads].forEach((lead) => byId.set(lead.id, lead));
+        [...activeLeads.filter((lead) => !leadAssignmentExpired(lead)), ...acceptedLeads].forEach((lead) => byId.set(lead.id, lead));
         void emit(Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+      };
+      const scheduleExpiryRefresh = () => {
+        if (expiryTimer) window.clearTimeout(expiryTimer);
+        const nowMs = Date.now();
+        const nextExpiry = activeLeads
+          .map((lead) => Number(lead.assignedExpiresAtMs || 0))
+          .filter((value) => value > nowMs)
+          .sort((a, b) => a - b)[0];
+        if (nextExpiry) {
+          expiryTimer = window.setTimeout(emitSales, Math.min(nextExpiry - nowMs + 1000, 2147483647));
+        }
       };
       const nowMs = Date.now();
       const activeQuery = query(
@@ -544,6 +556,7 @@ export const leadService = {
       );
       const unsubActive = onSnapshot(activeQuery, (snap) => {
         activeLeads = snap.docs.map((item) => item.data() as Lead);
+        scheduleExpiryRefresh();
         emitSales();
       }, handleError);
       const unsubAccepted = onSnapshot(acceptedQuery, (snap) => {
@@ -551,12 +564,13 @@ export const leadService = {
         emitSales();
       }, handleError);
       return () => {
+        if (expiryTimer) window.clearTimeout(expiryTimer);
         unsubActive();
         unsubAccepted();
       };
     }
 
-    const leadQuery = query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc'));
+    const leadQuery = query(collection(db!, COL_LEADS), orderBy('updatedAt', 'desc'), limit(REALTIME_LEADS_LIMIT));
     return onSnapshot(leadQuery, (snap) => {
       void emit(snap.docs.map((item) => item.data() as Lead));
     }, handleError);

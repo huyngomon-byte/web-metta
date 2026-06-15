@@ -156,6 +156,19 @@ service cloud.firestore {
       allow update, delete: if canManageLeads();
     }
 
+    match /appNotifications/{id} {
+      allow read: if canManageLeads()
+        || (activeUser() && resource.data.userId == request.auth.uid);
+      allow create: if canManageLeads()
+        || (activeUser() && request.resource.data.userId == request.auth.uid);
+      allow update: if canManageLeads()
+        || (activeUser()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId);
+      allow delete: if canManageLeads()
+        || (activeUser() && resource.data.userId == request.auth.uid);
+    }
+
     match /appointments/{id} {
       allow read: if canManageLeads()
         || (isSales() && resource.data.assignedTo == request.auth.uid);
