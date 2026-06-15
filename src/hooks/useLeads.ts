@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { leadService } from '@/services/leadService';
+import type { LeadPageCursor } from '@/services/leadService';
 import type { Lead } from '@/types/crm';
 
 type UseLeadsOptions = {
@@ -18,7 +19,7 @@ function mergeLeads(incoming: Lead[], existing: Lead[]) {
 
 export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realtime ? 'paged' : 'all' }: UseLeadsOptions = {}) {
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [nextCursor, setNextCursor] = useState('');
+  const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const refresh = useCallback(async () => {
@@ -31,7 +32,7 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
     }
     const items = await leadService.getLeads();
     setLeads(items);
-    setNextCursor('');
+    setNextCursor(null);
     setHasMore(false);
     return;
   }, [mode, pageSize]);
@@ -40,7 +41,7 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
     if (!hasMore || !nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const page = await leadService.getLeadsPage({ pageSize, cursorUpdatedAt: nextCursor });
+      const page = await leadService.getLeadsPage({ pageSize, cursor: nextCursor });
       setLeads(page.leads);
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
@@ -52,8 +53,12 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
   useEffect(() => {
     void refresh();
     if (realtime) {
-      return leadService.subscribeLeads((items) => {
-        setLeads((current) => mergeLeads(items, current));
+      return leadService.subscribeLeads((items, meta) => {
+        setLeads((current) => {
+          const removedIds = new Set(meta?.removedIds || []);
+          const currentWithoutRemoved = removedIds.size ? current.filter((lead) => !removedIds.has(lead.id)) : current;
+          return meta?.replace ? items : mergeLeads(items, currentWithoutRemoved);
+        });
       }, () => {
         void refresh();
       });

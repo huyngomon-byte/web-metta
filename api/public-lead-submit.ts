@@ -10,6 +10,7 @@ const COURSE_OPTIONS = [
   'METTA on Phonics',
   'METTA Young Learner',
   'METTA Young Learners',
+  'Metta+ Pass',
 ];
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_MAX = 6;
@@ -271,7 +272,8 @@ async function pickAutoAssignedSales(db: ReturnType<typeof adminDb>) {
     const rulesData = rulesSnap.exists ? rulesSnap.data() : null;
     const rules = Array.isArray(rulesData?.rules) ? rulesData.rules as SalesAssignmentRule[] : [];
     const normalizedRules = normalizeAssignmentRules(users, rules);
-    const counts = await Promise.all(normalizedRules.map(async (rule) => {
+    const countableRules = normalizedRules.filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
+    const counts = await Promise.all(countableRules.map(async (rule) => {
       const snap = await db.collection('leads').where('assignedTo', '==', rule.salesId).count().get();
       return {
         assignedTo: rule.salesId,

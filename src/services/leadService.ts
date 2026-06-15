@@ -9,7 +9,9 @@ import {
   orderBy,
   query,
   setDoc,
+  startAfter,
   where,
+  type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
@@ -40,9 +42,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const REALTIME_LEADS_LIMIT = 1000;
 const DEFAULT_LEADS_PAGE_SIZE = 300;
 
+export type LeadPageCursor = {
+  id: string;
+  updatedAt?: string;
+  snapshot?: QueryDocumentSnapshot;
+};
+
 type LeadPageOptions = {
   pageSize?: number;
-  cursorUpdatedAt?: string;
+  cursor?: LeadPageCursor | null;
 };
 
 type PublicLeadSubmitInput = Partial<Lead> & {
@@ -52,6 +60,13 @@ type PublicLeadSubmitInput = Partial<Lead> & {
   pageSlug?: string;
   sourceUrl?: string;
 };
+
+type LeadSubscribeMeta = {
+  replace?: boolean;
+  removedIds?: string[];
+};
+
+type LeadSubscribeCallback = (leads: Lead[], meta?: LeadSubscribeMeta) => void;
 
 const COURSE_MIGRATION: Record<string, InterestedCourse> = {
   'Mẫu giáo': 'METTA Kiddies',
@@ -290,6 +305,27 @@ function setStoreLeads(remoteLeads: Lead[], replace = false) {
     : mergeDemoSeeds(mergeLeadLists(normalized, store.leads.map(normalizeLead)));
 }
 
+function removeStoreLeads(ids: string[]) {
+  if (!ids.length) return;
+  const removed = new Set(ids);
+  store.leads = store.leads.filter((lead) => !removed.has(lead.id));
+}
+
+async function deletedLeadIdsFromChanges(changes: Array<{ type: string; doc: { id: string } }>) {
+  if (!USE_FIREBASE) return [];
+  const removedIds = changes
+    .filter((change) => change.type === 'removed')
+    .map((change) => change.doc.id)
+    .filter(Boolean);
+  if (!removedIds.length) return [];
+
+  const checks = await Promise.all(removedIds.map(async (id) => {
+    const snap = await getDoc(doc(db!, COL_LEADS, id)).catch(() => null);
+    return snap && !snap.exists() ? id : '';
+  }));
+  return checks.filter(Boolean);
+}
+
 function replaceLocalDemoLeads(current: Lead[]) {
   return current.filter((lead) => !isDemoLead(lead));
 }
@@ -523,48 +559,57 @@ export const leadService = {
     return delay(visibleLeads(user));
   },
 
-  getLeadsPage: async ({ pageSize = DEFAULT_LEADS_PAGE_SIZE, cursorUpdatedAt }: LeadPageOptions = {}) => {
+  getLeadsPage: async ({ pageSize = DEFAULT_LEADS_PAGE_SIZE, cursor }: LeadPageOptions = {}) => {
     const user = currentUser();
     const safePageSize = Math.max(50, Math.min(1000, Math.round(pageSize)));
 
     if (!USE_FIREBASE) {
       loadLeads();
-      const page = visibleLeads(user).slice(0, safePageSize);
+      const allLeads = visibleLeads(user);
+      const startIndex = cursor?.id ? Math.max(0, allLeads.findIndex((lead) => lead.id === cursor.id) + 1) : 0;
+      const page = allLeads.slice(startIndex, startIndex + safePageSize);
       const last = page[page.length - 1];
-      return delay({ leads: page, hasMore: visibleLeads(user).length > page.length, nextCursor: last?.updatedAt || '' });
+      return delay({
+        leads: page,
+        hasMore: allLeads.length > startIndex + page.length,
+        nextCursor: last ? { updatedAt: last.updatedAt || last.createdAt || '', id: last.id } : null,
+      });
     }
 
     if (user?.role === 'sales') {
       const leads = await leadService.getLeads();
-      return delay({ leads, hasMore: false, nextCursor: '' });
+      return delay({ leads, hasMore: false, nextCursor: null });
     }
 
-    const constraints = cursorUpdatedAt
-      ? [where('updatedAt', '<', cursorUpdatedAt), orderBy('updatedAt', 'desc'), limit(safePageSize)]
+    const constraints = cursor?.snapshot
+      ? [orderBy('updatedAt', 'desc'), startAfter(cursor.snapshot), limit(safePageSize)]
       : [orderBy('updatedAt', 'desc'), limit(safePageSize)];
     const snap = await getDocs(query(collection(db!, COL_LEADS), ...constraints));
     const remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
-    setStoreLeads(remoteLeads, !cursorUpdatedAt);
+    setStoreLeads(remoteLeads, !cursor);
     persistLeads();
     const loadedLeads = visibleLeads(user);
+    const lastDoc = snap.docs[snap.docs.length - 1];
+    const lastLead = remoteLeads[remoteLeads.length - 1];
     return delay({
       leads: loadedLeads,
       hasMore: remoteLeads.length === safePageSize,
-      nextCursor: remoteLeads[remoteLeads.length - 1]?.updatedAt || remoteLeads[remoteLeads.length - 1]?.createdAt || '',
+      nextCursor: lastLead && lastDoc ? { updatedAt: lastLead.updatedAt || lastLead.createdAt || '', id: lastDoc.id, snapshot: lastDoc } : null,
     });
   },
 
-  subscribeLeads: (callback: (leads: Lead[]) => void, onError?: (error: unknown) => void): Unsubscribe => {
+  subscribeLeads: (callback: LeadSubscribeCallback, onError?: (error: unknown) => void): Unsubscribe => {
     const user = currentUser();
     if (!USE_FIREBASE) {
       void leadService.getLeads().then(callback).catch(onError);
       return () => {};
     }
 
-    const emit = async (items: Lead[], replace = false) => {
+    const emit = async (items: Lead[], meta: LeadSubscribeMeta = {}) => {
       try {
-        setStoreLeads(items, replace);
-        callback(visibleLeads(user));
+        setStoreLeads(items, Boolean(meta.replace));
+        if (meta.removedIds?.length) removeStoreLeads(meta.removedIds);
+        callback(visibleLeads(user), meta);
       } catch (error) {
         onError?.(error);
       }
@@ -583,7 +628,7 @@ export const leadService = {
       const emitSales = () => {
         const byId = new Map<string, Lead>();
         [...activeLeads.filter((lead) => !leadAssignmentExpired(lead)), ...acceptedLeads].forEach((lead) => byId.set(lead.id, lead));
-        void emit(Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')), true);
+        void emit(Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')), { replace: true });
       };
       const scheduleExpiryRefresh = () => {
         if (expiryTimer) window.clearTimeout(expiryTimer);
@@ -629,7 +674,10 @@ export const leadService = {
     const leadQuery = query(collection(db!, COL_LEADS), orderBy('updatedAt', 'desc'), limit(REALTIME_LEADS_LIMIT));
     return onSnapshot(leadQuery, (snap) => {
       dispatchRealtimeOk();
-      void emit(snap.docs.map((item) => item.data() as Lead));
+      void (async () => {
+        const removedIds = await deletedLeadIdsFromChanges(snap.docChanges());
+        await emit(snap.docs.map((item) => item.data() as Lead), { removedIds });
+      })();
     }, handleError);
   },
 
