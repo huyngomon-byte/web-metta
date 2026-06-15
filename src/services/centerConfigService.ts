@@ -75,15 +75,25 @@ function readLocalConfigs() {
   }
 }
 
+function resolveRemoteConfigs(configs: LeadCenterConfig[]) {
+  const normalized = normalizeList(configs);
+  if (isLegacyDefaultConfig(normalized)) {
+    const fallback = defaultConfigs();
+    cacheConfigs(fallback);
+    void writeRemoteConfigs(fallback).catch((error) => {
+      console.warn('[LeadCenterConfigs] Legacy remote cleanup failed:', error);
+    });
+    return fallback;
+  }
+  cacheConfigs(normalized);
+  return normalized;
+}
+
 async function readRemoteConfigs() {
   if (!USE_FIREBASE) return null;
   try {
     const apiConfigs = await readAppConfig<LeadCenterConfig>(CONFIG_DOC_ID, 'configs');
-    if (apiConfigs) {
-      const normalized = normalizeList(apiConfigs);
-      cacheConfigs(normalized);
-      return normalized;
-    }
+    if (apiConfigs) return resolveRemoteConfigs(apiConfigs);
   } catch (error) {
     console.warn('[LeadCenterConfigs] API read failed, trying Firestore client:', error);
   }
@@ -92,9 +102,7 @@ async function readRemoteConfigs() {
     if (!snap.exists()) return null;
     const data = snap.data() as { configs?: LeadCenterConfig[] };
     if (!Array.isArray(data.configs)) return null;
-    const normalized = normalizeList(data.configs);
-    cacheConfigs(normalized);
-    return normalized;
+    return resolveRemoteConfigs(data.configs);
   } catch (error) {
     console.warn('[LeadCenterConfigs] Firestore read failed, using local cache:', error);
     return null;
