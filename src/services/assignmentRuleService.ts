@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { readAppConfig, writeAppConfig } from '@/services/appConfigApi';
 import type { Lead } from '@/types/crm';
 import type { SalesAssignmentPick, SalesAssignmentRule } from '@/types/assignment';
 import type { AdminUser } from '@/types/user';
@@ -69,6 +70,15 @@ function writeStored(rules: SalesAssignmentRule[]) {
 async function readRemoteRules() {
   if (!USE_FIREBASE) return null;
   try {
+    const apiRules = await readAppConfig<SalesAssignmentRule>(CONFIG_DOC_ID, 'rules');
+    if (apiRules) {
+      writeStored(apiRules);
+      return apiRules;
+    }
+  } catch (error) {
+    console.warn('[AssignmentRules] API read failed, trying Firestore client:', error);
+  }
+  try {
     const snap = await getDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID));
     if (!snap.exists()) return null;
     const data = snap.data() as { rules?: SalesAssignmentRule[] };
@@ -82,6 +92,12 @@ async function readRemoteRules() {
 }
 
 async function writeRemoteRules(rules: SalesAssignmentRule[]) {
+  try {
+    await writeAppConfig<SalesAssignmentRule>(CONFIG_DOC_ID, 'rules', rules);
+    return;
+  } catch (error) {
+    console.warn('[AssignmentRules] API save failed, trying Firestore client:', error);
+  }
   await setDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID), {
     rules,
     updatedAt: new Date().toISOString(),

@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { defaultLeadSourceConfigs } from '@/lib/constants';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { readAppConfig, writeAppConfig } from '@/services/appConfigApi';
 import type { LeadSourceConfig, LeadPriorityLevel } from '@/types/crm';
 
 const LS_KEY = 'metta_lead_source_configs';
@@ -78,6 +79,16 @@ function readLocalConfigs() {
 async function readRemoteConfigs() {
   if (!USE_FIREBASE) return null;
   try {
+    const apiConfigs = await readAppConfig<LeadSourceConfig>(CONFIG_DOC_ID, 'configs');
+    if (apiConfigs) {
+      const normalized = normalizeList(apiConfigs);
+      cacheConfigs(normalized);
+      return normalized;
+    }
+  } catch (error) {
+    console.warn('[LeadSourceConfigs] API read failed, trying Firestore client:', error);
+  }
+  try {
     const snap = await getDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID));
     if (!snap.exists()) return null;
     const data = snap.data() as { configs?: LeadSourceConfig[] };
@@ -92,6 +103,12 @@ async function readRemoteConfigs() {
 }
 
 async function writeRemoteConfigs(configs: LeadSourceConfig[]) {
+  try {
+    await writeAppConfig<LeadSourceConfig>(CONFIG_DOC_ID, 'configs', configs);
+    return;
+  } catch (error) {
+    console.warn('[LeadSourceConfigs] API save failed, trying Firestore client:', error);
+  }
   await setDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID), {
     configs,
     updatedAt: new Date().toISOString(),
