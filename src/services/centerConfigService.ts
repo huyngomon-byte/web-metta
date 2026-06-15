@@ -1,7 +1,12 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { defaultLeadCenterConfigs } from '@/lib/constants';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import type { LeadCenterConfig } from '@/types/crm';
 
 const LS_KEY = 'metta_lead_center_configs';
+const USE_FIREBASE = isFirebaseConfigured && !!db;
+const CONFIG_COLLECTION = 'appConfig';
+const CONFIG_DOC_ID = 'leadCenterConfigs';
 
 function centerId(name: string) {
   return name
@@ -45,18 +50,83 @@ function normalizeList(configs: LeadCenterConfig[]) {
   return Array.from(map.values()).filter((item) => item.name);
 }
 
+function isLegacyDefaultConfig(configs: LeadCenterConfig[]) {
+  const ids = configs.map((item) => centerId(item.name)).sort();
+  return ids.length === 3
+    && ids.includes('metta-quan-1')
+    && ids.includes('metta-thao-dien')
+    && ids.includes('metta-phu-nhuan');
+}
+
+function cacheConfigs(configs: LeadCenterConfig[]) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(configs)); } catch {}
+}
+
+function readLocalConfigs() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return normalizeList(parsed);
+  } catch {
+    return null;
+  }
+}
+
+async function readRemoteConfigs() {
+  if (!USE_FIREBASE) return null;
+  try {
+    const snap = await getDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID));
+    if (!snap.exists()) return null;
+    const data = snap.data() as { configs?: LeadCenterConfig[] };
+    if (!Array.isArray(data.configs)) return null;
+    const normalized = normalizeList(data.configs);
+    cacheConfigs(normalized);
+    return normalized;
+  } catch (error) {
+    console.warn('[LeadCenterConfigs] Firestore read failed, using local cache:', error);
+    return null;
+  }
+}
+
+async function writeRemoteConfigs(configs: LeadCenterConfig[]) {
+  await setDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID), {
+    configs,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function migrateLocalToRemote(configs: LeadCenterConfig[]) {
+  if (!USE_FIREBASE) return;
+  try {
+    await writeRemoteConfigs(configs);
+  } catch (error) {
+    console.warn('[LeadCenterConfigs] Local-to-Firestore migration failed:', error);
+  }
+}
+
 export const centerConfigService = {
   getConfigs: async () => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return defaultConfigs();
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return defaultConfigs();
-      const normalized = normalizeList(parsed);
-      return normalized.length ? normalized : defaultConfigs();
-    } catch {
-      return defaultConfigs();
+    const remote = await readRemoteConfigs();
+    if (remote) return remote;
+
+    const local = readLocalConfigs();
+    if (local) {
+      if (isLegacyDefaultConfig(local)) {
+        const fallback = defaultConfigs();
+        cacheConfigs(fallback);
+        void migrateLocalToRemote(fallback);
+        return fallback;
+      }
+      void migrateLocalToRemote(local);
+      return local;
     }
+
+    const fallback = defaultConfigs();
+    cacheConfigs(fallback);
+    void migrateLocalToRemote(fallback);
+    return fallback;
   },
 
   saveConfigs: async (configs: LeadCenterConfig[]) => {
@@ -64,7 +134,15 @@ export const centerConfigService = {
       ...item,
       updatedAt: new Date().toISOString(),
     }));
-    try { localStorage.setItem(LS_KEY, JSON.stringify(normalized)); } catch {}
+    if (USE_FIREBASE) {
+      try {
+        await writeRemoteConfigs(normalized);
+      } catch (error) {
+        console.error('[LeadCenterConfigs] Firestore save failed:', error);
+        throw new Error('Không lưu được cấu hình trung tâm lên Firestore. Vui lòng thử lại hoặc kiểm tra quyền tài khoản.');
+      }
+    }
+    cacheConfigs(normalized);
     return normalized;
   },
 };

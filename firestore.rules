@@ -163,6 +163,10 @@ service cloud.firestore {
       allow read, create, update, delete: if canManageLeads();
     }
 
+    match /appConfig/{id} {
+      allow read, write: if canManageLeads();
+    }
+
     match /capiSettings/{id} {
       allow read, write: if canManageMarketing();
     }

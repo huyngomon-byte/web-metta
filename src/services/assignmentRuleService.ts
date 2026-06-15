@@ -1,8 +1,15 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import type { Lead } from '@/types/crm';
 import type { SalesAssignmentPick, SalesAssignmentRule } from '@/types/assignment';
 import type { AdminUser } from '@/types/user';
 
 const LS_KEY = 'metta_sales_assignment_rules';
+const USE_FIREBASE = isFirebaseConfigured && !!db;
+const CONFIG_COLLECTION = 'appConfig';
+const CONFIG_DOC_ID = 'salesAssignmentRules';
+
+let cachedRules: SalesAssignmentRule[] | null = null;
 
 function activeSales(users: AdminUser[]) {
   return users.filter((user) => user.role === 'sales' && user.active);
@@ -43,17 +50,54 @@ function defaultRules(users: AdminUser[]): SalesAssignmentRule[] {
 }
 
 function readStored(): SalesAssignmentRule[] {
+  if (cachedRules) return cachedRules;
   try {
     const raw = localStorage.getItem(LS_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    cachedRules = Array.isArray(parsed) ? parsed : [];
+    return cachedRules;
   } catch {
     return [];
   }
 }
 
 function writeStored(rules: SalesAssignmentRule[]) {
-  localStorage.setItem(LS_KEY, JSON.stringify(rules));
+  cachedRules = rules;
+  try { localStorage.setItem(LS_KEY, JSON.stringify(rules)); } catch {}
+}
+
+async function readRemoteRules() {
+  if (!USE_FIREBASE) return null;
+  try {
+    const snap = await getDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID));
+    if (!snap.exists()) return null;
+    const data = snap.data() as { rules?: SalesAssignmentRule[] };
+    if (!Array.isArray(data.rules)) return null;
+    writeStored(data.rules);
+    return data.rules;
+  } catch (error) {
+    console.warn('[AssignmentRules] Firestore read failed, using local cache:', error);
+    return null;
+  }
+}
+
+async function writeRemoteRules(rules: SalesAssignmentRule[]) {
+  await setDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID), {
+    rules,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function getStoredRules() {
+  const remote = await readRemoteRules();
+  if (remote) return remote;
+  const local = readStored();
+  if (USE_FIREBASE && local.length) {
+    void writeRemoteRules(local).catch((error) => {
+      console.warn('[AssignmentRules] Local-to-Firestore migration failed:', error);
+    });
+  }
+  return local;
 }
 
 export function assignmentRulesTotal(rules: SalesAssignmentRule[]) {
@@ -85,8 +129,8 @@ function salesMatches(lead: Lead, rule: SalesAssignmentRule) {
   return lead.assignedTo === rule.salesId || lead.assignedTo === rule.salesName || lead.assignedToName === rule.salesName;
 }
 
-export function chooseAutoAssignedSales(leads: Lead[], users: AdminUser[]): SalesAssignmentPick | null {
-  const rules = normalizeAssignmentRules(users).filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
+function chooseAutoAssignedSalesFromRules(leads: Lead[], users: AdminUser[], savedRules?: SalesAssignmentRule[]): SalesAssignmentPick | null {
+  const rules = normalizeAssignmentRules(users, savedRules).filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
   if (!rules.length || assignmentRulesTotal(rules) !== 100) return null;
 
   const assignedLeads = leads.filter((lead) => rules.some((rule) => salesMatches(lead, rule)) && lead.assignedStatus !== 'returned');
@@ -116,9 +160,17 @@ export function chooseAutoAssignedSales(leads: Lead[], users: AdminUser[]): Sale
   return { salesId: winner.salesId, salesName: winner.salesName, targetPercent: cleanPercent(winner.percent) };
 }
 
+export function chooseAutoAssignedSales(leads: Lead[], users: AdminUser[]): SalesAssignmentPick | null {
+  return chooseAutoAssignedSalesFromRules(leads, users, readStored());
+}
+
+export async function chooseAutoAssignedSalesAsync(leads: Lead[], users: AdminUser[]): Promise<SalesAssignmentPick | null> {
+  return chooseAutoAssignedSalesFromRules(leads, users, await getStoredRules());
+}
+
 export const assignmentRuleService = {
-  getRules: (users: AdminUser[]) => normalizeAssignmentRules(users),
-  saveRules: (users: AdminUser[], rules: SalesAssignmentRule[]) => {
+  getRules: async (users: AdminUser[]) => normalizeAssignmentRules(users, await getStoredRules()),
+  saveRules: async (users: AdminUser[], rules: SalesAssignmentRule[]) => {
     const normalized = normalizeAssignmentRules(users, rules).map((rule) => ({
       ...rule,
       percent: cleanPercent(rule.percent),
@@ -126,6 +178,14 @@ export const assignmentRuleService = {
     }));
     const total = assignmentRulesTotal(normalized);
     if (total !== 100) throw new Error('Tổng tỷ lệ phân lead của sales đang active phải bằng 100%.');
+    if (USE_FIREBASE) {
+      try {
+        await writeRemoteRules(normalized);
+      } catch (error) {
+        console.error('[AssignmentRules] Firestore save failed:', error);
+        throw new Error('Không lưu được rule chia lead lên Firestore. Vui lòng thử lại hoặc kiểm tra quyền tài khoản.');
+      }
+    }
     writeStored(normalized);
     return normalized;
   },

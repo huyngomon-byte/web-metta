@@ -237,7 +237,7 @@ export default function LeadAssignmentPage() {
       const [leadItems, userItems] = await Promise.all([leadService.getLeads(), userService.getUsers()]);
       setLeads(leadItems);
       setUsers(userItems);
-      setAssignmentRules(assignmentRuleService.getRules(userItems));
+      setAssignmentRules(await assignmentRuleService.getRules(userItems));
     } finally {
       setLoading(false);
     }
@@ -260,11 +260,11 @@ export default function LeadAssignmentPage() {
     setAssignmentRules((current) => current.map((rule) => (rule.salesId === salesIdValue ? { ...rule, ...patch } : rule)));
   }
 
-  function saveRules() {
+  async function saveRules() {
     setError('');
     setMessage('');
     try {
-      const saved = assignmentRuleService.saveRules(users, assignmentRules);
+      const saved = await assignmentRuleService.saveRules(users, assignmentRules);
       setAssignmentRules(saved);
       setMessage('Đã lưu rule auto chia lead. Rule áp dụng ngay khi tạo lead mới; lead đã phân có thời hạn xử lý 24 giờ.');
     } catch (err) {

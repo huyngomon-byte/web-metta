@@ -16,7 +16,7 @@ import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/l
 import { financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
-import { chooseAutoAssignedSales } from '@/services/assignmentRuleService';
+import { chooseAutoAssignedSalesAsync } from '@/services/assignmentRuleService';
 import { currentUser } from '@/services/authService';
 import { lmsSyncService } from '@/services/lmsSyncService';
 import { notificationService } from '@/services/notificationService';
@@ -680,7 +680,7 @@ export const leadService = {
       store.leads = store.leads.map((item) => (item.id === lead.id ? normalizeLead({ ...item, ...patch } as Lead) : item));
     } else {
       if (user?.role === 'sales') throw new Error('Sales không được tạo lead trực tiếp.');
-      const autoAssignedSales = lead.assignedTo ? null : chooseAutoAssignedSales(store.leads.map(normalizeLead), store.users);
+      const autoAssignedSales = lead.assignedTo ? null : await chooseAutoAssignedSalesAsync(store.leads.map(normalizeLead), store.users);
       const assignedTo = lead.assignedTo || autoAssignedSales?.salesId || '';
       const assignedToName = lead.assignedToName || autoAssignedSales?.salesName || salesNameById(assignedTo);
       const assignedBy = lead.assignedBy || (autoAssignedSales ? 'auto-assignment-rule' : '');

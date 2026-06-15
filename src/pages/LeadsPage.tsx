@@ -615,13 +615,20 @@ export default function LeadsPage() {
       </Card>
 
       {saveMessage && <div className="rounded-lg bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">{saveMessage}</div>}
+      {error && !editing && <div className="rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div>}
       {showSourceSettings && (
         <SourcePriorityPanel
           configs={sourceConfigs}
           onSave={async (configs) => {
-            const saved = await sourceConfigService.saveConfigs(configs);
-            setSourceConfigs(saved);
-            setSaveMessage('Đã lưu cấu hình source và cấp độ ưu tiên.');
+            setError('');
+            setSaveMessage('');
+            try {
+              const saved = await sourceConfigService.saveConfigs(configs);
+              setSourceConfigs(saved);
+              setSaveMessage('Đã lưu cấu hình source và cấp độ ưu tiên.');
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Không lưu được cấu hình source.');
+            }
           }}
         />
       )}
@@ -629,9 +636,15 @@ export default function LeadsPage() {
         <CenterSettingsPanel
           configs={centerConfigs}
           onSave={async (configs) => {
-            const saved = await centerConfigService.saveConfigs(configs);
-            setCenterConfigs(saved);
-            setSaveMessage('Đã lưu danh sách trung tâm.');
+            setError('');
+            setSaveMessage('');
+            try {
+              const saved = await centerConfigService.saveConfigs(configs);
+              setCenterConfigs(saved);
+              setSaveMessage('Đã lưu danh sách trung tâm.');
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Không lưu được danh sách trung tâm.');
+            }
           }}
         />
       )}

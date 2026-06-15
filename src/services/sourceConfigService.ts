@@ -1,7 +1,12 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { defaultLeadSourceConfigs } from '@/lib/constants';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import type { LeadSourceConfig, LeadPriorityLevel } from '@/types/crm';
 
 const LS_KEY = 'metta_lead_source_configs';
+const USE_FIREBASE = isFirebaseConfigured && !!db;
+const CONFIG_COLLECTION = 'appConfig';
+const CONFIG_DOC_ID = 'leadSourceConfigs';
 
 function sourceId(name: string) {
   return name
@@ -54,6 +59,54 @@ function normalizeList(configs: LeadSourceConfig[]) {
   return Array.from(map.values()).filter((item) => item.name);
 }
 
+function cacheConfigs(configs: LeadSourceConfig[]) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(configs)); } catch {}
+}
+
+function readLocalConfigs() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return normalizeList(parsed);
+  } catch {
+    return null;
+  }
+}
+
+async function readRemoteConfigs() {
+  if (!USE_FIREBASE) return null;
+  try {
+    const snap = await getDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID));
+    if (!snap.exists()) return null;
+    const data = snap.data() as { configs?: LeadSourceConfig[] };
+    if (!Array.isArray(data.configs)) return null;
+    const normalized = normalizeList(data.configs);
+    cacheConfigs(normalized);
+    return normalized;
+  } catch (error) {
+    console.warn('[LeadSourceConfigs] Firestore read failed, using local cache:', error);
+    return null;
+  }
+}
+
+async function writeRemoteConfigs(configs: LeadSourceConfig[]) {
+  await setDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID), {
+    configs,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+async function migrateLocalToRemote(configs: LeadSourceConfig[]) {
+  if (!USE_FIREBASE) return;
+  try {
+    await writeRemoteConfigs(configs);
+  } catch (error) {
+    console.warn('[LeadSourceConfigs] Local-to-Firestore migration failed:', error);
+  }
+}
+
 export function sourcePriority(configs: LeadSourceConfig[], source?: string, fallback: unknown = 1): LeadPriorityLevel {
   const match = configs.find((item) => item.name.toLowerCase() === String(source || '').toLowerCase());
   return match ? match.priorityLevel : clampPriority(fallback);
@@ -61,16 +114,19 @@ export function sourcePriority(configs: LeadSourceConfig[], source?: string, fal
 
 export const sourceConfigService = {
   getConfigs: async () => {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return defaultConfigs();
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return defaultConfigs();
-      const normalized = normalizeList(parsed);
-      return normalized.length ? normalized : defaultConfigs();
-    } catch {
-      return defaultConfigs();
+    const remote = await readRemoteConfigs();
+    if (remote) return remote;
+
+    const local = readLocalConfigs();
+    if (local) {
+      void migrateLocalToRemote(local);
+      return local;
     }
+
+    const fallback = defaultConfigs();
+    cacheConfigs(fallback);
+    void migrateLocalToRemote(fallback);
+    return fallback;
   },
 
   saveConfigs: async (configs: LeadSourceConfig[]) => {
@@ -79,7 +135,15 @@ export const sourceConfigService = {
       priorityLevel: clampPriority(item.priorityLevel),
       updatedAt: new Date().toISOString(),
     }));
-    try { localStorage.setItem(LS_KEY, JSON.stringify(normalized)); } catch {}
+    if (USE_FIREBASE) {
+      try {
+        await writeRemoteConfigs(normalized);
+      } catch (error) {
+        console.error('[LeadSourceConfigs] Firestore save failed:', error);
+        throw new Error('Không lưu được cấu hình source lên Firestore. Vui lòng thử lại hoặc kiểm tra quyền tài khoản.');
+      }
+    }
+    cacheConfigs(normalized);
     return normalized;
   },
 

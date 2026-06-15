@@ -14,6 +14,7 @@ const COURSE_OPTIONS = [
 ];
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_MAX = 6;
+const DAY_MS = 24 * 60 * 60 * 1000;
 const SOURCE_PRIORITY: Record<string, number> = {
   'Meta Lead Form': 5,
   Referral: 5,
@@ -29,6 +30,27 @@ const SOURCE_PRIORITY: Record<string, number> = {
   Zalo: 3,
   'Walk-in': 3,
   'Khác': 1,
+};
+
+type AdminUser = {
+  id: string;
+  fullName: string;
+  role: string;
+  active: boolean;
+};
+
+type SalesAssignmentRule = {
+  salesId: string;
+  salesName: string;
+  percent: number;
+  active: boolean;
+  updatedAt?: string;
+};
+
+type LeadAssignmentSnapshot = {
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedStatus?: string;
 };
 
 type VercelRequest = {
@@ -109,6 +131,146 @@ function cleanName(value?: string) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
+function cleanPercent(value: unknown) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.min(100, Math.round(parsed));
+}
+
+function clampPriority(value: unknown) {
+  const parsed = Number(value);
+  if (parsed >= 5) return 5;
+  if (parsed >= 4) return 4;
+  if (parsed >= 3) return 3;
+  if (parsed >= 2) return 2;
+  return 1;
+}
+
+function activeSales(users: AdminUser[]) {
+  return users.filter((user) => user.role === 'sales' && user.active);
+}
+
+function defaultRules(users: AdminUser[]): SalesAssignmentRule[] {
+  const sales = activeSales(users);
+  if (!sales.length) return [];
+  if (sales.length === 2) {
+    return sales.map((user, index) => ({
+      salesId: user.id,
+      salesName: user.fullName,
+      percent: index === 0 ? 60 : 40,
+      active: true,
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  const base = Math.floor(100 / sales.length);
+  let remainder = 100 - base * sales.length;
+  return sales.map((user) => {
+    const extra = remainder > 0 ? 1 : 0;
+    remainder -= extra;
+    return {
+      salesId: user.id,
+      salesName: user.fullName,
+      percent: base + extra,
+      active: true,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+}
+
+function assignmentRulesTotal(rules: SalesAssignmentRule[]) {
+  return rules.filter((rule) => rule.active).reduce((sum, rule) => sum + cleanPercent(rule.percent), 0);
+}
+
+function normalizeAssignmentRules(users: AdminUser[], saved: SalesAssignmentRule[]) {
+  const sales = activeSales(users);
+  if (!sales.length) return [];
+  if (!saved.length) return defaultRules(users);
+
+  const savedById = new Map(saved.map((rule) => [rule.salesId, rule]));
+  const rules = sales.map((user) => {
+    const existing = savedById.get(user.id);
+    return {
+      salesId: user.id,
+      salesName: user.fullName,
+      percent: cleanPercent(existing?.percent),
+      active: existing?.active !== false,
+      updatedAt: existing?.updatedAt,
+    };
+  });
+
+  return assignmentRulesTotal(rules) > 0 ? rules : defaultRules(users);
+}
+
+function salesMatches(lead: LeadAssignmentSnapshot, rule: SalesAssignmentRule) {
+  return lead.assignedTo === rule.salesId || lead.assignedTo === rule.salesName || lead.assignedToName === rule.salesName;
+}
+
+function chooseAutoAssignedSales(leads: LeadAssignmentSnapshot[], users: AdminUser[], savedRules: SalesAssignmentRule[]) {
+  const rules = normalizeAssignmentRules(users, savedRules).filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
+  if (!rules.length || assignmentRulesTotal(rules) !== 100) return null;
+
+  const assignedLeads = leads.filter((lead) => rules.some((rule) => salesMatches(lead, rule)) && lead.assignedStatus !== 'returned');
+  const totalAfter = assignedLeads.length + 1;
+  const ranked = rules.map((rule) => {
+    const current = assignedLeads.filter((lead) => salesMatches(lead, rule)).length;
+    const targetExact = (totalAfter * cleanPercent(rule.percent)) / 100;
+    const targetRounded = Math.round(targetExact);
+    return {
+      rule,
+      current,
+      targetExact,
+      targetRounded,
+      roundedGap: targetRounded - current,
+      exactGap: targetExact - current,
+    };
+  }).sort((a, b) =>
+    b.roundedGap - a.roundedGap ||
+    b.exactGap - a.exactGap ||
+    a.current - b.current ||
+    cleanPercent(b.rule.percent) - cleanPercent(a.rule.percent),
+  );
+
+  const winner = ranked[0]?.rule;
+  return winner ? { salesId: winner.salesId, salesName: winner.salesName } : null;
+}
+
+async function priorityForSource(db: ReturnType<typeof adminDb>, source: string) {
+  try {
+    const snap = await db.collection('appConfig').doc('leadSourceConfigs').get();
+    const data = snap.exists ? snap.data() : null;
+    const configs = Array.isArray(data?.configs) ? data.configs : [];
+    const match = configs.find((item: any) =>
+      item?.active !== false && String(item?.name || '').toLowerCase() === source.toLowerCase(),
+    );
+    if (match) return clampPriority(match.priorityLevel);
+  } catch (error) {
+    console.warn('[PublicLead] Source priority config read failed, using fallback:', error);
+  }
+  return SOURCE_PRIORITY[source] || 1;
+}
+
+async function pickAutoAssignedSales(db: ReturnType<typeof adminDb>) {
+  try {
+    const [usersSnap, leadsSnap, rulesSnap] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('leads').get(),
+      db.collection('appConfig').doc('salesAssignmentRules').get(),
+    ]);
+    const users = usersSnap.docs.map((item) => {
+      const data = item.data() as Partial<AdminUser>;
+      return { id: item.id, fullName: data.fullName || '', role: data.role || '', active: data.active === true };
+    });
+    const leads = leadsSnap.docs.map((item) => item.data() as LeadAssignmentSnapshot);
+    const rulesData = rulesSnap.exists ? rulesSnap.data() : null;
+    const rules = Array.isArray(rulesData?.rules) ? rulesData.rules as SalesAssignmentRule[] : [];
+    return chooseAutoAssignedSales(leads, users, rules);
+  } catch (error) {
+    console.warn('[PublicLead] Auto assignment config read failed, leaving lead unassigned:', error);
+    return null;
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -142,15 +304,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     throw error;
   }
 
-  const now = new Date().toISOString();
-  const eventId = `lead_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const source = lead.source || 'Website';
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
+  const eventId = `lead_${nowMs}_${Math.random().toString(36).slice(2)}`;
+  const source = String(lead.source || 'Website');
   const referralPhone = lead.referralPhone ? normalizePhone(String(lead.referralPhone)) : '';
   if (String(source).toLowerCase() === 'referral' && !isValidPhone(referralPhone)) {
     return res.status(400).json({ error: 'Referral source requires a valid referralPhone' });
   }
   const leadRef = db.collection('leads').doc();
   const sourceUrl = lead.sourceUrl || `${originFromRequest(req)}/${lead.pageSlug || ''}`;
+  const [priorityLevel, autoAssignedSales] = await Promise.all([
+    priorityForSource(db, source),
+    pickAutoAssignedSales(db),
+  ]);
+  const assignedTo = autoAssignedSales?.salesId || '';
+  const assignedToName = autoAssignedSales?.salesName || '';
 
   const payload = {
     id: leadRef.id,
@@ -169,11 +338,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     source,
     referralPhone,
     centerName: lead.centerName || '',
-    priorityLevel: SOURCE_PRIORITY[source] || 1,
+    priorityLevel,
     status: 'Lead mới',
-    assignedTo: '',
-    assignedToName: '',
-    assignedStatus: 'unassigned',
+    assignedTo,
+    assignedToName,
+    assignedBy: assignedTo ? 'auto-assignment-rule' : '',
+    assignedAt: assignedTo ? now : '',
+    ...(assignedTo ? { assignedAtMs: nowMs, assignedExpiresAtMs: nowMs + DAY_MS } : {}),
+    assignedStatus: assignedTo ? 'active' : 'unassigned',
     followUpDate: '',
     consultationDate: '',
     dealSize: 0,
