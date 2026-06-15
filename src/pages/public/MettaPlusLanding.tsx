@@ -776,7 +776,7 @@ export default function MettaPlusLanding() {
       <header className="sticky top-0 z-40 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
           <a href="#top" className="flex items-center gap-2.5">
-            <img src={HEADER_LOGO} alt="METTA Academy" className="h-[46px] w-auto object-contain sm:h-[50px]" />
+            <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />
           </a>
           <button type="button" onClick={scrollToForm} className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#F37021] px-5 text-[14px] font-extrabold text-white shadow-[0_16px_28px_-18px_rgba(243,112,33,.95)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
             {config.heroPrimaryCta}
@@ -804,7 +804,7 @@ function MettaPlusSkeleton() {
       <header className="sticky top-0 z-40 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <img src={HEADER_LOGO} alt="METTA Academy" className="h-[46px] w-auto object-contain sm:h-[50px]" />
+            <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />
           </div>
           <div className="h-11 w-40 animate-pulse rounded-full bg-orange-100" />
         </div>

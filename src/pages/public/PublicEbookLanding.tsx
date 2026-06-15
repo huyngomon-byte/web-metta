@@ -117,7 +117,7 @@ function MiniHeader() {
     <header className={`sticky top-0 z-50 transition-all ${scrolled ? 'bg-white/95 shadow-[0_8px_30px_-12px_rgba(0,47,95,.35)] backdrop-blur' : 'bg-white/80 backdrop-blur'}`}>
       <div className="mx-auto flex max-w-[1220px] items-center justify-between gap-3 px-5 py-2.5 sm:px-6">
         <a href="#top" className="flex items-center gap-2.5">
-          <img src={HEADER_LOGO} alt="METTA Academy" className="h-[46px] w-auto object-contain sm:h-[50px]" />
+          <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />
         </a>
         <button type="button" onClick={scrollToForm} className="lp-cta inline-flex h-[44px] items-center gap-1.5 rounded-full px-[22px] text-[13px] sm:px-[26px] sm:text-sm">
           <span className="material-symbols-outlined text-[18px]">download</span>
