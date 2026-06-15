@@ -19,8 +19,7 @@ export type ManualTask = {
   createdByName?: string;
 };
 
-const LS_MANUAL_TASKS = 'metta_sales_manual_tasks';
-const LS_REMOTE_MIGRATION = 'metta_sales_manual_tasks_remote_migration_v1';
+let cachedTasks: ManualTask[] = [];
 
 function now() {
   return new Date().toISOString();
@@ -59,22 +58,17 @@ function dispatchUpdate() {
 }
 
 function readLocalTasks(): ManualTask[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LS_MANUAL_TASKS) || '[]');
-    return Array.isArray(parsed) ? mergeTasks(parsed) : [];
-  } catch {
-    return [];
-  }
+  return cachedTasks;
 }
 
 function writeLocalTasks(tasks: Partial<ManualTask>[], notify = true) {
-  localStorage.setItem(LS_MANUAL_TASKS, JSON.stringify(mergeTasks(tasks).slice(0, 1000)));
+  cachedTasks = mergeTasks(tasks).slice(0, 1000);
   if (notify) dispatchUpdate();
 }
 
 async function salesTasksApi<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', body?: unknown): Promise<T | null> {
   const token = await auth?.currentUser?.getIdToken().catch(() => '');
-  if (!token) return null;
+  if (!token) throw new Error('Missing auth token for sales task sync.');
   const response = await fetch('/api/sales-tasks', {
     method,
     headers: {
@@ -92,51 +86,38 @@ async function salesTasksApi<T>(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELE
 
 export const salesTaskService = {
   getTasks: async () => {
-    const local = readLocalTasks();
-    const payload = await salesTasksApi<{ tasks?: ManualTask[] }>('GET').catch((error) => {
-      console.warn('[SalesTasks] Remote read failed, using local cache:', error);
-      return null;
-    });
-    if (!payload?.tasks) return local;
-
-    let tasks = mergeTasks(payload.tasks);
-    if (local.length && !localStorage.getItem(LS_REMOTE_MIGRATION)) {
-      await salesTasksApi<{ tasks?: ManualTask[] }>('PUT', { tasks: local }).catch((error) => {
-        console.warn('[SalesTasks] Remote migration failed:', error);
-      });
-      localStorage.setItem(LS_REMOTE_MIGRATION, '1');
-      tasks = mergeTasks([...tasks, ...local]);
-    }
+    const payload = await salesTasksApi<{ tasks?: ManualTask[] }>('GET');
+    const tasks = mergeTasks(payload?.tasks || []);
     writeLocalTasks(tasks, false);
     return tasks;
   },
 
   saveTasks: async (tasks: Partial<ManualTask>[]) => {
     const saved = tasks.map((task) => normalizeTask({ ...task, updatedAt: now() }));
-    const next = mergeTasks([...saved, ...readLocalTasks()]);
+    const payload = await salesTasksApi<{ tasks?: ManualTask[] }>('POST', { tasks: saved });
+    const next = mergeTasks([...(payload?.tasks || saved), ...cachedTasks]);
     writeLocalTasks(next);
-    await salesTasksApi<{ tasks?: ManualTask[] }>('POST', { tasks: saved }).catch((error) => {
-      console.warn('[SalesTasks] Remote save failed, keeping local cache:', error);
-    });
     return next;
   },
 
   updateTask: async (id: string, patch: Partial<ManualTask>) => {
     const timestamp = now();
-    const next = readLocalTasks().map((task) => task.id === id ? normalizeTask({ ...task, ...patch, updatedAt: timestamp }) : task);
+    const payload = await salesTasksApi<{ task?: ManualTask }>('PATCH', { id, ...patch, updatedAt: timestamp });
+    const remoteTask = payload?.task;
+    const current = readLocalTasks();
+    const next = current.some((task) => task.id === id)
+      ? current.map((task) => task.id === id ? normalizeTask({ ...task, ...(remoteTask || patch), updatedAt: remoteTask?.updatedAt || timestamp }) : task)
+      : remoteTask
+        ? [normalizeTask(remoteTask)]
+        : current;
     writeLocalTasks(next);
-    await salesTasksApi<{ task?: ManualTask }>('PATCH', { id, ...patch, updatedAt: timestamp }).catch((error) => {
-      console.warn('[SalesTasks] Remote update failed, keeping local cache:', error);
-    });
     return next;
   },
 
   deleteTask: async (id: string) => {
+    await salesTasksApi<{ ok?: boolean }>('DELETE', { id });
     const next = readLocalTasks().filter((task) => task.id !== id);
     writeLocalTasks(next);
-    await salesTasksApi<{ ok?: boolean }>('DELETE', { id }).catch((error) => {
-      console.warn('[SalesTasks] Remote delete failed:', error);
-    });
     return next;
   },
 };

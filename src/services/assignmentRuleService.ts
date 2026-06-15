@@ -5,7 +5,6 @@ import type { Lead } from '@/types/crm';
 import type { SalesAssignmentPick, SalesAssignmentRule } from '@/types/assignment';
 import type { AdminUser } from '@/types/user';
 
-const LS_KEY = 'metta_sales_assignment_rules';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const CONFIG_COLLECTION = 'appConfig';
 const CONFIG_DOC_ID = 'salesAssignmentRules';
@@ -52,19 +51,11 @@ function defaultRules(users: AdminUser[]): SalesAssignmentRule[] {
 
 function readStored(): SalesAssignmentRule[] {
   if (cachedRules) return cachedRules;
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    cachedRules = Array.isArray(parsed) ? parsed : [];
-    return cachedRules;
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 function writeStored(rules: SalesAssignmentRule[]) {
   cachedRules = rules;
-  try { localStorage.setItem(LS_KEY, JSON.stringify(rules)); } catch {}
 }
 
 async function readRemoteRules() {
@@ -86,8 +77,8 @@ async function readRemoteRules() {
     writeStored(data.rules);
     return data.rules;
   } catch (error) {
-    console.warn('[AssignmentRules] Firestore read failed, using local cache:', error);
-    return null;
+    console.warn('[AssignmentRules] Firestore read failed:', error);
+    throw error;
   }
 }
 
@@ -107,6 +98,7 @@ async function writeRemoteRules(rules: SalesAssignmentRule[]) {
 async function getStoredRules() {
   const remote = await readRemoteRules();
   if (remote) return remote;
+  if (USE_FIREBASE) return [];
   const local = readStored();
   if (USE_FIREBASE && local.length) {
     void writeRemoteRules(local).catch((error) => {

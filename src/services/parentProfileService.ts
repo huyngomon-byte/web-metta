@@ -27,11 +27,9 @@ export interface ParentProfile {
   updatedAt: string;
 }
 
-const LS_KEY = 'metta_parent_profiles';
-const LS_FIRESTORE_MIGRATION = 'metta_parent_profiles_firestore_migration_v1';
-const LS_FIRESTORE_DEMO_RESET = 'metta_parent_profiles_demo_firestore_reset_v3';
 const COL_PARENT_PROFILES = 'parentProfiles';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
+let cachedProfiles: ParentProfile[] = [];
 
 function now() {
   return new Date().toISOString();
@@ -160,25 +158,17 @@ function dispatchUpdate() {
 }
 
 function readLocalProfiles(): ParentProfile[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LS_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    const clean = mergeProfiles(parsed);
-    if (clean.length !== parsed.length) localStorage.setItem(LS_KEY, JSON.stringify(clean.slice(0, 1000)));
-    return clean;
-  } catch {
-    return [];
-  }
+  return cachedProfiles;
 }
 
 function writeLocalProfiles(items: ParentProfile[], notify = true) {
-  localStorage.setItem(LS_KEY, JSON.stringify(mergeProfiles(items).slice(0, 1000)));
+  cachedProfiles = mergeProfiles(items).slice(0, 1000);
   if (notify) dispatchUpdate();
 }
 
 async function parentProfilesApi<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T | null> {
   const token = await auth?.currentUser?.getIdToken().catch(() => '');
-  if (!token) return null;
+  if (!token) throw new Error('Missing auth token for parent profile sync.');
   const response = await fetch('/api/parent-profiles', {
     method,
     headers: {
@@ -211,9 +201,6 @@ async function readFirestoreProfiles() {
   const sampleProfiles = profiles.filter(isSampleParentProfile);
   if (sampleProfiles.length) {
     await Promise.all(sampleProfiles.map((item) => deleteFirestoreProfile(item.id).catch(() => {})));
-    localStorage.setItem(LS_FIRESTORE_DEMO_RESET, '1');
-  } else if (!sampleProfiles.length) {
-    localStorage.setItem(LS_FIRESTORE_DEMO_RESET, '1');
   }
   return mergeProfiles(profiles.filter((item) => !isSampleParentProfile(item)));
 }
@@ -259,23 +246,10 @@ async function syncProfilesToRemote(profiles: ParentProfile[]) {
 
 export const parentProfileService = {
   getProfiles: async () => {
-    const localProfiles = readLocalProfiles();
-    if (!USE_FIREBASE) return localProfiles;
-
-    try {
-      const remoteProfiles = await readRemoteProfiles();
-      let profiles = remoteProfiles;
-      if (localProfiles.length && !localStorage.getItem(LS_FIRESTORE_MIGRATION)) {
-        profiles = mergeProfiles([...remoteProfiles, ...localProfiles]);
-        await syncProfilesToRemote(profiles);
-        localStorage.setItem(LS_FIRESTORE_MIGRATION, '1');
-      }
-      writeLocalProfiles(profiles, false);
-      return profiles;
-    } catch (error) {
-      console.warn('[ParentProfiles] Firestore read failed, using local cache:', error);
-      return localProfiles;
-    }
+    if (!USE_FIREBASE) return readLocalProfiles();
+    const profiles = await readRemoteProfiles();
+    writeLocalProfiles(profiles, false);
+    return profiles;
   },
 
   saveProfile: async (profile: Partial<ParentProfile>) => {
@@ -292,24 +266,16 @@ export const parentProfileService = {
       createdAt: existing?.createdAt || profile.createdAt || timestamp,
       updatedAt: timestamp,
     });
+    await writeRemoteProfile(saved);
     const nextProfiles = mergeProfiles([saved, ...profiles.filter((item) => item.id !== saved.id && normalizeParentPhone(item.phone) !== phone)]);
     writeLocalProfiles(nextProfiles);
-    try {
-      await writeRemoteProfile(saved);
-    } catch (error) {
-      console.warn('[ParentProfiles] Remote save failed, keeping local cache:', error);
-    }
     return saved;
   },
 
   deleteProfile: async (id: string) => {
     const profiles = await parentProfileService.getProfiles();
+    await deleteRemoteProfile(id);
     writeLocalProfiles(profiles.filter((item) => item.id !== id));
-    try {
-      await deleteRemoteProfile(id);
-    } catch (error) {
-      console.warn('[ParentProfiles] Remote delete failed:', error);
-    }
     return true;
   },
 
@@ -336,8 +302,8 @@ export const parentProfileService = {
       }));
     if (!generated.length) return profiles;
     const nextProfiles = mergeProfiles([...profiles, ...generated]);
-    writeLocalProfiles(nextProfiles);
     await syncProfilesToRemote(generated);
+    writeLocalProfiles(nextProfiles);
     return nextProfiles;
   },
 };

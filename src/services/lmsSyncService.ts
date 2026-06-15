@@ -3,7 +3,7 @@ import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import type { Appointment, Lead, LeadActivity } from '@/types/crm';
 import type { LmsEnrollmentPayload, LmsSyncLogEntry, LmsSyncResult } from '@/types/lms';
 
-const LS_LMS_SYNC_LOGS = 'metta_lms_sync_logs';
+let cachedLogs: LmsSyncLogEntry[] = [];
 
 const now = () => new Date().toISOString();
 
@@ -21,18 +21,11 @@ function studentExternalId(lead: Lead) {
 }
 
 function readLogs(): LmsSyncLogEntry[] {
-  try {
-    return JSON.parse(localStorage.getItem(LS_LMS_SYNC_LOGS) || '[]') as LmsSyncLogEntry[];
-  } catch {
-    return [];
-  }
+  return cachedLogs;
 }
 
 function writeLog(entry: LmsSyncLogEntry) {
-  try {
-    const logs = [entry, ...readLogs()].slice(0, 200);
-    localStorage.setItem(LS_LMS_SYNC_LOGS, JSON.stringify(logs));
-  } catch {}
+  cachedLogs = [entry, ...readLogs()].slice(0, 200);
 }
 
 export function buildLmsEnrollmentPayload(

@@ -4,10 +4,10 @@ import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { readAppConfig, writeAppConfig } from '@/services/appConfigApi';
 import type { LeadSourceConfig, LeadPriorityLevel } from '@/types/crm';
 
-const LS_KEY = 'metta_lead_source_configs';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const CONFIG_COLLECTION = 'appConfig';
 const CONFIG_DOC_ID = 'leadSourceConfigs';
+let cachedConfigs: LeadSourceConfig[] | null = null;
 
 function sourceId(name: string) {
   return name
@@ -61,19 +61,11 @@ function normalizeList(configs: LeadSourceConfig[]) {
 }
 
 function cacheConfigs(configs: LeadSourceConfig[]) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(configs)); } catch {}
+  cachedConfigs = configs;
 }
 
 function readLocalConfigs() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    return normalizeList(parsed);
-  } catch {
-    return null;
-  }
+  return cachedConfigs ? normalizeList(cachedConfigs) : null;
 }
 
 async function readRemoteConfigs() {
@@ -97,8 +89,8 @@ async function readRemoteConfigs() {
     cacheConfigs(normalized);
     return normalized;
   } catch (error) {
-    console.warn('[LeadSourceConfigs] Firestore read failed, using local cache:', error);
-    return null;
+    console.warn('[LeadSourceConfigs] Firestore read failed:', error);
+    throw error;
   }
 }
 
@@ -133,6 +125,13 @@ export const sourceConfigService = {
   getConfigs: async () => {
     const remote = await readRemoteConfigs();
     if (remote) return remote;
+
+    if (USE_FIREBASE) {
+      const fallback = defaultConfigs();
+      cacheConfigs(fallback);
+      void migrateLocalToRemote(fallback);
+      return fallback;
+    }
 
     const local = readLocalConfigs();
     if (local) {

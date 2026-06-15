@@ -40,8 +40,6 @@ const DOC_SETTINGS = 'siteSettings/main';
 const DOC_INIT = 'cms_meta/init';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const FIRESTORE_TIMEOUT_MS = 2500;
-const LOCAL_SECTION_EDIT_MARKER = 'metta_cms_sections_edited';
-const DELETED_PAGES_KEY = 'metta_cms_deleted_pages';
 const CURRENT_PROGRAM_SLUGS = PUBLIC_PROGRAMS.map((program) => program.slug);
 
 let lastWriteError: string | null = null;
@@ -137,7 +135,7 @@ function repairKnownBrokenText(value: string) {
     .replace(/Liên h�[!‡]/g, 'Liên hệ')
     .replace(/ĐĒng ký/g, 'Đăng ký')
     .replace(/mi�&n/g, 'miễn')
-    .replace(/qu�c/g, 'quốc')
+    .replace(new RegExp(`quÃ¯Â¿Â½${String.fromCharCode(0x18)}c`, 'g'), 'quÃ¡Â»â€˜c')
     .replace(/tu�"i/g, 'tuổi')
     .replace(/bu�"i/g, 'buổi')
     .replace(/l�:p/g, 'lớp')
@@ -257,19 +255,11 @@ function normalizeCourseSettings(settings: SiteSettings): SiteSettings {
 }
 
 function markLocalSectionEdited() {
-  try {
-    localStorage.setItem(LOCAL_SECTION_EDIT_MARKER, now());
-  } catch {
-    // localStorage can be unavailable in restricted browsers. The in-memory store still updates.
-  }
+  // Local edit markers caused browser-specific CMS state. Firestore is the source of truth.
 }
 
 function hasLocalSectionEdits() {
-  try {
-    return Boolean(localStorage.getItem(LOCAL_SECTION_EDIT_MARKER));
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 function timestamp(value?: string) {
@@ -293,16 +283,7 @@ function mergeRemoteWithLocalEdits(remote: PageSection[], pageId: string) {
 }
 
 function mergeSeedPages(remote: CmsPage[]) {
-  const deleted = readDeletedPages();
-  const byId = new Map(
-    remote
-      .filter((page) => !deleted.includes(page.id))
-      .map((page) => [page.id, normalizeLegacyCmsPage(normalizeCmsValue(page))]),
-  );
-  seedPages.forEach((page) => {
-    if (!deleted.includes(page.id) && !byId.has(page.id)) byId.set(page.id, normalizeCmsValue(page));
-  });
-  return Array.from(byId.values());
+  return remote.map((page) => normalizeLegacyCmsPage(normalizeCmsValue(page)));
 }
 
 function normalizeLegacyCmsPage(page: CmsPage) {
@@ -323,22 +304,11 @@ function normalizeLegacyCmsPage(page: CmsPage) {
 }
 
 function readDeletedPages() {
-  try {
-    const raw = localStorage.getItem(DELETED_PAGES_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.map(String) : [];
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 function markPageDeleted(id: string) {
-  try {
-    const next = Array.from(new Set([...readDeletedPages(), id]));
-    localStorage.setItem(DELETED_PAGES_KEY, JSON.stringify(next));
-  } catch {
-    // Keep in-memory deletion even if localStorage is unavailable.
-  }
+  void id;
 }
 
 function hasUsableHomepageSections(items: PageSection[]) {
@@ -540,8 +510,7 @@ export const cmsService = {
       persistCMS();
       return delay(store.pages);
     }
-    // Không có Firebase (localStorage-only): vẫn chuẩn hoá page ebook cũ về seed mới
-    // để mọi profile/máy không bị rơi về landing-page-phonics cũ.
+    // No Firebase: keep the in-memory seed normalized.
     store.pages = (store.pages.length ? store.pages : seedPages).map(normalizeLegacyCmsPage);
     persistCMS();
     return delay(store.pages);
@@ -572,15 +541,13 @@ export const cmsService = {
       updatedAt: now(),
     };
 
+    const pageOk = await writeRemotePage(saved);
+    if (USE_FIREBASE && !pageOk) throw new Error(lastWriteError || 'Không ghi được page vào Firestore.');
+
     store.pages = existing
       ? store.pages.map((item) => (item.id === saved.id ? saved : item))
       : [saved, ...store.pages];
-    try {
-      const deleted = readDeletedPages().filter((item) => item !== saved.id);
-      localStorage.setItem(DELETED_PAGES_KEY, JSON.stringify(deleted));
-    } catch {}
     persistCMS();
-    await writeRemotePage(saved);
     return delay(store.pages);
   },
 
@@ -640,10 +607,6 @@ export const cmsService = {
   },
 
   deletePage: async (id: string) => {
-    markPageDeleted(id);
-    store.pages = store.pages.filter((page) => page.id !== id);
-    store.sections = store.sections.filter((section) => section.pageId !== id);
-    persistCMS();
     if (USE_FIREBASE) {
       try {
         await deleteDoc(doc(db!, COL_PAGES, id));
@@ -651,9 +614,13 @@ export const cmsService = {
         const snap = await getDocs(q);
         await Promise.all(snap.docs.map((item) => deleteDoc(item.ref)));
       } catch (error) {
-        console.warn('[CMS] Cannot delete Firestore page, local fallback updated:', error);
+        throw new Error(describeFirestoreError(error, 'page'));
       }
     }
+    markPageDeleted(id);
+    store.pages = store.pages.filter((page) => page.id !== id);
+    store.sections = store.sections.filter((section) => section.pageId !== id);
+    persistCMS();
     return true;
   },
 
@@ -715,26 +682,28 @@ export const cmsService = {
       updatedAt: now(),
     };
 
+    const sectionOk = await writeRemoteSection(saved);
+    if (USE_FIREBASE && !sectionOk) throw new Error(lastWriteError || 'Không ghi được section vào Firestore.');
+
     store.sections = existing
       ? store.sections.map((item) => (item.id === saved.id ? saved : item))
       : [...store.sections, saved];
     markLocalSectionEdited();
     persistCMS();
-    await writeRemoteSection(saved);
     return delay(sortSections(store.sections.filter((item) => item.pageId === saved.pageId)));
   },
 
   deleteSection: async (id: string) => {
-    store.sections = store.sections.filter((section) => section.id !== id);
-    markLocalSectionEdited();
-    persistCMS();
     if (USE_FIREBASE) {
       try {
         await deleteDoc(doc(db!, COL_SECTIONS, id));
       } catch (error) {
-        console.warn('[CMS] Cannot delete Firestore section, local fallback updated:', error);
+        throw new Error(describeFirestoreError(error, 'section'));
       }
     }
+    store.sections = store.sections.filter((section) => section.id !== id);
+    markLocalSectionEdited();
+    persistCMS();
     return true;
   },
 
@@ -751,9 +720,10 @@ export const cmsService = {
     swap.order = sectionOrder;
     section.updatedAt = now();
     swap.updatedAt = now();
+    const [sectionOk, swapOk] = await Promise.all([writeRemoteSection(section), writeRemoteSection(swap)]);
+    if (USE_FIREBASE && (!sectionOk || !swapOk)) throw new Error(lastWriteError || 'Không ghi được thứ tự section vào Firestore.');
     markLocalSectionEdited();
     persistCMS();
-    await Promise.all([writeRemoteSection(section), writeRemoteSection(swap)]);
     return delay(sortSections(store.sections.filter((item) => item.pageId === section.pageId)));
   },
 
@@ -770,9 +740,10 @@ export const cmsService = {
 
   saveSettings: async (settings: SiteSettings) => {
     const saved = normalizeCourseSettings({ ...settings, updatedAt: now() });
+    const settingsOk = await writeRemoteSettings(saved);
+    if (USE_FIREBASE && !settingsOk) throw new Error(lastWriteError || 'Không ghi được site settings vào Firestore.');
     store.siteSettings = saved;
     persistCMS();
-    await writeRemoteSettings(saved);
     return delay(saved);
   },
 

@@ -7,20 +7,20 @@ import {
   query,
   setDoc,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 
-const USE_FIREBASE = !!db;
+const USE_FIREBASE = isFirebaseConfigured && !!db;
 import type { BlogPost } from '@/types/cms';
 
 const COL = 'blogPosts';
-const LS_KEY = 'metta_blog_posts';
+let cachedPosts: BlogPost[] = [];
 
-function readLocal(): BlogPost[] {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; }
+function readCache(): BlogPost[] {
+  return cachedPosts;
 }
 
-function saveLocal(posts: BlogPost[]) {
-  localStorage.setItem(LS_KEY, JSON.stringify(posts));
+function saveCache(posts: BlogPost[]) {
+  cachedPosts = posts;
 }
 
 function genId() {
@@ -40,16 +40,13 @@ function slugify(text: string) {
 export const blogService = {
   getPosts: async (): Promise<BlogPost[]> => {
     if (USE_FIREBASE && db) {
-      try {
-        const q = query(collection(db, COL), orderBy('publishedAt', 'desc'));
-        const snap = await getDocs(q);
-        const remote = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BlogPost));
-        if (remote.length) { saveLocal(remote); return remote; }
-      } catch (e) {
-        console.warn('[Blog] Firestore read failed, using local:', e);
-      }
+      const q = query(collection(db, COL), orderBy('publishedAt', 'desc'));
+      const snap = await getDocs(q);
+      const remote = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BlogPost));
+      saveCache(remote);
+      return remote;
     }
-    return readLocal().sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+    return readCache().sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
   },
 
   getPublished: async (): Promise<BlogPost[]> => {
@@ -64,7 +61,7 @@ export const blogService = {
 
   save: async (post: Partial<BlogPost>): Promise<BlogPost> => {
     const now = new Date().toISOString();
-    const existing = readLocal().find((p) => p.id === post.id);
+    const existing = readCache().find((p) => p.id === post.id);
     const saved: BlogPost = {
       id: post.id || genId(),
       title: post.title || '',
@@ -80,24 +77,18 @@ export const blogService = {
       updatedAt: now,
     };
 
-    const local = readLocal();
-    const idx = local.findIndex((p) => p.id === saved.id);
-    if (idx >= 0) local[idx] = saved; else local.unshift(saved);
-    saveLocal(local);
-
     if (USE_FIREBASE && db) {
-      try { await setDoc(doc(db, COL, saved.id), saved); }
-      catch (e) { console.warn('[Blog] Firestore write failed:', e); }
+      await setDoc(doc(db, COL, saved.id), saved);
     }
+    const local = readCache().filter((p) => p.id !== saved.id);
+    saveCache([saved, ...local]);
     return saved;
   },
 
   delete: async (id: string): Promise<void> => {
-    const local = readLocal().filter((p) => p.id !== id);
-    saveLocal(local);
     if (USE_FIREBASE && db) {
-      try { await deleteDoc(doc(db, COL, id)); }
-      catch (e) { console.warn('[Blog] Firestore delete failed:', e); }
+      await deleteDoc(doc(db, COL, id));
     }
+    saveCache(readCache().filter((p) => p.id !== id));
   },
 };

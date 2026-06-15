@@ -1,3 +1,5 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { delay } from '@/services/store';
 import type {
   AttributionLog,
@@ -9,8 +11,9 @@ import type {
   SourceEngineState,
 } from '@/types/sourceEngine';
 
-const LS_KEY = 'metta_source_engine';
 const now = () => new Date().toISOString();
+const USE_FIREBASE = isFirebaseConfigured && !!db;
+const CONFIG_DOC = 'appConfig/sourceEngineState';
 
 const sampleSources: SourceChannel[] = [
   {
@@ -179,24 +182,26 @@ function cloneState(value: SourceEngineState): SourceEngineState {
   return JSON.parse(JSON.stringify(value)) as SourceEngineState;
 }
 
-function readState(): SourceEngineState {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return cloneState(defaultState);
-    const parsed = JSON.parse(raw) as Partial<SourceEngineState>;
-    return {
-      sources: Array.isArray(parsed.sources) ? parsed.sources : cloneState(defaultState).sources,
-      connectors: Array.isArray(parsed.connectors) ? parsed.connectors : cloneState(defaultState).connectors,
-      rules: Array.isArray(parsed.rules) ? parsed.rules : cloneState(defaultState).rules,
-      logs: Array.isArray(parsed.logs) ? parsed.logs : cloneState(defaultState).logs,
-    };
-  } catch {
-    return cloneState(defaultState);
-  }
+function normalizeState(value: Partial<SourceEngineState> | undefined): SourceEngineState {
+  const fallback = cloneState(defaultState);
+  return {
+    sources: Array.isArray(value?.sources) ? value.sources : fallback.sources,
+    connectors: Array.isArray(value?.connectors) ? value.connectors : fallback.connectors,
+    rules: Array.isArray(value?.rules) ? value.rules : fallback.rules,
+    logs: Array.isArray(value?.logs) ? value.logs : fallback.logs,
+  };
 }
 
-function writeState(state: SourceEngineState) {
-  localStorage.setItem(LS_KEY, JSON.stringify(state));
+async function readState(): Promise<SourceEngineState> {
+  if (!USE_FIREBASE) return cloneState(defaultState);
+  const snap = await getDoc(doc(db!, CONFIG_DOC));
+  if (!snap.exists()) return cloneState(defaultState);
+  return normalizeState(snap.data() as Partial<SourceEngineState>);
+}
+
+async function writeState(state: SourceEngineState) {
+  if (!USE_FIREBASE) return;
+  await setDoc(doc(db!, CONFIG_DOC), { ...state, updatedAt: now() }, { merge: true });
 }
 
 function fieldValue(payload: AttributionPayload, field: AttributionRule['matchField']) {
@@ -230,16 +235,16 @@ function evaluate(state: SourceEngineState, payload: AttributionPayload): Attrib
 }
 
 export const sourceEngineService = {
-  getState: async () => delay(readState()),
+  getState: async () => delay(await readState()),
 
   resetSamples: async () => {
     const next = cloneState(defaultState);
-    writeState(next);
+    await writeState(next);
     return delay(next);
   },
 
   saveSource: async (source: Partial<SourceChannel>) => {
-    const state = readState();
+    const state = await readState();
     const id = source.id || `src-${Date.now()}`;
     const next: SourceChannel = {
       id,
@@ -256,12 +261,12 @@ export const sourceEngineService = {
     state.sources = state.sources.some((item) => item.id === id)
       ? state.sources.map((item) => (item.id === id ? next : item))
       : [next, ...state.sources];
-    writeState(state);
+    await writeState(state);
     return delay(state);
   },
 
   saveConnector: async (connector: Partial<SourceConnector>) => {
-    const state = readState();
+    const state = await readState();
     const id = connector.id || `con-${Date.now()}`;
     const next: SourceConnector = {
       id,
@@ -278,12 +283,12 @@ export const sourceEngineService = {
     state.connectors = state.connectors.some((item) => item.id === id)
       ? state.connectors.map((item) => (item.id === id ? next : item))
       : [next, ...state.connectors];
-    writeState(state);
+    await writeState(state);
     return delay(state);
   },
 
   saveRule: async (rule: Partial<AttributionRule>) => {
-    const state = readState();
+    const state = await readState();
     const id = rule.id || `rule-${Date.now()}`;
     const next: AttributionRule = {
       id,
@@ -302,12 +307,12 @@ export const sourceEngineService = {
       ? state.rules.map((item) => (item.id === id ? next : item))
       : [...state.rules, next];
     state.rules.sort((a, b) => a.order - b.order);
-    writeState(state);
+    await writeState(state);
     return delay(state);
   },
 
   testAttribution: async (payload: AttributionPayload) => {
-    const state = readState();
+    const state = await readState();
     const result = evaluate(state, payload);
     const log: AttributionLog = {
       id: `log-${Date.now()}`,
@@ -321,7 +326,7 @@ export const sourceEngineService = {
       receivedAt: now(),
     };
     state.logs = [log, ...state.logs].slice(0, 80);
-    writeState(state);
+    await writeState(state);
     return delay({ state, result, log });
   },
 };

@@ -238,18 +238,14 @@ export default function DashboardPage() {
   const pipelineLeads = baseLeads;
 
   const salesOptions = useMemo(() => {
-    // Same logic as LeadsPage: STAFF_OPTIONS + assigned + custom - hidden
-    let custom: string[] = [], hidden: string[] = [];
-    try { custom = JSON.parse(localStorage.getItem('metta_sales_staff') || '[]'); } catch {}
-    try { hidden = JSON.parse(localStorage.getItem('metta_hidden_sales_staff') || '[]'); } catch {}
+    // Same logic as LeadsPage: active CRM users + assigned sales in Firestore data.
     const salesIds = users.filter((item) => item.role === 'sales' && item.active).map((item) => item.id);
     const all = new Set([
       ...salesIds,
       ...STAFF_OPTIONS.map((item) => canonicalSalesKey(item)),
       ...leads.map((l) => canonicalSalesKey(l.assignedTo || l.assignedToName)).filter(isNonEmptyString),
-      ...custom.map((item) => canonicalSalesKey(item)),
     ]);
-    return Array.from(all).filter((n) => n && !hidden.includes(n));
+    return Array.from(all).filter(Boolean);
   }, [canonicalSalesKey, leads, users]);
 
   const centerOptions = useMemo(() => Array.from(new Set(leads.map((lead) => lead.centerName || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')), [leads]);

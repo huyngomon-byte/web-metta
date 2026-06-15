@@ -32,12 +32,6 @@ const COL_LEADS = 'leads';
 const COL_ACTIVITIES = 'leadActivities';
 const COL_APPOINTMENTS = 'appointments';
 const COL_AUDIT_LOGS = 'activityLogs';
-const LS_LEADS = 'metta_leads';
-const LS_ACTIVITIES = 'metta_lead_activities';
-const LS_FINANCE_DEMO_MIGRATION = 'metta_lead_finance_demo_seed_v1';
-const LS_STAGE_DEMO_MIGRATION = 'metta_lead_stage_demo_seed_v1';
-const LS_DEMO_RESET_LOCAL = 'metta_lead_demo_reset_v8';
-const LS_DEMO_RESET_FIRESTORE = 'metta_lead_demo_firestore_reset_v8';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -257,22 +251,15 @@ function stripUndefined<T>(value: T): T {
 }
 
 function persistLeads() {
-  try { localStorage.setItem(LS_LEADS, JSON.stringify(store.leads)); } catch {}
+  // Lead data is shared state. Firestore is the only persistent store.
 }
 
 function mergeDemoSeeds(current: Lead[]) {
-  localStorage.setItem(LS_FINANCE_DEMO_MIGRATION, '1');
-  localStorage.setItem(LS_STAGE_DEMO_MIGRATION, '1');
   return current.filter((lead) => !isDemoLead(lead));
 }
 
 function replaceLocalDemoLeads(current: Lead[]) {
-  if (localStorage.getItem(LS_DEMO_RESET_LOCAL)) return current.filter((lead) => !isDemoLead(lead));
-  localStorage.setItem(LS_FINANCE_DEMO_MIGRATION, '1');
-  localStorage.setItem(LS_STAGE_DEMO_MIGRATION, '1');
-  localStorage.setItem(LS_DEMO_RESET_LOCAL, '1');
-  const nonDemo = current.filter((lead) => !isDemoLead(lead));
-  return nonDemo;
+  return current.filter((lead) => !isDemoLead(lead));
 }
 
 async function deleteFirestoreDemoDependencies(demoLeadIds: Set<string>) {
@@ -298,13 +285,12 @@ async function deleteFirestoreDemoDependencies(demoLeadIds: Set<string>) {
 }
 
 async function replaceFirestoreDemoLeads(current: Lead[]) {
-  if (!USE_FIREBASE || localStorage.getItem(LS_DEMO_RESET_FIRESTORE)) return current.filter((lead) => !isDemoLead(lead));
+  if (!USE_FIREBASE) return current.filter((lead) => !isDemoLead(lead));
   const demoLeads = current.filter((lead) => isDemoLead(lead));
   const demoLeadIds = new Set(demoLeads.map((lead) => lead.id).filter(Boolean));
   try {
     await Promise.all(demoLeads.map((lead) => deleteDoc(doc(db!, COL_LEADS, lead.id)).catch(() => {})));
     await deleteFirestoreDemoDependencies(demoLeadIds);
-    localStorage.setItem(LS_DEMO_RESET_FIRESTORE, '1');
     return current.filter((lead) => !isDemoLead(lead));
   } catch (error) {
     console.warn('[Leads] Demo reset failed, keeping current data:', error);
@@ -320,43 +306,20 @@ async function replaceFirestoreDemoActivities(current: LeadActivity[]) {
 }
 
 function loadLeads() {
-  try {
-    const raw = localStorage.getItem(LS_LEADS);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) {
-        const merged = mergeDemoSeeds(replaceLocalDemoLeads(parsed));
-        store.leads = merged.map((lead) => normalizeLead(lead as Lead));
-        persistLeads();
-      }
-    }
-  } catch {}
+  store.leads = mergeDemoSeeds(replaceLocalDemoLeads(store.leads)).map((lead) => normalizeLead(lead as Lead));
 }
 
 function persistActivities() {
-  try { localStorage.setItem(LS_ACTIVITIES, JSON.stringify(store.leadActivities)); } catch {}
+  // Lead activity data is shared state. Firestore is the only persistent store.
 }
 
 function loadActivities() {
-  try {
-    const raw = localStorage.getItem(LS_ACTIVITIES);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length) {
-        store.leadActivities = parsed.filter((activity: LeadActivity) => !isDemoLeadId(activity.leadId));
-        if (store.leadActivities.length !== parsed.length) persistActivities();
-      }
-    }
-  } catch {}
+  store.leadActivities = store.leadActivities.filter((activity) => !isDemoLeadId(activity.leadId));
 }
 
 async function writeFirestoreLead(lead: Lead) {
   if (!USE_FIREBASE) return;
-  try {
-    await setDoc(doc(db!, COL_LEADS, lead.id), stripUndefined(lead));
-  } catch (error) {
-    console.warn('[Leads] Firestore lead write failed, keeping local:', error);
-  }
+  await setDoc(doc(db!, COL_LEADS, lead.id), stripUndefined(lead));
 }
 
 async function syncMissingStageDemoLeadsToFirestore(current: Lead[]) {
@@ -365,11 +328,7 @@ async function syncMissingStageDemoLeadsToFirestore(current: Lead[]) {
 
 async function writeFirestoreActivity(activity: LeadActivity) {
   if (!USE_FIREBASE) return;
-  try {
-    await setDoc(doc(db!, COL_ACTIVITIES, activity.id), stripUndefined(activity));
-  } catch (error) {
-    console.warn('[Leads] Firestore activity write failed, keeping local:', error);
-  }
+  await setDoc(doc(db!, COL_ACTIVITIES, activity.id), stripUndefined(activity));
 }
 
 async function appendLeadActivity(activity: Partial<LeadActivity>) {
@@ -381,9 +340,9 @@ async function appendLeadActivity(activity: Partial<LeadActivity>) {
     createdBy: activity.createdBy || currentUser()?.fullName || 'Admin',
     createdAt: now(),
   };
+  await writeFirestoreActivity(entry);
   store.leadActivities.unshift(entry);
   persistActivities();
-  await writeFirestoreActivity(entry);
   return entry;
 }
 
@@ -474,9 +433,9 @@ async function syncEnrollmentToLms(lead: Lead) {
     const result = await lmsSyncService.syncEnrollmentLead(lead, activities, appointments);
     if (result.externalId && !lead.convertedToStudentId) {
       const updatedLead = normalizeLead({ ...lead, convertedToStudentId: result.externalId, updatedAt: now() });
+      await writeFirestoreLead(updatedLead);
       store.leads = store.leads.map((item) => (item.id === lead.id ? updatedLead : item));
       persistLeads();
-      await writeFirestoreLead(updatedLead);
     }
     await appendLeadActivity({
       leadId: lead.id,
@@ -499,39 +458,34 @@ async function syncEnrollmentToLms(lead: Lead) {
 export const leadService = {
   getLeads: async () => {
     const user = currentUser();
-    loadLeads();
     if (USE_FIREBASE) {
-      try {
-        if (canViewAllLeads(user)) await purgeDemoDataOnServerOnce();
-        if (user?.role === 'sales') {
-          const nowMs = Date.now();
-          const activeSnap = await getDocs(query(
-            collection(db!, COL_LEADS),
-            where('assignedTo', '==', user.id),
-            where('assignedStatus', '==', 'active'),
-            where('assignedExpiresAtMs', '>', nowMs),
-          ));
-          const acceptedSnap = await getDocs(query(
-            collection(db!, COL_LEADS),
-            where('assignedTo', '==', user.id),
-            where('assignedStatus', '==', 'accepted'),
-          ));
-          const remoteLeads = [...activeSnap.docs, ...acceptedSnap.docs].map((item) => normalizeLead(item.data() as Lead));
-          if (remoteLeads.length || !store.leads.length) store.leads = mergeDemoSeeds(remoteLeads);
-        } else {
-          const snap = await getDocs(query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc')));
-          let remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
-          remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
-          if (remoteLeads.length || !store.leads.length) {
-            store.leads = mergeDemoSeeds(remoteLeads);
-            await syncMissingStageDemoLeadsToFirestore(remoteLeads);
-          }
-          await expireOverdueAssignments(user);
-        }
-        persistLeads();
-      } catch (error) {
-        console.warn('[Leads] Firestore read failed, using local:', error);
+      if (canViewAllLeads(user)) await purgeDemoDataOnServerOnce();
+      if (user?.role === 'sales') {
+        const nowMs = Date.now();
+        const activeSnap = await getDocs(query(
+          collection(db!, COL_LEADS),
+          where('assignedTo', '==', user.id),
+          where('assignedStatus', '==', 'active'),
+          where('assignedExpiresAtMs', '>', nowMs),
+        ));
+        const acceptedSnap = await getDocs(query(
+          collection(db!, COL_LEADS),
+          where('assignedTo', '==', user.id),
+          where('assignedStatus', '==', 'accepted'),
+        ));
+        const remoteLeads = [...activeSnap.docs, ...acceptedSnap.docs].map((item) => normalizeLead(item.data() as Lead));
+        store.leads = mergeDemoSeeds(remoteLeads);
+      } else {
+        const snap = await getDocs(query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc')));
+        let remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+        remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
+        store.leads = mergeDemoSeeds(remoteLeads);
+        await syncMissingStageDemoLeadsToFirestore(remoteLeads);
+        await expireOverdueAssignments(user);
       }
+      persistLeads();
+    } else {
+      loadLeads();
     }
     await expireOverdueAssignments(user);
     return delay(visibleLeads(user));
@@ -539,22 +493,19 @@ export const leadService = {
 
   getLead: async (id: string) => {
     const user = currentUser();
-    loadLeads();
     if (USE_FIREBASE) {
-      try {
-        const snap = await getDoc(doc(db!, COL_LEADS, id));
-        if (snap.exists()) {
-          const remote = normalizeLead(snap.data() as Lead);
-          store.leads = store.leads.some((lead) => lead.id === id)
-            ? store.leads.map((lead) => (lead.id === id ? remote : lead))
-            : [remote, ...store.leads];
-          persistLeads();
-          return delay(canViewLead(user, remote) ? remote : undefined);
-        }
-      } catch (error) {
-        console.warn('[Leads] Firestore lead detail read failed, using local:', error);
+      const snap = await getDoc(doc(db!, COL_LEADS, id));
+      if (snap.exists()) {
+        const remote = normalizeLead(snap.data() as Lead);
+        store.leads = store.leads.some((lead) => lead.id === id)
+          ? store.leads.map((lead) => (lead.id === id ? remote : lead))
+          : [remote, ...store.leads];
+        persistLeads();
+        return delay(canViewLead(user, remote) ? remote : undefined);
       }
+      return delay(undefined);
     }
+    loadLeads();
     const local = store.leads.find((lead) => lead.id === id);
     return delay(local && canViewLead(user, local) ? normalizeLead(local) : undefined);
   },
@@ -755,8 +706,8 @@ export const leadService = {
       });
     }
     const saved = store.leads.find((item) => item.id === lead.id) || store.leads[0];
-    persistLeads();
     await writeFirestoreLead(saved);
+    persistLeads();
     if (assignmentNotification) {
       notifyLeadAssignment(saved, assignmentNotification.salesId, assignmentNotification.assignedByName, assignmentNotification.auto);
     }
@@ -770,32 +721,33 @@ export const leadService = {
   deleteLead: async (id: string) => {
     const user = currentUser();
     if (!canDeleteLead(user)) throw new Error('Chỉ Admin và Manager mới có quyền xóa lead.');
+    await appointmentService.deleteAllForLead(id);
+    if (USE_FIREBASE) {
+      const activitySnap = await getDocs(query(collection(db!, COL_ACTIVITIES), where('leadId', '==', id)));
+      await Promise.all(activitySnap.docs.map((item) => deleteDoc(item.ref)));
+      await deleteDoc(doc(db!, COL_LEADS, id));
+    }
     store.leads = store.leads.filter((lead) => lead.id !== id);
     store.leadActivities = store.leadActivities.filter((activity) => activity.leadId !== id);
     persistLeads();
     persistActivities();
-    if (USE_FIREBASE) {
-      try { await deleteDoc(doc(db!, COL_LEADS, id)); } catch {}
-    }
     // Sync xóa toàn bộ lịch hẹn liên quan đến lead này
-    try { await appointmentService.deleteAllForLead(id); } catch {}
     return delay(true);
   },
 
   getActivities: async (leadId: string) => {
     const user = currentUser();
-    loadActivities();
     if (USE_FIREBASE) {
-      try {
-        const activityQuery = user?.role === 'sales'
-          ? query(collection(db!, COL_ACTIVITIES), where('leadId', '==', leadId), orderBy('createdAt', 'desc'))
-          : query(collection(db!, COL_ACTIVITIES), orderBy('createdAt', 'desc'));
-        const snap = await getDocs(activityQuery);
-        let remoteActivities = snap.docs.map((item) => ({ ...item.data(), id: item.id }) as LeadActivity);
-        if (canViewAllLeads(user)) remoteActivities = await replaceFirestoreDemoActivities(remoteActivities);
-        store.leadActivities = remoteActivities;
-        persistActivities();
-      } catch {}
+      const activityQuery = user?.role === 'sales'
+        ? query(collection(db!, COL_ACTIVITIES), where('leadId', '==', leadId), orderBy('createdAt', 'desc'))
+        : query(collection(db!, COL_ACTIVITIES), orderBy('createdAt', 'desc'));
+      const snap = await getDocs(activityQuery);
+      let remoteActivities = snap.docs.map((item) => ({ ...item.data(), id: item.id }) as LeadActivity);
+      if (canViewAllLeads(user)) remoteActivities = await replaceFirestoreDemoActivities(remoteActivities);
+      store.leadActivities = remoteActivities;
+      persistActivities();
+    } else {
+      loadActivities();
     }
     return delay(store.leadActivities.filter((activity) => activity.leadId === leadId));
   },
@@ -865,7 +817,6 @@ export const leadService = {
       return next;
     });
 
-    persistLeads();
     await Promise.all(changed.map(async (lead) => {
       await writeFirestoreLead(lead);
       await writeAuditLog({
@@ -884,6 +835,7 @@ export const leadService = {
       });
       notifyLeadAssignment(lead, sales.id, assignedBy.fullName);
     }));
+    persistLeads();
     return delay(changed);
   },
 };

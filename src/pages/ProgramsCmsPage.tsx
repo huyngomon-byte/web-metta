@@ -62,7 +62,7 @@ function ArrayEditor({
 }
 
 const PRESET_COLORS = ['#16A9D8', '#003B7A', '#F45A0A', '#16A34A', '#8B5CF6', '#EC4899', '#F59E0B', '#0EA5E9'];
-const SAVED_COLORS_KEY = 'metta_program_saved_colors';
+let savedColors = PRESET_COLORS;
 
 function normalizeHex(color: string) {
   const value = color.trim();
@@ -70,21 +70,14 @@ function normalizeHex(color: string) {
 }
 
 function readSavedColors() {
-  if (typeof window === 'undefined') return PRESET_COLORS;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(SAVED_COLORS_KEY) || '[]') as string[];
-    const colors = parsed.map(normalizeHex).filter(Boolean);
-    return colors.length ? colors : PRESET_COLORS;
-  } catch {
-    return PRESET_COLORS;
-  }
+  return savedColors.length ? savedColors : PRESET_COLORS;
 }
 
 function rememberColor(color: string) {
   const hex = normalizeHex(color);
   if (!hex || typeof window === 'undefined') return;
   const next = [hex, ...readSavedColors().filter((c) => c !== hex)].slice(0, 12);
-  window.localStorage.setItem(SAVED_COLORS_KEY, JSON.stringify(next));
+  savedColors = next;
   window.dispatchEvent(new CustomEvent('metta:saved-colors', { detail: next }));
 }
 
@@ -97,10 +90,8 @@ function SavedColorPalette({ value, onSelect }: { value: string; onSelect: (colo
       setColors(Array.isArray(detail) ? detail : readSavedColors());
     };
     window.addEventListener('metta:saved-colors', sync);
-    window.addEventListener('storage', sync);
     return () => {
       window.removeEventListener('metta:saved-colors', sync);
-      window.removeEventListener('storage', sync);
     };
   }, []);
 

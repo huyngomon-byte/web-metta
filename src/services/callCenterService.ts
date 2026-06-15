@@ -5,6 +5,7 @@ import {
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   orderBy,
   query,
@@ -25,8 +26,8 @@ const COL_CALL_LOGS = 'callLogs';
 const COL_CALL_SETTINGS = 'callCenterSettings';
 const COL_AGENT_PRESENCE = 'agentPresence';
 const SETTINGS_DOC_ID = 'stringee';
-const LS_CALL_LOGS = 'metta_call_logs';
-const LS_CALL_SETTINGS = 'metta_call_center_settings';
+let cachedLogs: CallLog[] = [];
+let cachedSettings: CallCenterSettings | null = null;
 
 function now() {
   return new Date().toISOString();
@@ -45,30 +46,20 @@ function stripUndefined<T>(value: T): T {
 }
 
 function readLocalLogs(): CallLog[] {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(LS_CALL_LOGS) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return cachedLogs;
 }
 
 function writeLocalLogs(logs: CallLog[]) {
-  localStorage.setItem(LS_CALL_LOGS, JSON.stringify(logs.slice(0, 500)));
+  cachedLogs = logs.slice(0, 500);
   window.dispatchEvent(new Event('metta-call-logs-updated'));
 }
 
 function readLocalSettings(): CallCenterSettings | null {
-  try {
-    const raw = localStorage.getItem(LS_CALL_SETTINGS);
-    return raw ? JSON.parse(raw) as CallCenterSettings : null;
-  } catch {
-    return null;
-  }
+  return cachedSettings;
 }
 
 function writeLocalSettings(settings: CallCenterSettings) {
-  localStorage.setItem(LS_CALL_SETTINGS, JSON.stringify(settings));
+  cachedSettings = settings;
   window.dispatchEvent(new Event('metta-call-settings-updated'));
 }
 
@@ -153,20 +144,12 @@ async function currentFirebaseIdToken(timeoutMs = 4000) {
 
 async function writeFirestoreSettings(settings: CallCenterSettings) {
   if (!USE_FIREBASE) return;
-  try {
-    await setDoc(doc(db!, COL_CALL_SETTINGS, SETTINGS_DOC_ID), stripUndefined(settings));
-  } catch (error) {
-    console.warn('[CallCenter] Cannot write settings to Firestore:', error);
-  }
+  await setDoc(doc(db!, COL_CALL_SETTINGS, SETTINGS_DOC_ID), stripUndefined(settings));
 }
 
 async function writeFirestoreLog(log: CallLog) {
   if (!USE_FIREBASE) return;
-  try {
-    await setDoc(doc(db!, COL_CALL_LOGS, log.id), stripUndefined(log), { merge: true });
-  } catch (error) {
-    console.warn('[CallCenter] Cannot write call log to Firestore:', error);
-  }
+  await setDoc(doc(db!, COL_CALL_LOGS, log.id), stripUndefined(log), { merge: true });
 }
 
 async function writeFirestorePresence(presence: AgentPresence) {
@@ -180,16 +163,21 @@ async function writeFirestorePresence(presence: AgentPresence) {
 
 export const callCenterService = {
   getSettings: async () => {
-    const local = readLocalSettings();
-    const settings = mapSettings(local || defaultCallCenterSettings());
+    let settings = mapSettings(defaultCallCenterSettings());
+    if (USE_FIREBASE) {
+      const snap = await getDoc(doc(db!, COL_CALL_SETTINGS, SETTINGS_DOC_ID));
+      if (snap.exists()) settings = mapSettings(snap.data() as Partial<CallCenterSettings>);
+    } else {
+      settings = mapSettings(readLocalSettings() || defaultCallCenterSettings());
+    }
     writeLocalSettings(settings);
     return delay(settings);
   },
 
   saveSettings: async (settings: CallCenterSettings) => {
     const normalized = mapSettings({ ...settings, updatedAt: now() });
-    writeLocalSettings(normalized);
     await writeFirestoreSettings(normalized);
+    writeLocalSettings(normalized);
     return delay(normalized);
   },
 
@@ -248,29 +236,21 @@ export const callCenterService = {
   },
 
   getLogs: async () => {
-    let logs = readLocalLogs();
+    let logs = USE_FIREBASE ? [] : readLocalLogs();
     if (USE_FIREBASE) {
-      try {
-        const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), orderBy('startedAt', 'desc')));
-        logs = snap.docs.map((item) => item.data() as CallLog);
-        writeLocalLogs(logs);
-      } catch (error) {
-        console.warn('[CallCenter] Cannot read call logs from Firestore, using local:', error);
-      }
+      const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), orderBy('startedAt', 'desc')));
+      logs = snap.docs.map((item) => item.data() as CallLog);
+      writeLocalLogs(logs);
     }
     return delay(logs.sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')));
   },
 
   getLogsForLead: async (leadId: string) => {
-    let logs = readLocalLogs().filter((log) => log.leadId === leadId);
+    let logs = USE_FIREBASE ? [] : readLocalLogs().filter((log) => log.leadId === leadId);
     if (USE_FIREBASE) {
-      try {
-        const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), where('leadId', '==', leadId), orderBy('startedAt', 'desc')));
-        logs = snap.docs.map((item) => item.data() as CallLog);
-        writeLocalLogs([...logs, ...readLocalLogs().filter((log) => log.leadId !== leadId)]);
-      } catch (error) {
-        console.warn('[CallCenter] Cannot read lead call logs from Firestore, using local:', error);
-      }
+      const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), where('leadId', '==', leadId), orderBy('startedAt', 'desc')));
+      logs = snap.docs.map((item) => item.data() as CallLog);
+      writeLocalLogs([...logs, ...readLocalLogs().filter((log) => log.leadId !== leadId)]);
     }
     return delay(logs.sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')));
   },
@@ -308,9 +288,9 @@ export const callCenterService = {
       updatedAt: timestamp,
       rawEvent: input.rawEvent || existing?.rawEvent,
     };
+    await writeFirestoreLog(log);
     const next = [log, ...readLocalLogs().filter((item) => item.id !== log.id && item.providerCallId !== log.providerCallId)];
     writeLocalLogs(next);
-    await writeFirestoreLog(log);
     return delay(log);
   },
 

@@ -17,17 +17,11 @@ import type { Appointment } from '@/types/crm';
 const now = () => new Date().toISOString();
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const COL = 'appointments';
-const LS_KEY = 'metta_appointments';
-const LS_DEMO_RESET = 'metta_appointment_demo_reset_v5';
-const LS_FIRESTORE_DEMO_RESET = 'metta_appointment_demo_firestore_reset_v5';
 const STAGE_DEMO_CONSULTATION_PREFIX = 'ap-demo-stage-consultation-';
 const PRIORITY_DEMO_CONSULTATION_PREFIX = 'ap-demo-priority-consultation-';
-const demoConsultationAppointments = store.appointments.filter((item) =>
-  item.id.startsWith(STAGE_DEMO_CONSULTATION_PREFIX) || item.id.startsWith(PRIORITY_DEMO_CONSULTATION_PREFIX),
-);
 
 function persist() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(store.appointments)); } catch {}
+  // Appointment data is shared state. Firestore is the only persistent store.
 }
 
 function isDemoAppointment(item: Partial<Appointment>) {
@@ -43,43 +37,7 @@ function isDemoAppointment(item: Partial<Appointment>) {
 }
 
 function loadLocal() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      const nonDemo = parsed.filter((item: Appointment) => !isDemoAppointment(item));
-      if (nonDemo.length !== parsed.length) {
-        store.appointments = nonDemo;
-        localStorage.setItem(LS_DEMO_RESET, '1');
-        persist();
-        return;
-      }
-      if (!localStorage.getItem(LS_DEMO_RESET)) {
-        store.appointments = nonDemo;
-        localStorage.setItem(LS_DEMO_RESET, '1');
-        persist();
-        return;
-      }
-      const existingIds = new Set(parsed.map((item: Appointment) => item.id));
-      const missingDemoAppointments = demoConsultationAppointments.filter((item) => !existingIds.has(item.id));
-      const normalizedAp2 = parsed.some((item: Appointment) => item.id === 'ap-2' && item.type !== 'Tư vấn');
-      const nextItems = parsed.map((item: Appointment) => {
-        if (item.id !== 'ap-2') return item;
-        return {
-          ...item,
-          type: 'Tư vấn' as Appointment['type'],
-          title: 'Tư vấn Phonics cho Trần Minh Khoa',
-          endTime: addMinutes(item.startTime, 45),
-          assignedTo: item.assignedTo === 'Teacher An' ? 'u2' : item.assignedTo,
-          assignedToName: item.assignedToName || 'Linh',
-          notes: item.notes || 'Demo appointment tư vấn bắt buộc cho trạng thái Đã hẹn tư vấn.',
-        };
-      });
-      store.appointments = missingDemoAppointments.length ? [...missingDemoAppointments, ...nextItems] : nextItems;
-      if (missingDemoAppointments.length || normalizedAp2) persist();
-    }
-  } catch {}
+  store.appointments = store.appointments.filter((item) => !isDemoAppointment(item));
 }
 
 function addMinutes(value: string, minutes: number) {
@@ -123,11 +81,10 @@ async function deleteFirestore(id: string) {
 }
 
 async function replaceFirestoreDemoAppointments(current: Appointment[]) {
-  if (!USE_FIREBASE || localStorage.getItem(LS_FIRESTORE_DEMO_RESET)) return current.filter((item) => !isDemoAppointment(item));
+  if (!USE_FIREBASE) return current.filter((item) => !isDemoAppointment(item));
   const demoItems = current.filter((item) => isDemoAppointment(item));
   try {
     await Promise.all(demoItems.map((item) => deleteFirestore(item.id).catch(() => {})));
-    localStorage.setItem(LS_FIRESTORE_DEMO_RESET, '1');
     return current.filter((item) => !isDemoAppointment(item));
   } catch (error) {
     console.warn('[Appointments] Demo reset failed, keeping current data:', error);
@@ -144,53 +101,46 @@ async function markOverdueAppointments() {
   });
   if (!overdue.length) return;
 
-  const overdueIds = new Set(overdue.map((item) => item.id));
-  store.appointments = store.appointments.map((item) =>
-    overdueIds.has(item.id) ? { ...item, status: 'overdue', updatedAt: timestamp } : item,
-  );
-  persist();
-  await Promise.all(store.appointments.filter((item) => overdueIds.has(item.id)).map(writeFirestore));
+  const updated = overdue.map((item) => ({ ...item, status: 'overdue' as const, updatedAt: timestamp }));
+  await Promise.all(updated.map(writeFirestore));
+  const updatedById = new Map(updated.map((item) => [item.id, item]));
+  store.appointments = store.appointments.map((item) => updatedById.get(item.id) || item);
 }
 
 export const appointmentService = {
   getAppointments: async () => {
     const user = currentUser();
-    loadLocal();
-    const localItems = [...store.appointments];
 
     if (USE_FIREBASE) {
-      try {
-        const appointmentQuery = user?.role === 'sales'
-          ? query(collection(db!, COL), where('assignedTo', '==', user.id))
-          : query(collection(db!, COL), orderBy('startTime', 'desc'));
-        const snap = await getDocs(appointmentQuery);
-        let firestoreItems = snap.docs.map((item) => item.data() as Appointment);
-        if (canViewAllLeads(user)) firestoreItems = await replaceFirestoreDemoAppointments(firestoreItems);
-        store.appointments = firestoreItems.length ? mergeAppointments(localItems, firestoreItems) : [];
-        await markOverdueAppointments();
-        persist();
-        const visibleItems = canViewAllLeads(user)
-          ? store.appointments
-          : store.appointments.filter((item) => item.assignedTo === user?.id);
-        return delay(visibleItems);
-      } catch (error) {
-        console.warn('[Appointments] Firestore read failed, using local cache:', error);
-      }
+      const appointmentQuery = user?.role === 'sales'
+        ? query(collection(db!, COL), where('assignedTo', '==', user.id))
+        : query(collection(db!, COL), orderBy('startTime', 'desc'));
+      const snap = await getDocs(appointmentQuery);
+      let firestoreItems = snap.docs.map((item) => item.data() as Appointment);
+      if (canViewAllLeads(user)) firestoreItems = await replaceFirestoreDemoAppointments(firestoreItems);
+      store.appointments = mergeAppointments([], firestoreItems);
+      await markOverdueAppointments();
+      persist();
+      const visibleItems = canViewAllLeads(user)
+        ? store.appointments
+        : store.appointments.filter((item) => item.assignedTo === user?.id);
+      return delay(visibleItems);
     }
 
+    loadLocal();
     await markOverdueAppointments();
     return delay(canViewAllLeads(user) ? store.appointments : store.appointments.filter((item) => item.assignedTo === user?.id));
   },
 
   saveAppointment: async (appointment: Partial<Appointment>) => {
+    await appointmentService.getAppointments();
     const timestamp = now();
     let saved: Appointment;
 
     if (appointment.id) {
-      store.appointments = store.appointments.map((item) =>
-        item.id === appointment.id ? { ...item, ...appointment, updatedAt: timestamp } : item,
-      );
-      saved = store.appointments.find((item) => item.id === appointment.id)!;
+      const existing = store.appointments.find((item) => item.id === appointment.id);
+      if (!existing) throw new Error('Không tìm thấy lịch hẹn.');
+      saved = { ...existing, ...appointment, updatedAt: timestamp };
     } else {
       saved = {
         id: `ap-${Date.now()}`,
@@ -207,24 +157,25 @@ export const appointmentService = {
         createdAt: timestamp,
         updatedAt: timestamp,
       };
-      store.appointments.unshift(saved);
     }
 
-    persist();
     await writeFirestore(saved);
+    store.appointments = appointment.id
+      ? store.appointments.map((item) => item.id === saved.id ? saved : item)
+      : [saved, ...store.appointments];
+    persist();
     return delay(store.appointments);
   },
 
   updateStatus: async (id: string, status: Appointment['status']) => {
     await appointmentService.getAppointments();
     const timestamp = now();
-    store.appointments = store.appointments.map((item) =>
-      item.id === id ? { ...item, status, updatedAt: timestamp } : item,
-    );
-    const saved = store.appointments.find((item) => item.id === id);
+    const existing = store.appointments.find((item) => item.id === id);
+    const saved = existing ? { ...existing, status, updatedAt: timestamp } : undefined;
     if (!saved) throw new Error('Không tìm thấy lịch hẹn.');
-    persist();
     await writeFirestore(saved);
+    store.appointments = store.appointments.map((item) => item.id === id ? saved : item);
+    persist();
     return delay(saved);
   },
 
@@ -237,9 +188,9 @@ export const appointmentService = {
     await appointmentService.getAppointments();
     const targetType = appointmentTypeKey(type);
     const targets = store.appointments.filter((item) => item.leadId === leadId && appointmentTypeKey(item.type) === targetType);
+    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     store.appointments = store.appointments.filter((item) => !(item.leadId === leadId && appointmentTypeKey(item.type) === targetType));
     persist();
-    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     return delay(store.appointments);
   },
 
@@ -247,18 +198,18 @@ export const appointmentService = {
   deleteAllForLead: async (leadId: string) => {
     await appointmentService.getAppointments();
     const targets = store.appointments.filter((item) => item.leadId === leadId);
+    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     store.appointments = store.appointments.filter((item) => item.leadId !== leadId);
     persist();
-    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     return delay(store.appointments);
   },
 
   deleteOtherForLead: async (leadId: string, keepId: string) => {
     await appointmentService.getAppointments();
     const targets = store.appointments.filter((item) => item.leadId === leadId && item.id !== keepId);
+    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     store.appointments = store.appointments.filter((item) => !(item.leadId === leadId && item.id !== keepId));
     persist();
-    await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     return delay(store.appointments);
   },
 
@@ -292,14 +243,13 @@ export const appointmentService = {
       updatedAt: timestamp,
     };
 
+    await writeFirestore(appointment);
     if (existing) {
       store.appointments = store.appointments.map((item) => (item.id === existing.id ? appointment : item));
     } else {
       store.appointments.unshift(appointment);
     }
-
     persist();
-    await writeFirestore(appointment);
     return delay(appointment);
   },
 

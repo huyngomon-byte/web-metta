@@ -4,10 +4,10 @@ import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { readAppConfig, writeAppConfig } from '@/services/appConfigApi';
 import type { LeadCenterConfig } from '@/types/crm';
 
-const LS_KEY = 'metta_lead_center_configs';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const CONFIG_COLLECTION = 'appConfig';
 const CONFIG_DOC_ID = 'leadCenterConfigs';
+let cachedConfigs: LeadCenterConfig[] | null = null;
 
 function centerId(name: string) {
   return name
@@ -60,19 +60,11 @@ function isLegacyDefaultConfig(configs: LeadCenterConfig[]) {
 }
 
 function cacheConfigs(configs: LeadCenterConfig[]) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(configs)); } catch {}
+  cachedConfigs = configs;
 }
 
 function readLocalConfigs() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
-    return normalizeList(parsed);
-  } catch {
-    return null;
-  }
+  return cachedConfigs ? normalizeList(cachedConfigs) : null;
 }
 
 function resolveRemoteConfigs(configs: LeadCenterConfig[]) {
@@ -104,8 +96,8 @@ async function readRemoteConfigs() {
     if (!Array.isArray(data.configs)) return null;
     return resolveRemoteConfigs(data.configs);
   } catch (error) {
-    console.warn('[LeadCenterConfigs] Firestore read failed, using local cache:', error);
-    return null;
+    console.warn('[LeadCenterConfigs] Firestore read failed:', error);
+    throw error;
   }
 }
 
@@ -135,6 +127,13 @@ export const centerConfigService = {
   getConfigs: async () => {
     const remote = await readRemoteConfigs();
     if (remote) return remote;
+
+    if (USE_FIREBASE) {
+      const fallback = defaultConfigs();
+      cacheConfigs(fallback);
+      void migrateLocalToRemote(fallback);
+      return fallback;
+    }
 
     const local = readLocalConfigs();
     if (local) {

@@ -6,24 +6,18 @@ import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } f
 import { expectedRevenueAmount } from '@/lib/leadFinance';
 import { currentUser } from '@/services/authService';
 
-const LS_KEY = 'metta_notifications';
+let cachedNotifications: AppNotification[] = [];
 
 function now() {
   return new Date().toISOString();
 }
 
 function readAll(): AppNotification[] {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return cachedNotifications;
 }
 
 function writeAll(items: AppNotification[]) {
-  localStorage.setItem(LS_KEY, JSON.stringify(items.slice(0, 200)));
+  cachedNotifications = items.slice(0, 200);
   window.dispatchEvent(new Event('metta-notifications-updated'));
 }
 

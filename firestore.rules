@@ -63,6 +63,15 @@ service cloud.firestore {
       return isAdmin() || isManager();
     }
 
+    function canManageLeadAppConfig(id) {
+      return (id == "leadCenterConfigs" || id == "leadSourceConfigs" || id == "salesAssignmentRules")
+        && canManageLeads();
+    }
+
+    function canManageMarketingAppConfig(id) {
+      return id == "sourceEngineState" && canManageMarketing();
+    }
+
     function assignmentReadable(data) {
       return data.assignedStatus == "accepted"
         || (data.assignedStatus == "active" && data.assignedExpiresAtMs > request.time.toMillis());
@@ -164,7 +173,43 @@ service cloud.firestore {
     }
 
     match /appConfig/{id} {
-      allow read, write: if canManageLeads();
+      allow read, write: if canManageLeadAppConfig(id) || canManageMarketingAppConfig(id);
+    }
+
+    match /callCenterSettings/{id} {
+      allow read: if activeUser();
+      allow create, update, delete: if canManageLeads();
+    }
+
+    match /callLogs/{id} {
+      allow read: if canManageLeads()
+        || (isSales() && resource.data.agentId == request.auth.uid);
+      allow create: if canManageLeads()
+        || (isSales() && request.resource.data.agentId == request.auth.uid);
+      allow update: if canManageLeads()
+        || (isSales()
+          && resource.data.agentId == request.auth.uid
+          && request.resource.data.agentId == resource.data.agentId);
+      allow delete: if canManageLeads();
+    }
+
+    match /agentPresence/{id} {
+      allow read: if activeUser();
+      allow create, update: if canManageLeads() || (activeUser() && id == request.auth.uid);
+      allow delete: if canManageLeads();
+    }
+
+    match /salesManualTasks/{id} {
+      allow read: if canManageLeads()
+        || (isSales() && resource.data.assignedTo == request.auth.uid);
+      allow create: if canManageLeads()
+        || (isSales() && request.resource.data.assignedTo == request.auth.uid);
+      allow update: if canManageLeads()
+        || (isSales()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.assignedTo == resource.data.assignedTo);
+      allow delete: if canManageLeads()
+        || (isSales() && resource.data.assignedTo == request.auth.uid);
     }
 
     match /capiSettings/{id} {
