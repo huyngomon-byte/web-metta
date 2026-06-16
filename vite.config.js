@@ -1,6 +1,10 @@
 import react from '@vitejs/plugin-react';
 import crypto from 'node:crypto';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
+
+const rootDir = fileURLToPath(new URL('.', import.meta.url));
 
 function base64Url(input) {
   return Buffer.from(input)
@@ -88,6 +92,10 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 900,
     rollupOptions: {
+      input: {
+        main: resolve(rootDir, 'index.html'),
+        login: resolve(rootDir, 'login.html'),
+      },
       output: {
         manualChunks(id) {
           const normalized = id.replace(/\\/g, '/');
@@ -101,4 +109,3 @@ export default defineConfig({
     }
   }
 });
-
