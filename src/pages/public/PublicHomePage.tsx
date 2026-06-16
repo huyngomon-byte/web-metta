@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
-import { cmsService } from '@/services/cmsService';
+import { publicCmsService } from '@/services/publicCmsService';
 import type { PageSection } from '@/types/cms';
 
 export default function PublicHomePage() {
   const fallbackSections = useMemo(
-    () => cmsService.getSeedVisibleSections('page-home'),
+    () => publicCmsService.getSeedVisibleSections('page-home'),
     [],
   );
   const [sections, setSections] = useState<PageSection[] | null>(null);
 
   useEffect(() => {
-    cmsService.getVisibleSections('page-home').then((items) => {
+    publicCmsService.getVisibleSections('page-home').then((items) => {
       setSections(items.length ? items : fallbackSections);
     }).catch(() => setSections(fallbackSections));
   }, [fallbackSections]);

@@ -1,0 +1,262 @@
+import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
+import { PUBLIC_PROGRAMS } from '@/lib/constants';
+import type { CmsPage, PageSection, SiteSettings } from '@/types/cms';
+
+const CP1252_EXTENSIONS: Record<number, number> = {
+  0x20ac: 0x80,
+  0x201a: 0x82,
+  0x0192: 0x83,
+  0x201e: 0x84,
+  0x2026: 0x85,
+  0x2020: 0x86,
+  0x2021: 0x87,
+  0x02c6: 0x88,
+  0x2030: 0x89,
+  0x0160: 0x8a,
+  0x2039: 0x8b,
+  0x0152: 0x8c,
+  0x017d: 0x8e,
+  0x2018: 0x91,
+  0x2019: 0x92,
+  0x201c: 0x93,
+  0x201d: 0x94,
+  0x2022: 0x95,
+  0x2013: 0x96,
+  0x2014: 0x97,
+  0x02dc: 0x98,
+  0x2122: 0x99,
+  0x0161: 0x9a,
+  0x203a: 0x9b,
+  0x0153: 0x9c,
+  0x017e: 0x9e,
+  0x0178: 0x9f,
+};
+
+const CLASSIC_MOJIBAKE = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â)/;
+const SUSPECT_TEXT = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â|�|Ē)/g;
+const CURRENT_PROGRAM_SLUGS = PUBLIC_PROGRAMS.map((program) => program.slug);
+const METTA_PLUS_SPLIT_TYPES = new Set([
+  'Metta+ Hero',
+  'Metta+ Benefits',
+  'Metta+ Age Clubs',
+  'Metta+ Pass',
+  'Metta+ Journey',
+  'Metta+ Reasons',
+  'Metta+ Form',
+]);
+
+const HEADER_LABELS: Record<string, string> = {
+  '/#about': 'Giới thiệu',
+  '#about': 'Giới thiệu',
+  '/#programs': 'Chương trình học',
+  '#programs': 'Chương trình học',
+  '/#teachers': 'Đội ngũ giáo viên',
+  '#teachers': 'Đội ngũ giáo viên',
+  '/tin-tuc': 'Tin tức',
+  '/#lead-form': 'Liên hệ',
+  '#lead-form': 'Liên hệ',
+  '/#contact': 'Liên hệ',
+  '#contact': 'Liên hệ',
+};
+
+const FOOTER_LABELS: Record<string, string> = {
+  '/#about': 'Về chúng tôi',
+  '#about': 'Về chúng tôi',
+  '/#programs': 'Chương trình học',
+  '#programs': 'Chương trình học',
+  '/#method': 'Phương pháp',
+  '#method': 'Phương pháp',
+  '/tin-tuc': 'Tin tức',
+  '/chinh-sach-bao-mat': 'Chính sách bảo mật',
+  '/dieu-khoan-su-dung': 'Điều khoản sử dụng',
+};
+
+function clone<T>(value: T): T {
+  if (value === undefined) return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function suspiciousScore(value: string) {
+  return value.match(SUSPECT_TEXT)?.length ?? 0;
+}
+
+function encodeWindows1252(value: string) {
+  const bytes: number[] = [];
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code <= 0xff) bytes.push(code);
+    else if (CP1252_EXTENSIONS[code]) bytes.push(CP1252_EXTENSIONS[code]);
+    else return null;
+  }
+  return new Uint8Array(bytes);
+}
+
+function repairClassicMojibake(value: string) {
+  if (!CLASSIC_MOJIBAKE.test(value)) return value;
+  const bytes = encodeWindows1252(value);
+  if (!bytes) return value;
+  const decoded = new TextDecoder('utf-8').decode(bytes);
+  return suspiciousScore(decoded) < suspiciousScore(value) ? decoded : value;
+}
+
+function repairKnownBrokenText(value: string) {
+  return value
+    .replace(/Giỏi ngoại ngữ,\s*giàu kỹ n.ng,\s*lãnh .*?ạo tương lai/g, 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai')
+    .replace(/Hành trình tiếng Anh .*?ẳng cấp qu.*?c tế/g, 'Hành trình tiếng Anh đẳng cấp quốc tế')
+    .replace(/Chương trình tiếng Anh hi.*?n .*?ại cho trẻ 3.*?18 tu.*?i\. Chuẩn Cambridge, giáo viên bản ngữ, cam kết .*?ầu ra rõ ràng\./g, 'Chương trình tiếng Anh hiện đại cho trẻ 3-18 tuổi. Chuẩn Cambridge, giáo viên bản ngữ, cam kết đầu ra rõ ràng.')
+    .replace(/Đ.ng ký tư vấn mi.*?n phí/g, 'Đăng ký tư vấn miễn phí')
+    .replace(/Khám phá ch.*?ng trình/g, 'Khám phá chương trình')
+    .replace(/Gi�[:›]i thi�[!‡]u/g, 'Giới thiệu')
+    .replace(/Đ�["™]i ngũ giáo viên/g, 'Đội ngũ giáo viên')
+    .replace(/Liên h�[!‡]/g, 'Liên hệ')
+    .replace(/ĐĒng ký/g, 'Đăng ký')
+    .replace(/mi�&n/g, 'miễn')
+    .replace(new RegExp(`quÃ¯Â¿Â½${String.fromCharCode(0x18)}c`, 'g'), 'quÃ¡Â»â€˜c')
+    .replace(/tu�"i/g, 'tuổi')
+    .replace(/bu�"i/g, 'buổi')
+    .replace(/l�:p/g, 'lớp')
+    .replace(/NĒm/g, 'Năm')
+    .replace(/nĒm/g, 'năm')
+    .replace(/kỹ nĒng/g, 'kỹ năng')
+    .replace(/d�9ch/g, 'dịch')
+    .replace(/bảo v�!/g, 'bảo vệ');
+}
+
+function normalizeText(value: string) {
+  return repairKnownBrokenText(repairClassicMojibake(value));
+}
+
+function normalizeCmsValue<T>(value: T): T {
+  if (typeof value === 'string') return normalizeText(value) as T;
+  if (Array.isArray(value)) return value.map((item) => normalizeCmsValue(item)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, normalizeCmsValue(item)]),
+    ) as T;
+  }
+  return value;
+}
+
+function sortSections(items: PageSection[]) {
+  return [...items].sort((a, b) => a.order - b.order);
+}
+
+function currentProgramSettings() {
+  return PUBLIC_PROGRAMS.map((program) => ({
+    ...program,
+    visible: true,
+    highlights: [...program.highlights],
+    methodology: [...program.methodology],
+    outcomes: [...program.outcomes],
+    roadmap: [...program.roadmap],
+  }));
+}
+
+function normalizeFooterColumns(columns: SiteSettings['footerColumns']) {
+  return (columns || []).map((column, index) => ({
+    ...column,
+    title: index === 0 ? 'Khám phá' : index === 1 ? 'Thông tin' : normalizeText(column.title),
+    links: column.links.map((link) => ({
+      ...link,
+      label: FOOTER_LABELS[link.href] || normalizeText(link.label),
+    })),
+  }));
+}
+
+function normalizeHeaderLinks(
+  links: NonNullable<SiteSettings['headerLinks']>,
+  programs: NonNullable<SiteSettings['programs']>,
+) {
+  return links.map((link) => {
+    const label = HEADER_LABELS[link.href] || normalizeText(link.label);
+    const isProgramMenu = link.href?.includes('programs') || link.href === '/#programs' || label.toLowerCase().includes('chương trình');
+    if (!isProgramMenu) {
+      return {
+        ...link,
+        label,
+        children: link.children?.map((child) => ({ ...child, label: normalizeText(child.label) })),
+      };
+    }
+    return {
+      ...link,
+      label: 'Chương trình học',
+      href: '/#programs',
+      children: programs
+        .filter((program) => program.visible !== false)
+        .map((program) => ({ label: program.title, href: `/programs/${program.slug}` })),
+    };
+  });
+}
+
+function normalizeSettings(settings: SiteSettings): SiteSettings {
+  const normalizedSettings = normalizeCmsValue(settings);
+  const hasCurrentPrograms = CURRENT_PROGRAM_SLUGS.every((slug) =>
+    normalizedSettings.programs?.some((program) => program.slug === slug),
+  );
+  const programs = normalizeCmsValue(
+    hasCurrentPrograms && normalizedSettings.programs?.length ? normalizedSettings.programs : currentProgramSettings(),
+  ) as NonNullable<SiteSettings['programs']>;
+  const rawHeaderLinks = normalizedSettings.headerLinks?.length
+    ? normalizedSettings.headerLinks
+    : normalizeCmsValue(seedSettings.headerLinks || []);
+  const rawFooterColumns = normalizedSettings.footerColumns?.length
+    ? normalizedSettings.footerColumns
+    : normalizeCmsValue(seedSettings.footerColumns || []);
+
+  return {
+    ...normalizedSettings,
+    brandName: normalizeText(normalizedSettings.brandName || seedSettings.brandName),
+    footerText: normalizeText(normalizedSettings.footerText || seedSettings.footerText),
+    headerCtaText: normalizeText(normalizedSettings.headerCtaText || seedSettings.headerCtaText || 'Đăng ký tư vấn'),
+    address: normalizeText(normalizedSettings.address),
+    programs,
+    headerLinks: normalizeHeaderLinks(rawHeaderLinks, programs),
+    footerColumns: normalizeFooterColumns(rawFooterColumns),
+  };
+}
+
+const PUBLIC_SETTINGS = normalizeSettings(clone(seedSettings));
+const PUBLIC_PAGES = normalizeCmsValue(clone(seedPages));
+const PUBLIC_SECTIONS = normalizeCmsValue(clone(seedSections));
+
+function hasUsableHomepageSections(items: PageSection[]) {
+  const visibleTypes = new Set(items.filter((section) => section.visible).map((section) => section.type));
+  return visibleTypes.has('Hero') && visibleTypes.has('Courses') && visibleTypes.has('Lead Form');
+}
+
+function hasEbookLanding(items: PageSection[]) {
+  return items.some((section) => section.type === 'Ebook Hero');
+}
+
+function hasMettaPlusLanding(items: PageSection[]) {
+  return items.some((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
+}
+
+function fallbackSectionsForPage(pageId: string) {
+  return sortSections(PUBLIC_SECTIONS.filter((section) => section.pageId === pageId));
+}
+
+function ensureFacilitiesSection(items: PageSection[]) {
+  if (items.some((section) => section.type === 'Facilities')) return items;
+  const seed = PUBLIC_SECTIONS.find((section) => section.id === 'sec-facilities');
+  if (!seed) return items;
+  return sortSections([...items, seed]);
+}
+
+function sectionsForPage(pageId: string) {
+  const local = fallbackSectionsForPage(pageId);
+  if (pageId === 'page-home' && !hasUsableHomepageSections(local)) return fallbackSectionsForPage(pageId);
+  if (pageId === 'page-phonics' && !hasEbookLanding(local)) return fallbackSectionsForPage(pageId);
+  if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(local)) return fallbackSectionsForPage(pageId);
+  return pageId === 'page-home' ? ensureFacilitiesSection(local) : local;
+}
+
+export const publicCmsService = {
+  getPages: async () => clone(PUBLIC_PAGES),
+  getPage: async (id: string) => clone(PUBLIC_PAGES.find((page) => page.id === id)),
+  getPageBySlug: async (slug: string) => clone(PUBLIC_PAGES.find((page) => page.slug === slug && page.status === 'published')),
+  getVisibleSections: async (pageId: string) => clone(sectionsForPage(pageId).filter((section) => section.visible)),
+  getSeedVisibleSections: (pageId: string) => clone(sectionsForPage(pageId).filter((section) => section.visible)),
+  getSettings: async () => clone(PUBLIC_SETTINGS),
+  getSettingsSync: () => clone(PUBLIC_SETTINGS),
+};

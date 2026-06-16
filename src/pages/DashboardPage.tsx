@@ -32,6 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadSources, leadStatuses, STAFF_OPTIONS } from '@/lib/constants';
+import { describeFriendlyDataError } from '@/lib/friendlyErrors';
 import { buildReasonShareData, buildStageCohortData, formatDurationHours } from '@/lib/leadAnalytics';
 import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { formatCurrency } from '@/lib/utils';
@@ -175,11 +176,12 @@ function leadMetricSummary(items: Lead[]) {
 }
 
 export default function DashboardPage() {
-  const { leads } = useLeads({ realtime: false, pollMs: 60000 });
+  const { leads, error: leadsError } = useLeads({ realtime: false, pollMs: 60000 });
   const COURSE_OPTIONS = useCourseOptions();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
+  const [dashboardError, setDashboardError] = useState('');
 
   // ── Filters ──
   const [preset, setPreset] = useState<Preset>('30d');
@@ -191,7 +193,18 @@ export default function DashboardPage() {
   const [fCenter, setFCenter] = useState('');
 
   useEffect(() => { if (preset !== 'custom') { const [f, t] = presetRange(preset); setDateFrom(f); setDateTo(t); } }, [preset]);
-  useEffect(() => { appointmentService.getAppointments().then(setAppointments); }, []);
+  useEffect(() => {
+    appointmentService.getAppointments()
+      .then((items) => {
+        setAppointments(items);
+        setDashboardError('');
+      })
+      .catch((error) => {
+        console.warn('[Dashboard] Cannot load appointments:', error);
+        setAppointments([]);
+        setDashboardError(describeFriendlyDataError(error, 'dữ liệu lịch hẹn'));
+      });
+  }, []);
   useEffect(() => { userService.getUsers().then(setUsers).catch(() => setUsers([])); }, []);
   useEffect(() => { centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([])); }, []);
 
@@ -434,6 +447,7 @@ export default function DashboardPage() {
   const recentLeads = useMemo(() => [...pipelineLeads].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8), [pipelineLeads]);
 
   const hasFilter = fSales || fSource || fCourse || fCenter;
+  const dataError = leadsError || dashboardError;
 
   /* ══════════════════════════════════════════════════════════════════════ */
 
@@ -445,6 +459,12 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-extrabold text-slate-900">Dashboard</h1>
         <p className="text-sm text-slate-500 mt-0.5">Tổng quan CRM tuyển sinh METTA Academy</p>
       </div>
+
+      {dataError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-800">
+          {dataError}
+        </div>
+      )}
 
       {/* ── Filters bar ── */}
       <div className="flex items-center gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-3 [scrollbar-width:none] sm:flex-wrap [&::-webkit-scrollbar]:hidden">

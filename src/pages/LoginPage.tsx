@@ -20,9 +20,14 @@ export default function LoginPage() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError('');
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password.trim()) {
+      setError('Vui lòng nhập email và mật khẩu.');
+      return;
+    }
     setLoading(true);
     try {
-      await signIn(email, password);
+      await signIn(normalizedEmail, password);
       navigate('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không đăng nhập được.');
@@ -50,7 +55,7 @@ export default function LoginPage() {
             <CardDescription>CMS, CRM và CAPI quản lý tập trung</CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={submit} className="flex flex-col gap-4">
+            <form onSubmit={submit} noValidate className="flex flex-col gap-4">
               <label className="flex flex-col gap-2 text-sm font-semibold text-slate-700">
                 Email
                 <Input

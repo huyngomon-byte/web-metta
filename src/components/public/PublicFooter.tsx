@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
-import { useThemeSettings } from '@/hooks/useCms';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { BRAND_LOGOS } from '@/lib/constants';
 
 const FOOTER_LABELS: Record<string, string> = {
@@ -28,7 +28,7 @@ function isInternalRoute(href: string) {
 }
 
 export function PublicFooter() {
-  const { settings } = useThemeSettings();
+  const { settings } = usePublicThemeSettings();
   const navigate = useNavigate();
   const location = useLocation();
   const current = settings || seedSettings;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { describeFriendlyDataError } from '@/lib/friendlyErrors';
 import { leadService } from '@/services/leadService';
 import type { LeadPageCursor } from '@/services/leadService';
 import type { Lead } from '@/types/crm';
@@ -22,29 +23,43 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
   const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState('');
   const refresh = useCallback(async () => {
-    if (mode === 'paged') {
-      const page = await leadService.getLeadsPage({ pageSize });
-      setLeads(page.leads);
-      setNextCursor(page.nextCursor);
-      setHasMore(page.hasMore);
+    setError('');
+    try {
+      if (mode === 'paged') {
+        const page = await leadService.getLeadsPage({ pageSize });
+        setLeads(page.leads);
+        setNextCursor(page.nextCursor);
+        setHasMore(page.hasMore);
+        return;
+      }
+      const items = await leadService.getLeads();
+      setLeads(items);
+      setNextCursor(null);
+      setHasMore(false);
       return;
+    } catch (err) {
+      console.warn('[useLeads] Cannot load leads:', err);
+      setError(describeFriendlyDataError(err, 'dữ liệu lead'));
+      setLeads([]);
+      setNextCursor(null);
+      setHasMore(false);
     }
-    const items = await leadService.getLeads();
-    setLeads(items);
-    setNextCursor(null);
-    setHasMore(false);
-    return;
   }, [mode, pageSize]);
 
   const loadMore = useCallback(async () => {
     if (!hasMore || !nextCursor || loadingMore) return;
     setLoadingMore(true);
+    setError('');
     try {
       const page = await leadService.getLeadsPage({ pageSize, cursor: nextCursor });
       setLeads(page.leads);
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
+    } catch (err) {
+      console.warn('[useLeads] Cannot load more leads:', err);
+      setError(describeFriendlyDataError(err, 'dữ liệu lead'));
     } finally {
       setLoadingMore(false);
     }
@@ -69,5 +84,5 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
     return () => window.clearInterval(timer);
   }, [pollMs, realtime, refresh]);
 
-  return { leads, refresh, setLeads, loadMore, hasMore, loadingMore };
+  return { leads, refresh, setLeads, loadMore, hasMore, loadingMore, error };
 }

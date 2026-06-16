@@ -21,9 +21,9 @@ import {
   Trophy,
   Users,
 } from 'lucide-react';
-import { leadService } from '@/services/leadService';
-import { cmsService } from '@/services/cmsService';
-import { useThemeSettings } from '@/hooks/useCms';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
+import { publicCmsService } from '@/services/publicCmsService';
+import { publicLeadService } from '@/services/publicLeadService';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { PageSection } from '@/types/cms';
 import { BRAND_LOGOS } from '@/lib/constants';
@@ -389,7 +389,7 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
 
     setLoading(true);
     try {
-      await leadService.publicSubmit(
+      await publicLeadService.submit(
         {
           fullName: studentName,
           parentName,
@@ -472,7 +472,7 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
 }
 
 function MiniFooter() {
-  const { settings } = useThemeSettings();
+  const { settings } = usePublicThemeSettings();
   const s = settings || seedSettings;
   const hotline = s.hotline;
   const address = s.address;
@@ -521,14 +521,14 @@ export default function MettaPlusLanding() {
   useEffect(() => {
     let active = true;
     async function load() {
-      const page = await cmsService.getPageBySlug('metta-plus')
-        || await cmsService.getPage('page-metta-plus')
+      const page = await publicCmsService.getPageBySlug('metta-plus')
+        || await publicCmsService.getPage('page-metta-plus')
         || seedPages.find((item) => item.id === 'page-metta-plus');
       if (!page) {
         if (active) setSections(fallbackSections());
         return;
       }
-      const items = await cmsService.getVisibleSections(page.id);
+      const items = await publicCmsService.getVisibleSections(page.id);
       const split = items.filter((item) => isMettaPlusSectionType(item.type)).sort((a, b) => a.order - b.order);
       if (active) setSections(split.length ? split : fallbackSections());
     }

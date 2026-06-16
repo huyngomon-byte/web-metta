@@ -1,10 +1,10 @@
-import { useThemeSettings } from '@/hooks/useCms';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 
 const DEFAULT_MESSENGER_URL = 'https://www.facebook.com/messages/t/anhngumetta';
 const MESSENGER_ICON = '/brand/logo messenger.webp?v=20260601-1818';
 
 export function MessengerButton() {
-  const { settings } = useThemeSettings();
+  const { settings } = usePublicThemeSettings();
   const href = settings?.socials?.messenger || settings?.socials?.facebookMessenger || DEFAULT_MESSENGER_URL;
 
   return (

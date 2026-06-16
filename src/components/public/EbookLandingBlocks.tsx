@@ -7,7 +7,7 @@
  * không chữ đè lên ảnh).
  */
 import { useEffect, useState } from 'react';
-import { leadService } from '@/services/leadService';
+import { publicLeadService } from '@/services/publicLeadService';
 import type { PageSection } from '@/types/cms';
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
@@ -135,7 +135,7 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
     if (!/^0(3|5|7|8|9|1[2689])\d{8}$/.test(phone)) return setError('Số điện thoại chưa hợp lệ.');
     setLoading(true);
     try {
-      await leadService.publicSubmit(
+      await publicLeadService.submit(
         {
           fullName: form.studentName.trim(),
           parentName: form.parentName.trim(),

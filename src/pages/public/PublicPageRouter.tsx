@@ -3,8 +3,9 @@ import { useParams } from 'react-router-dom';
 import PublicLayout from '@/pages/public/PublicLayout';
 import PublicCmsPage from '@/pages/public/PublicCmsPage';
 import PublicEbookLanding from '@/pages/public/PublicEbookLanding';
+import PublicNotFoundPage from '@/pages/public/PublicNotFoundPage';
 import { pages as seedPages, sections as seedSections } from '@/data/seed';
-import { cmsService } from '@/services/cmsService';
+import { publicCmsService } from '@/services/publicCmsService';
 import type { PageSection } from '@/types/cms';
 
 function hasEbookHero(items: PageSection[]) {
@@ -13,39 +14,46 @@ function hasEbookHero(items: PageSection[]) {
 
 export default function PublicPageRouter() {
   const { slug } = useParams();
-  const [isEbookLanding, setIsEbookLanding] = useState<boolean | undefined>(undefined);
+  const [routeKind, setRouteKind] = useState<'loading' | 'ebook' | 'cms' | 'not-found'>('loading');
 
   useEffect(() => {
     let active = true;
     if (!slug) {
-      setIsEbookLanding(false);
+      setRouteKind('not-found');
       return () => { active = false; };
     }
 
-    setIsEbookLanding(undefined);
-    cmsService.getPages()
+    setRouteKind('loading');
+    publicCmsService.getPages()
       .then(async (pages) => {
         const page = pages.find((item) => item.slug === slug) || seedPages.find((item) => item.slug === slug);
-        if (!page) return false;
-        const sections = await cmsService.getVisibleSections(page.id);
+        if (!page) return 'not-found' as const;
+        const sections = await publicCmsService.getVisibleSections(page.id);
         const fallback = seedSections.filter((section) => section.pageId === page.id && section.visible);
-        return hasEbookHero(sections.length ? sections : fallback);
+        return hasEbookHero(sections.length ? sections : fallback) ? 'ebook' as const : 'cms' as const;
       })
       .then((value) => {
-        if (active) setIsEbookLanding(Boolean(value));
+        if (active) setRouteKind(value);
       })
       .catch(() => {
-        if (active) setIsEbookLanding(false);
+        if (active) setRouteKind('not-found');
       });
 
     return () => { active = false; };
   }, [slug]);
 
-  if (isEbookLanding === undefined) {
-    return <div className="grid min-h-screen place-items-center text-slate-400">Dang tai...</div>;
+  if (routeKind === 'loading') {
+    return <div className="grid min-h-screen place-items-center text-slate-400">Đang tải...</div>;
   }
 
-  if (isEbookLanding) return <PublicEbookLanding />;
+  if (routeKind === 'ebook') return <PublicEbookLanding />;
+  if (routeKind === 'not-found') {
+    return (
+      <PublicLayout>
+        <PublicNotFoundPage />
+      </PublicLayout>
+    );
+  }
 
   return (
     <PublicLayout>

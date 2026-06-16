@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { blogService } from '@/services/blogService';
+import { publicBlogService } from '@/services/publicBlogService';
 import type { BlogPost } from '@/types/cms';
 
 export default function PublicBlogDetailPage() {
@@ -10,7 +10,7 @@ export default function PublicBlogDetailPage() {
 
   useEffect(() => {
     if (!slug) return;
-    blogService.getBySlug(slug).then((p) => setPost(p || null));
+    publicBlogService.getBySlug(slug).then((p) => setPost(p || null));
   }, [slug]);
 
   if (post === undefined) {

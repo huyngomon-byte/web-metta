@@ -1,7 +1,5 @@
 import { Component, Suspense, lazy, useEffect, type ErrorInfo, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { AppLayout } from '@/components/layout/AppLayout';
-import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import PublicLayout from '@/pages/public/PublicLayout';
 import PublicHomePage from '@/pages/public/PublicHomePage';
 
@@ -74,9 +72,12 @@ const PublicProgramDetailPage = lazyWithRetry(() => import('@/pages/public/Publi
 const PublicPageRouter = lazyWithRetry(() => import('@/pages/public/PublicPageRouter'));
 const PublicEbookLanding = lazyWithRetry(() => import('@/pages/public/PublicEbookLanding'));
 const MettaPlusLanding = lazyWithRetry(() => import('@/pages/public/MettaPlusLanding'));
+const PublicNotFoundPage = lazyWithRetry(() => import('@/pages/public/PublicNotFoundPage'));
 
+const AdminAuthLayout = lazyWithRetry(() => import('@/routes/AdminAuthLayout'));
+const ProtectedRouteElement = lazyWithRetry(() => import('@/routes/ProtectedRouteElement'));
+const AppLayoutRoute = lazyWithRetry(() => import('@/routes/AppLayoutRoute'));
 const LoginPage = lazyWithRetry(() => import('@/pages/LoginPage'));
-
 const DashboardPage = lazyWithRetry(() => import('@/pages/DashboardPage'));
 const CmsPagesPage = lazyWithRetry(() => import('@/pages/CmsPagesPage'));
 const PageEditorPage = lazyWithRetry(() => import('@/pages/PageEditorPage'));
@@ -138,36 +139,38 @@ export default function App() {
               <Route path="/phap-ly/:slug" element={<PublicLegalPage />} />
               <Route path="/chinh-sach-bao-mat" element={<PublicLegalPage />} />
               <Route path="/dieu-khoan-su-dung" element={<PublicLegalPage />} />
+              <Route path="*" element={<PublicNotFoundPage />} />
             </Route>
-            <Route path="/login" element={<LoginPage />} />
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
-                <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/cms/pages" element={<CmsPagesPage />} />
-                <Route path="/cms/pages/:id" element={<PageEditorPage />} />
-                <Route path="/cms/theme" element={<ThemeSettingsPage />} />
-                <Route path="/cms/programs" element={<ProgramsCmsPage />} />
-                <Route path="/cms/header-menu" element={<HeaderMenuPage />} />
-                <Route path="/cms/footer" element={<FooterPage />} />
-                <Route path="/cms/legal" element={<LegalPagesPage />} />
-                <Route path="/cms/blog" element={<BlogAdminPage />} />
-                <Route path="/media" element={<MediaLibraryPage />} />
-                <Route path="/crm/leads" element={<LeadsPage />} />
-                <Route path="/crm/lead-assignment" element={<LeadAssignmentPage />} />
-                <Route path="/crm/tasks" element={<SalesTasksPage />} />
-                <Route path="/crm/database" element={<LeadDatabasePage />} />
-                <Route path="/crm/leads/:id" element={<LeadDetailPage />} />
-                <Route path="/appointments" element={<AppointmentsPage />} />
-                <Route path="/capi" element={<CapiSettingsPage />} />
-                <Route path="/capi/events" element={<CapiEventsPage />} />
-                <Route path="/marketing/source-engine" element={<SourceEnginePage />} />
-                <Route path="/reports" element={<ReportsPage />} />
-                <Route path="/users" element={<UsersPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
+            <Route element={<AdminAuthLayout />}>
+              <Route path="/login" element={<LoginPage />} />
+              <Route element={<ProtectedRouteElement />}>
+                <Route element={<AppLayoutRoute />}>
+                  <Route path="/admin" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/cms/pages" element={<CmsPagesPage />} />
+                  <Route path="/cms/pages/:id" element={<PageEditorPage />} />
+                  <Route path="/cms/theme" element={<ThemeSettingsPage />} />
+                  <Route path="/cms/programs" element={<ProgramsCmsPage />} />
+                  <Route path="/cms/header-menu" element={<HeaderMenuPage />} />
+                  <Route path="/cms/footer" element={<FooterPage />} />
+                  <Route path="/cms/legal" element={<LegalPagesPage />} />
+                  <Route path="/cms/blog" element={<BlogAdminPage />} />
+                  <Route path="/media" element={<MediaLibraryPage />} />
+                  <Route path="/crm/leads" element={<LeadsPage />} />
+                  <Route path="/crm/lead-assignment" element={<LeadAssignmentPage />} />
+                  <Route path="/crm/tasks" element={<SalesTasksPage />} />
+                  <Route path="/crm/database" element={<LeadDatabasePage />} />
+                  <Route path="/crm/leads/:id" element={<LeadDetailPage />} />
+                  <Route path="/appointments" element={<AppointmentsPage />} />
+                  <Route path="/capi" element={<CapiSettingsPage />} />
+                  <Route path="/capi/events" element={<CapiEventsPage />} />
+                  <Route path="/marketing/source-engine" element={<SourceEnginePage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/users" element={<UsersPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
               </Route>
             </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
       </RouteErrorBoundary>

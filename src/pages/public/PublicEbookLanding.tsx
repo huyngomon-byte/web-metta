@@ -7,8 +7,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
-import { cmsService } from '@/services/cmsService';
-import { useThemeSettings } from '@/hooks/useCms';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
+import { publicCmsService } from '@/services/publicCmsService';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { CmsPage, PageSection } from '@/types/cms';
 import { BRAND_LOGOS } from '@/lib/constants';
@@ -50,7 +50,7 @@ export default function PublicEbookLanding() {
 
   useEffect(() => {
     let active = true;
-    cmsService.getPages()
+    publicCmsService.getPages()
       .then((all) => {
         // Ưu tiên page đúng slug; nếu không có thì lấy page landing ebook (chứa block Ebook Hero).
         const found = all.find((p) => p.slug === slug)
@@ -63,7 +63,7 @@ export default function PublicEbookLanding() {
         const pageToRender = normalizeEbookPage(found, slug);
         setPage(pageToRender);
         if (pageToRender) {
-          cmsService.getVisibleSections(pageToRender.id).then((items) => {
+          publicCmsService.getVisibleSections(pageToRender.id).then((items) => {
             if (!active) return;
             const fallback = seedSections.filter((s) => s.pageId === pageToRender.id && s.visible).sort((a, b) => a.order - b.order);
             setSections(items.length && hasEbookHero(items) ? items : fallback);
@@ -130,7 +130,7 @@ function MiniHeader() {
 
 /* ── Mini footer ─────────────────────────────────────────────────────────── */
 function MiniFooter() {
-  const { settings } = useThemeSettings();
+  const { settings } = usePublicThemeSettings();
   const s = settings || seedSettings;
   const hotline = s.hotline;
   const address = s.address;

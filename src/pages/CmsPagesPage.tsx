@@ -1,4 +1,4 @@
-import { DatabaseBackup, Eye, FilePenLine, Plus, Trash2 } from 'lucide-react';
+import { Copy, DatabaseBackup, Eye, FilePenLine, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,9 @@ import { formatDate, slugify } from '@/lib/utils';
 export default function CmsPagesPage() {
   const { pages, refresh } = usePages();
   const [draft, setDraft] = useState<{ title: string; slug: string; status: 'draft' | 'published' }>({ title: '', slug: '', status: 'draft' });
+  const [copyingId, setCopyingId] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   async function addPage() {
     if (!draft.title) return;
     await cmsService.savePage({ ...draft, slug: draft.slug || slugify(draft.title), metaTitle: draft.title, metaDescription: '' });
@@ -23,6 +26,20 @@ export default function CmsPagesPage() {
   async function remove(id: string) {
     await cmsService.deletePage(id);
     refresh();
+  }
+  async function copyPage(id: string) {
+    setError('');
+    setMessage('');
+    setCopyingId(id);
+    try {
+      const copied = await cmsService.duplicatePage(id);
+      await refresh();
+      setMessage(`Đã sao chép "${copied.title}". Page mới đang ở trạng thái draft.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không sao chép được page.');
+    } finally {
+      setCopyingId('');
+    }
   }
   return (
     <div className="flex flex-col gap-6">
@@ -41,6 +58,11 @@ export default function CmsPagesPage() {
       </Card>
       <Card>
         <CardContent className="p-0">
+          {(message || error) && (
+            <div className={`m-4 rounded-lg px-4 py-3 text-sm font-semibold ${error ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'}`}>
+              {error || message}
+            </div>
+          )}
           <Table>
             <THead><TR><TH>Title</TH><TH>Slug</TH><TH>Status</TH><TH>Updated</TH><TH>Action</TH></TR></THead>
             <TBody>
@@ -56,8 +78,11 @@ export default function CmsPagesPage() {
                   <TD><Badge tone={page.status === 'published' ? 'green' : 'amber'}>{page.status}</Badge></TD>
                   <TD>{formatDate(page.updatedAt, true)}</TD>
                   <TD>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <Link to={`/cms/pages/${page.id}`}><Button variant="outline" size="sm"><FilePenLine /> Edit</Button></Link>
+                      <Button variant="outline" size="sm" onClick={() => copyPage(page.id)} disabled={copyingId === page.id}>
+                        <Copy /> {copyingId === page.id ? 'Đang sao chép...' : 'Sao chép'}
+                      </Button>
                       <a href={`/p/${page.slug}`} target="_blank" rel="noreferrer">
                         <Button variant="outline" size="sm"><Eye /> Preview</Button>
                       </a>

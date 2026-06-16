@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { FacilitiesSection } from '@/components/public/FacilitiesSection';
 import { EbookHeroBlock, EbookSkillsBlock, EbookWhyBlock } from '@/components/public/EbookLandingBlocks';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
-import { blogService } from '@/services/blogService';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
+import { publicBlogService } from '@/services/publicBlogService';
 import { siteSettings as seedSettings } from '@/data/seed';
 import { PUBLIC_PROGRAMS } from '@/lib/constants';
-import { useThemeSettings } from '@/hooks/useCms';
 import type { FacilityImage, ProgramCms } from '@/types/cms';
 import type { PageSection } from '@/types/cms';
 
@@ -238,7 +238,7 @@ function StatsBlock({ section }: { section: PageSection }) {
 
 /* ── Courses ──────────────────────────────────────────────────────────────── */
 function CoursesBlock({ section }: { section: PageSection }) {
-  const { settings, loading } = useThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
   const fallbackPrograms: ProgramCms[] = PUBLIC_PROGRAMS.map((program) => ({
     ...program,
     highlights: [...program.highlights],
@@ -533,7 +533,7 @@ function NewsBlock({ section }: { section: PageSection }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    blogService.getPublished().then((posts) => {
+    publicBlogService.getPublished().then((posts) => {
       if (posts.length > 0) {
         setBlogPosts(posts.slice(0, 6).map((p) => ({
           title: p.title,

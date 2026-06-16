@@ -1,7 +1,7 @@
 import react from '@vitejs/plugin-react';
 import crypto from 'node:crypto';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
@@ -100,10 +100,18 @@ export default defineConfig({
         manualChunks(id) {
           const normalized = id.replace(/\\/g, '/');
           if (!normalized.includes('node_modules')) return undefined;
+          if (
+            normalized.includes('/react/')
+            || normalized.includes('/react-dom/')
+            || normalized.includes('/react-router/')
+            || normalized.includes('/react-router-dom/')
+            || normalized.includes('/@remix-run/router/')
+            || normalized.includes('/scheduler/')
+          ) return 'react-vendor';
           if (normalized.includes('firebase')) return 'firebase';
           if (normalized.includes('recharts') || normalized.includes('/d3')) return 'charts';
           if (normalized.includes('framer-motion')) return 'motion';
-          return 'vendor';
+          return undefined;
         }
       }
     }

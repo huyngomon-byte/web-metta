@@ -44,7 +44,7 @@ export default function ThemeSettingsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-3xl font-extrabold text-slate-950">Settings</h1>
+        <h1 className="text-3xl font-extrabold text-slate-950">Giao diện / Theme</h1>
         <p className="text-slate-500 mt-1">Chỉnh logo, màu sắc và font chữ hiển thị trên website.</p>
       </div>
 

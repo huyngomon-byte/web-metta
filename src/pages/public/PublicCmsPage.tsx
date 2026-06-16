@@ -1,8 +1,9 @@
 ﻿import { useEffect, useState } from 'react';
-import { Navigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
+import PublicNotFoundPage from '@/pages/public/PublicNotFoundPage';
 import { pages as seedPages, sections as seedSections } from '@/data/seed';
-import { cmsService } from '@/services/cmsService';
+import { publicCmsService } from '@/services/publicCmsService';
 import type { CmsPage, PageSection } from '@/types/cms';
 
 export default function PublicCmsPage() {
@@ -12,14 +13,14 @@ export default function PublicCmsPage() {
   useEffect(() => {
     if (!slug) return;
     // Lấy page theo slug (kể cả draft để admin có thể preview)
-    cmsService.getPages()
+    publicCmsService.getPages()
       .then((allPages) => {
         const found = allPages.find((item) => item.slug === slug) || null;
         const fallback = seedPages.find((item) => item.slug === slug);
         const pageToRender = found || fallback || null;
         setPage(pageToRender);
         if (pageToRender) {
-          cmsService.getVisibleSections(pageToRender.id).then((items) => {
+          publicCmsService.getVisibleSections(pageToRender.id).then((items) => {
             setSections(items.length ? items : seedSections.filter((section) => section.pageId === pageToRender.id && section.visible).sort((a, b) => a.order - b.order));
           });
         }
@@ -31,7 +32,7 @@ export default function PublicCmsPage() {
       });
   }, [slug]);
   if (page === undefined) return <PublicPageSkeleton />;
-  if (page === null) return <Navigate to="/" replace />;
+  if (page === null) return <PublicNotFoundPage />;
   if (!sections.length) return <PublicPageSkeleton />;
   return (
     <>

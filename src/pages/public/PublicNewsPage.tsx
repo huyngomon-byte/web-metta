@@ -2,16 +2,16 @@ import { ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
-import { useThemeSettings } from '@/hooks/useCms';
-import { blogService } from '@/services/blogService';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
+import { publicBlogService } from '@/services/publicBlogService';
 import type { BlogPost } from '@/types/cms';
 
 export default function PublicNewsPage() {
-  const { settings } = useThemeSettings();
+  const { settings } = usePublicThemeSettings();
   const current = settings || seedSettings;
   const [posts, setPosts] = useState<BlogPost[] | null>(null);
 
-  useEffect(() => { blogService.getPublished().then(setPosts); }, []);
+  useEffect(() => { publicBlogService.getPublished().then(setPosts); }, []);
 
   return (
     <>

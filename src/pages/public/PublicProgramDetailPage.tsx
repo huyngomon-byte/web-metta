@@ -3,12 +3,12 @@ import { type ReactNode, useEffect, useState, useRef, useCallback } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
 import { PUBLIC_PROGRAMS } from '@/lib/constants';
-import { useThemeSettings } from '@/hooks/useCms';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import type { ProgramCms } from '@/types/cms';
 
 export default function PublicProgramDetailPage() {
   const { slug } = useParams();
-  const { settings, loading } = useThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
   const normalizedSlug = slug === 'metta-young-learners'
     ? 'metta-young-learner'
     : slug === 'phonics'

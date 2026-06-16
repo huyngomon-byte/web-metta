@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
-import { useThemeSettings } from '@/hooks/useCms';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { BRAND_LOGOS } from '@/lib/constants';
 
 type NavLink = {
@@ -83,7 +83,7 @@ export function PublicHeader() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const { settings } = useThemeSettings();
+  const { settings } = usePublicThemeSettings();
   const current = settings || seedSettings;
   const rawLinks = (current.headerLinks?.length ? current.headerLinks : seedSettings.headerLinks || []) as NavLink[];
   // Auto-sync links

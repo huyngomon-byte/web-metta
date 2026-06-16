@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { leadService } from '@/services/leadService';
+import { publicLeadService } from '@/services/publicLeadService';
 
 const phoneRegex = /^0(3|5|7|8|9|1[2689])\d{8}$/;
 
@@ -49,7 +49,7 @@ export function PublicLeadForm({
 
     setLoading(true);
     try {
-      await leadService.publicSubmit(
+      await publicLeadService.submit(
         {
           fullName: studentName,
           parentName,

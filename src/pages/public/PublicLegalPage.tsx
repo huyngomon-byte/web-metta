@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { Link, Navigate, useLocation, useParams } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
-import { useThemeSettings } from '@/hooks/useCms';
+import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import type { LegalPage } from '@/types/cms';
 
 /** Tìm legal page theo slug, ưu tiên CMS, fallback seed, hỗ trợ backward-compat từ privacyPolicy/termsOfUse cũ. */
@@ -23,7 +23,7 @@ function resolveLegalPage(slug: string, settings: typeof seedSettings): LegalPag
 export default function PublicLegalPage() {
   const { slug: paramSlug } = useParams();
   const location = useLocation();
-  const { settings, loading } = useThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
   const current = settings || seedSettings;
 
   // Slug có thể đến từ /phap-ly/:slug (param) hoặc từ URL cũ /chinh-sach-bao-mat (path)
