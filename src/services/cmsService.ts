@@ -130,6 +130,11 @@ function repairClassicMojibake(value: string) {
 
 function repairKnownBrokenText(value: string) {
   return value
+    .replace(/Giỏi ngoại ngữ,\s*giàu kỹ n.ng,\s*lãnh .*?ạo tương lai/g, 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai')
+    .replace(/Hành trình tiếng Anh .*?ẳng cấp qu.*?c tế/g, 'Hành trình tiếng Anh đẳng cấp quốc tế')
+    .replace(/Chương trình tiếng Anh hi.*?n .*?ại cho trẻ 3.*?18 tu.*?i\. Chuẩn Cambridge, giáo viên bản ngữ, cam kết .*?ầu ra rõ ràng\./g, 'Chương trình tiếng Anh hiện đại cho trẻ 3-18 tuổi. Chuẩn Cambridge, giáo viên bản ngữ, cam kết đầu ra rõ ràng.')
+    .replace(/Đ.ng ký tư vấn mi.*?n phí/g, 'Đăng ký tư vấn miễn phí')
+    .replace(/Khám phá ch.*?ng trình/g, 'Khám phá chương trình')
     .replace(/Gi�[:›]i thi�[!‡]u/g, 'Giới thiệu')
     .replace(/Đ�["™]i ngũ giáo viên/g, 'Đội ngũ giáo viên')
     .replace(/Liên h�[!‡]/g, 'Liên hệ')
@@ -656,7 +661,11 @@ export const cmsService = {
       return fallbackSectionsForPage(pageId).filter((section) => section.visible);
     }
     if (visible.length) return visible;
-    return sortSections(seedSections.filter((section) => section.pageId === pageId && section.visible));
+    return sortSections(normalizeCmsValue(seedSections.filter((section) => section.pageId === pageId && section.visible)));
+  },
+
+  getSeedVisibleSections: (pageId: string) => {
+    return fallbackSectionsForPage(pageId).filter((section) => section.visible);
   },
 
   saveSection: async (section: Partial<PageSection>) => {

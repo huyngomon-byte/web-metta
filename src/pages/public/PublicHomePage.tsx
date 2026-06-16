@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SectionRenderer } from '@/components/public/SectionRenderer';
-import { sections as seedSections } from '@/data/seed';
 import { cmsService } from '@/services/cmsService';
 import type { PageSection } from '@/types/cms';
 
 export default function PublicHomePage() {
   const fallbackSections = useMemo(
-    () => seedSections.filter((section) => section.pageId === 'page-home' && section.visible).sort((a, b) => a.order - b.order),
+    () => cmsService.getSeedVisibleSections('page-home'),
     [],
   );
   const [sections, setSections] = useState<PageSection[] | null>(null);

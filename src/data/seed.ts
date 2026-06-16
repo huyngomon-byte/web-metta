@@ -422,11 +422,11 @@ export const sections: PageSection[] = [
   /* ���� Homepage ���� */
   {
     id: 'sec-1', pageId: 'page-home', type: 'Hero', order: 1, visible: true, createdAt: now, updatedAt: now,
-    title: 'Giỏi ngoại ngữ, giàu kỹ nĒng, lãnh �ạo tương lai',
-    subtitle: 'Hành trình tiếng Anh �ẳng cấp qu�c tế',
-    description: 'Chương trình tiếng Anh hi�!n �ại cho trẻ 3�18 tu�"i. Chuẩn Cambridge, giáo viên bản ngữ, cam kết �ầu ra rõ ràng.',
+    title: 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
+    subtitle: 'Hành trình tiếng Anh đẳng cấp quốc tế',
+    description: 'Chương trình tiếng Anh hiện đại cho trẻ 3-18 tuổi. Chuẩn Cambridge, giáo viên bản ngữ, cam kết đầu ra rõ ràng.',
     imageUrl: '/brand/hero-classroom.png',
-    buttonText: 'ĐĒng ký tư vấn mi�&n phí',
+    buttonText: 'Đăng ký tư vấn miễn phí',
     buttonLink: '#lead-form',
     button2Text: 'Khám phá chương trình',
     button2Link: '#programs',
