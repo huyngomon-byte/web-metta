@@ -384,12 +384,11 @@ export default function LeadsPage() {
   }, [leads, sourceConfigs]);
 
   const centerOptions = useMemo(() => {
-    const names = new Set([
-      ...centerConfigs.filter((center) => center.active).map((center) => center.name),
-      ...leads.map((lead) => lead.centerName).filter((name): name is string => Boolean(name)),
-    ]);
-    return Array.from(names);
-  }, [centerConfigs, leads]);
+    return centerConfigs
+      .filter((center) => center.active)
+      .map((center) => center.name)
+      .filter(Boolean);
+  }, [centerConfigs]);
 
   function priorityForSource(source?: string, fallback?: number) {
     return sourcePriority(sourceConfigs, source, fallback);
@@ -1424,7 +1423,7 @@ function CenterSettingsPanel({
         </div>
         {drafts.map((center) => (
           <div key={center.id} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-2 md:grid-cols-[1fr_1.6fr_1.6fr_90px_48px]">
-            <Input value={center.name} placeholder="VD: METTA Quận 1" onChange={(event) => update(center.id, { name: event.target.value })} />
+            <Input value={center.name} placeholder="VD: METTA" onChange={(event) => update(center.id, { name: event.target.value })} />
             <Input value={center.address} placeholder="Địa chỉ cơ sở" onChange={(event) => update(center.id, { address: event.target.value })} />
             <Input value={center.description} placeholder="Ghi chú khu vực / tuyến đường / đối tượng phù hợp" onChange={(event) => update(center.id, { description: event.target.value })} />
             <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600">

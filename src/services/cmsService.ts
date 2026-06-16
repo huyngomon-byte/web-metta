@@ -179,6 +179,32 @@ function sortSections(items: PageSection[]) {
   return [...items].sort((a, b) => a.order - b.order);
 }
 
+const CURRENT_HOME_HERO = {
+  title: 'Learn with Mind.\nLead with Heart.',
+  subtitle: 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
+  description: 'Hành trình tiếng Anh toàn diện cho trẻ 3–15 tuổi.\n100% Giáo viên nước ngoài có chứng chỉ quốc tế (TESOL/CELTA)\nLớp học nhỏ 10–12 học viên và lộ trình cá nhân hóa theo từng độ tuổi.',
+  buttonText: 'Đăng ký tư vấn miễn phí',
+  button2Text: 'Xem chương trình học',
+};
+
+function isLegacyHomeHeroTitle(value?: string) {
+  const normalized = normalizeText(value || '').replace(/\s+/g, ' ').trim();
+  return /Giỏi ngoại ngữ, giàu kỹ năng, lãnh .*ạo tương lai/i.test(normalized);
+}
+
+function normalizeHomepageHeroSection(section: PageSection): PageSection {
+  const isHomeHero = section.pageId === 'page-home' && (section.id === 'sec-1' || section.type === 'Hero');
+  if (!isHomeHero || !isLegacyHomeHeroTitle(section.title)) return section;
+  return {
+    ...section,
+    ...CURRENT_HOME_HERO,
+  };
+}
+
+function normalizeCmsSections(items: PageSection[]) {
+  return sortSections(normalizeCmsValue(items).map(normalizeHomepageHeroSection));
+}
+
 function currentProgramSettings() {
   return PUBLIC_PROGRAMS.map((program) => ({
     ...program,
@@ -341,7 +367,7 @@ function hasMettaPlusLanding(items: PageSection[]) {
 }
 
 function fallbackSectionsForPage(pageId: string) {
-  return sortSections(normalizeCmsValue(seedSections.filter((section) => section.pageId === pageId)));
+  return normalizeCmsSections(seedSections.filter((section) => section.pageId === pageId));
 }
 
 // Tự chèn section "Cơ sở vật chất" vào homepage nếu dữ liệu hiện tại chưa có
@@ -367,8 +393,8 @@ function mergeHomepageDefaults(items: PageSection[]) {
 function ensureLocalSeed() {
   if (!store.pages.length) store.pages = normalizeCmsValue([...seedPages]);
   else store.pages = normalizeCmsValue(store.pages);
-  if (!store.sections.length) store.sections = normalizeCmsValue([...seedSections]);
-  else store.sections = normalizeCmsValue(store.sections);
+  if (!store.sections.length) store.sections = normalizeCmsSections([...seedSections]);
+  else store.sections = normalizeCmsSections(store.sections);
   if (!store.siteSettings) store.siteSettings = normalizeCourseSettings({ ...seedSettings });
   else store.siteSettings = normalizeCourseSettings(store.siteSettings);
   persistCMS();
@@ -379,7 +405,7 @@ async function tryWriteSeedData() {
   try {
     await Promise.all([
       ...normalizeCmsValue([...seedPages]).map((page) => setDoc(doc(db!, COL_PAGES, page.id), stripUndefined(page))),
-      ...normalizeCmsValue([...seedSections]).map((section) => setDoc(doc(db!, COL_SECTIONS, section.id), stripUndefined(section))),
+      ...normalizeCmsSections([...seedSections]).map((section) => setDoc(doc(db!, COL_SECTIONS, section.id), stripUndefined(section))),
       setDoc(doc(db!, DOC_SETTINGS), stripUndefined(normalizeCourseSettings(seedSettings))),
       setDoc(doc(db!, DOC_INIT), { seededAt: now(), repairedAt: now() }),
     ]);
@@ -422,7 +448,7 @@ async function readRemoteSections(pageId: string) {
       return null;
     }
     let remote = mergeRemoteWithLocalEdits(
-      sortSections(normalizeCmsValue(snap.docs.map((item) => item.data() as PageSection))),
+      normalizeCmsSections(snap.docs.map((item) => item.data() as PageSection)),
       pageId,
     );
     if (pageId === 'page-home') remote = mergeHomepageDefaults(remote);
@@ -661,7 +687,7 @@ export const cmsService = {
       return fallbackSectionsForPage(pageId).filter((section) => section.visible);
     }
     if (visible.length) return visible;
-    return sortSections(normalizeCmsValue(seedSections.filter((section) => section.pageId === pageId && section.visible)));
+    return fallbackSectionsForPage(pageId).filter((section) => section.visible);
   },
 
   getSeedVisibleSections: (pageId: string) => {
@@ -758,7 +784,7 @@ export const cmsService = {
 
   resetToSeed: async () => {
     store.pages = normalizeCmsValue([...seedPages]);
-    store.sections = normalizeCmsValue([...seedSections]);
+    store.sections = normalizeCmsSections([...seedSections]);
     store.siteSettings = normalizeCourseSettings({ ...seedSettings });
     persistCMS();
     await tryWriteSeedData();

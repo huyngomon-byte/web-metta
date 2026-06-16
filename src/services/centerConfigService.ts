@@ -53,10 +53,13 @@ function normalizeList(configs: LeadCenterConfig[]) {
 
 function isLegacyDefaultConfig(configs: LeadCenterConfig[]) {
   const ids = configs.map((item) => centerId(item.name)).sort();
-  return ids.length === 3
-    && ids.includes('metta-quan-1')
-    && ids.includes('metta-thao-dien')
-    && ids.includes('metta-phu-nhuan');
+  return (ids.length === 1 && ids.includes('metta-quan-1'))
+    || (
+      ids.length === 3
+      && ids.includes('metta-quan-1')
+      && ids.includes('metta-thao-dien')
+      && ids.includes('metta-phu-nhuan')
+    );
 }
 
 function cacheConfigs(configs: LeadCenterConfig[]) {

@@ -14,7 +14,7 @@ import type { Lead, LeadStageHistoryEntry } from '@/types/crm';
 
 export const STAGE_DEMO_LEAD_PREFIX = 'lead-demo-stage-';
 
-const centers = ['METTA Quận 1', 'METTA Thảo Điền', 'METTA Phú Nhuận'] as const;
+const centers = ['METTA'] as const;
 const schools = [
   'Trường Quốc tế Việt Úc',
   'Tiểu học Nguyễn Du',

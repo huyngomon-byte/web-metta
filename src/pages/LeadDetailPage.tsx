@@ -146,12 +146,11 @@ export default function LeadDetailPage() {
     return Array.from(names);
   }, [lead?.source, sourceConfigs]);
   const centerOptions = useMemo(() => {
-    const names = new Set([
-      ...centerConfigs.filter((center) => center.active).map((center) => center.name),
-      ...(lead?.centerName ? [lead.centerName] : []),
-    ]);
-    return Array.from(names);
-  }, [centerConfigs, lead?.centerName]);
+    return centerConfigs
+      .filter((center) => center.active)
+      .map((center) => center.name)
+      .filter(Boolean);
+  }, [centerConfigs]);
   const backPath = searchParams.get('from') === 'kanban' ? '/crm/leads?view=kanban' : '/crm/leads?view=table';
 
   const refresh = useCallback(() => {

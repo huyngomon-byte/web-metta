@@ -269,7 +269,7 @@ export const defaultLeadSourceConfigs = [
 export const leadSources = defaultLeadSourceConfigs.map((source) => source.name);
 
 export const defaultLeadCenterConfigs = [
-  { name: 'METTA Quận 1', address: 'Nhập địa chỉ cơ sở Quận 1', description: 'Cơ sở trung tâm, phù hợp lead ở khu vực lõi thành phố.' },
+  { name: 'METTA', address: 'G4 Bồ Hòa, Hà Đông, Hà Nội', description: 'Cơ sở đang hoạt động của METTA Academy.' },
 ] as const;
 
 export const studentStatuses = ['Đang tư vấn', 'Đã đăng ký', 'Đang học', 'Tạm nghỉ', 'Bảo lưu', 'Hoàn thành khóa', 'Đã nghỉ'] as const;

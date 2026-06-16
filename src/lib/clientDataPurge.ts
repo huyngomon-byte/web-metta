@@ -1,5 +1,5 @@
 const PURGE_VERSION_KEY = 'metta_client_data_purge_version';
-const CURRENT_PURGE_VERSION = '2026-06-15-remote-source-of-truth-v1';
+const CURRENT_PURGE_VERSION = '2026-06-16-center-cache-sync-v2';
 
 const LEGACY_DATA_KEYS = [
   'metta_leads',

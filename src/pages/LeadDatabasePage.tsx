@@ -20,10 +20,11 @@ import { buildReferralStats } from '@/lib/leadAnalytics';
 import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
+import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
 import { normalizeParentPhone, parentProfileService, type ParentProfile } from '@/services/parentProfileService';
 import { useLeads } from '@/hooks/useLeads';
-import type { Lead } from '@/types/crm';
+import type { Lead, LeadCenterConfig } from '@/types/crm';
 
 function timestampFileName(prefix: string) {
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -86,6 +87,7 @@ export default function LeadDatabasePage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [parentProfiles, setParentProfiles] = useState<ParentProfile[]>([]);
+  const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [parentQuery, setParentQuery] = useState('');
   const [parentIncome, setParentIncome] = useState('');
   const [parentKnownFrom, setParentKnownFrom] = useState('');
@@ -105,14 +107,18 @@ export default function LeadDatabasePage() {
     return () => window.removeEventListener('metta-parent-profiles-updated', onUpdate);
   }, [refreshParents]);
 
+  useEffect(() => {
+    centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([]));
+  }, []);
+
   const referralStats = useMemo(() => buildReferralStats(leads), [leads]);
   const filterOptions = useMemo(() => ({
     sources: uniqueLeadValues(leads, (lead) => lead.source),
-    centers: uniqueLeadValues(leads, (lead) => lead.centerName),
+    centers: centerConfigs.filter((item) => item.active).map((item) => item.name).filter(Boolean),
     sales: uniqueLeadValues(leads, (lead) => lead.assignedToName || lead.assignedTo),
     courses: uniqueLeadValues(leads, (lead) => lead.interestedCourse),
     priorities: Array.from(new Set(leads.map((lead) => Number(lead.priorityLevel || 0)).filter(Boolean))).sort((a, b) => b - a),
-  }), [leads]);
+  }), [centerConfigs, leads]);
   const parentRows = useMemo<ParentRow[]>(() => {
     const map = new Map<string, ParentRow>();
     parentProfiles.forEach((profile) => {

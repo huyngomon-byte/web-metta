@@ -422,13 +422,13 @@ export const sections: PageSection[] = [
   /* ���� Homepage ���� */
   {
     id: 'sec-1', pageId: 'page-home', type: 'Hero', order: 1, visible: true, createdAt: now, updatedAt: now,
-    title: 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
-    subtitle: 'Hành trình tiếng Anh đẳng cấp quốc tế',
-    description: 'Chương trình tiếng Anh hiện đại cho trẻ 3-18 tuổi. Chuẩn Cambridge, giáo viên bản ngữ, cam kết đầu ra rõ ràng.',
+    title: 'Learn with Mind.\nLead with Heart.',
+    subtitle: 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
+    description: 'Hành trình tiếng Anh toàn diện cho trẻ 3–15 tuổi.\n100% Giáo viên nước ngoài có chứng chỉ quốc tế (TESOL/CELTA)\nLớp học nhỏ 10–12 học viên và lộ trình cá nhân hóa theo từng độ tuổi.',
     imageUrl: '/brand/hero-classroom.png',
     buttonText: 'Đăng ký tư vấn miễn phí',
     buttonLink: '#lead-form',
-    button2Text: 'Khám phá chương trình',
+    button2Text: 'Xem chương trình học',
     button2Link: '#programs',
   },
   {
@@ -702,7 +702,7 @@ const demoLeadSources = [
   ['Khác', 1],
 ] as const;
 
-const demoLeadCenters = ['METTA Quận 1', 'METTA Thảo Điền', 'METTA Phú Nhuận'] as const;
+const demoLeadCenters = ['METTA'] as const;
 const demoPendingOptions = [
   pendingReasonOptions[0],
   pendingReasonOptions[6],

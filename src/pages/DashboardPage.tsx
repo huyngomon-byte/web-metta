@@ -38,8 +38,9 @@ import { formatCurrency } from '@/lib/utils';
 import { useCourseOptions } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import { appointmentService } from '@/services/appointmentService';
+import { centerConfigService } from '@/services/centerConfigService';
 import { userService } from '@/services/userService';
-import type { Appointment, Lead } from '@/types/crm';
+import type { Appointment, Lead, LeadCenterConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 /* ── Colors ──────────────────────────────────────────────────────────── */
@@ -178,6 +179,7 @@ export default function DashboardPage() {
   const COURSE_OPTIONS = useCourseOptions();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
 
   // ── Filters ──
   const [preset, setPreset] = useState<Preset>('30d');
@@ -191,6 +193,7 @@ export default function DashboardPage() {
   useEffect(() => { if (preset !== 'custom') { const [f, t] = presetRange(preset); setDateFrom(f); setDateTo(t); } }, [preset]);
   useEffect(() => { appointmentService.getAppointments().then(setAppointments); }, []);
   useEffect(() => { userService.getUsers().then(setUsers).catch(() => setUsers([])); }, []);
+  useEffect(() => { centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([])); }, []);
 
   const today = todayStr();
 
@@ -248,7 +251,10 @@ export default function DashboardPage() {
     return Array.from(all).filter(Boolean);
   }, [canonicalSalesKey, leads, users]);
 
-  const centerOptions = useMemo(() => Array.from(new Set(leads.map((lead) => lead.centerName || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')), [leads]);
+  const centerOptions = useMemo(
+    () => centerConfigs.filter((center) => center.active).map((center) => center.name).filter(Boolean),
+    [centerConfigs],
+  );
 
   /* ── KPI ── */
   const kpi = useMemo(() => {

@@ -32,11 +32,12 @@ import { useAuth } from '@/hooks/useAuth';
 import { useLeads } from '@/hooks/useLeads';
 import { appointmentService } from '@/services/appointmentService';
 import { callCenterService } from '@/services/callCenterService';
+import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
 import { salesTaskService, type ManualTask, type TaskPriority } from '@/services/salesTaskService';
 import { userService } from '@/services/userService';
 import type { CallLog } from '@/types/call';
-import type { Appointment, Lead } from '@/types/crm';
+import type { Appointment, Lead, LeadCenterConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 type TaskType = 'follow_up' | 'appointment' | 'retry_call' | 'quote' | 'manual';
@@ -327,6 +328,7 @@ export default function SalesTasksPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
   const [quickTaskBusy, setQuickTaskBusy] = useState(false);
   const [quickTaskError, setQuickTaskError] = useState('');
@@ -364,6 +366,7 @@ export default function SalesTasksPage() {
 
   useEffect(() => {
     void refresh();
+    centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([]));
     const unsubAppointments = appointmentService.subscribeAppointments(setAppointments, () => {
       void appointmentService.getAppointments().then(setAppointments).catch(() => {});
     });
@@ -394,9 +397,9 @@ export default function SalesTasksPage() {
   }, [defaultTaskAssigneeId, taskAssigneeOptions]);
   const leadOptions = useMemo(() => ({
     sources: Array.from(new Set(leads.map((lead) => lead.source).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
-    centers: Array.from(new Set(leads.map((lead) => lead.centerName || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
+    centers: centerConfigs.filter((center) => center.active).map((center) => center.name).filter(Boolean),
     courses: Array.from(new Set(leads.map((lead) => lead.interestedCourse || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
-  }), [leads]);
+  }), [centerConfigs, leads]);
   const allTasks = useMemo(() => buildTasks(leads, appointments, callLogs, manualTasks), [appointments, callLogs, leads, manualTasks]);
   const filteredTasks = useMemo(() => {
     const keyword = query.trim().toLowerCase();
