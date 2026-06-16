@@ -306,11 +306,25 @@ export default function LeadsPage() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
   const [quickLeadOpen, setQuickLeadOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [showSourceSettings, setShowSourceSettings] = useState(false);
   const [showCenterSettings, setShowCenterSettings] = useState(false);
   const [error, setError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const canAssign = canAssignLead(user);
+  const activeFilterCount = useMemo(() => {
+    const dateRangeActive = Boolean(filters.dateFrom || filters.dateTo);
+    return [
+      filters.search,
+      filters.status,
+      filters.source,
+      filters.centerName,
+      filters.priorityLevel,
+      filters.course,
+      filters.assignedTo,
+    ].filter(Boolean).length + (dateRangeActive ? 1 : 0);
+  }, [filters]);
+  const resetFilters = () => setFilters({ search: '', status: '', source: '', centerName: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
 
   const refreshCallLogs = useCallback(async () => {
     setCallLogs(await callCenterService.getLogs());
@@ -583,7 +597,36 @@ export default function LeadsPage() {
               <Button onClick={addQuickLead}><Plus /> Thêm lead</Button>
             </div>
           </div>}
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2 md:hidden">
+            <div className="min-w-0">
+              <p className="text-xs font-extrabold uppercase text-slate-500">Bộ lọc leads</p>
+              <p className="text-[11px] font-semibold text-slate-400">
+                {activeFilterCount ? `${activeFilterCount} filter đang bật` : 'Thu gọn, chỉ mở khi cần lọc'}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {activeFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-600 shadow-sm"
+                >
+                  Xóa
+                </button>
+              )}
+              <button
+                type="button"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-700 shadow-sm"
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                {filtersOpen ? 'Thu gọn' : 'Mở filter'}
+                <ChevronDown className={`h-4 w-4 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+          </div>
           <Input placeholder="Search học sinh / phụ huynh / SĐT / email" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} />
+          <div className={`${filtersOpen ? 'grid' : 'hidden'} gap-3 md:contents`}>
           <Select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
             <option value="">Tất cả status</option>
             {leadStatuses.map((status) => <option key={status} value={status}>{statusLabel(status)}</option>)}
@@ -614,6 +657,7 @@ export default function LeadsPage() {
             onChange={(dateFrom, dateTo) => setFilters({ ...filters, dateFrom, dateTo })}
             placeholder="Khoảng ngày tạo"
           />
+          </div>
         </CardContent>
       </Card>
 

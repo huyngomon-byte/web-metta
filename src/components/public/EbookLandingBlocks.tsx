@@ -24,8 +24,8 @@ function Icon({ name, className = '' }: { name: string; className?: string }) {
   return <span className={`material-symbols-outlined ${className}`}>{name}</span>;
 }
 
-// Trên mobile/tablet, headline ebook tự xuống dòng trước từ "Cho" để break đẹp:
-// "Sách Tiền Tiểu Học" / "Cho Mầm Non". Desktop (lg+) giữ flow tự nhiên.
+// Headline ebook luôn xuống dòng trước từ "Cho" để giữ cụm "Tiểu Học" cùng dòng:
+// "Sách Tiền Tiểu Học" / "Cho Mầm Non".
 function renderTitleWithMobileBreak(title: string) {
   const match = title.match(/^(.*?)\s+(Cho|cho)\s+(.+)$/);
   if (!match) return title;
@@ -33,7 +33,7 @@ function renderTitleWithMobileBreak(title: string) {
   return (
     <>
       {before}
-      <br className="lg:hidden" />
+      <br />
       <span>{choWord} {after}</span>
     </>
   );
@@ -280,7 +280,7 @@ export function EbookHeroBlock({ section }: { section: PageSection }) {
               ))}
             </div>
           )}
-          <h1 className="font-montserrat text-[28px] font-extrabold leading-[1.15] tracking-tight text-white sm:text-[36px] lg:text-[44px]">
+          <h1 className="font-montserrat text-[28px] font-extrabold leading-[1.15] tracking-tight text-white sm:text-[36px] lg:text-[40px]">
             {renderTitleWithMobileBreak(section.title || 'Tải miễn phí sách tiền tiểu học cho bé mầm non')}
             {extra.titleAccent && (
               <span className="mt-1.5 block text-[22px] leading-[1.2] text-[var(--lp-cta)] [text-wrap:balance] sm:text-[28px] lg:text-[32px]">{extra.titleAccent}</span>
