@@ -13,6 +13,11 @@ type VercelResponse = {
   json: (body: unknown) => void;
 };
 
+type PublicCmsDocument = {
+  id: string;
+  [key: string]: unknown;
+};
+
 const configFields: Record<string, 'configs' | 'rules'> = {
   leadCenterConfigs: 'configs',
   leadSourceConfigs: 'configs',
@@ -29,7 +34,7 @@ function queryValue(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function serializable(data: Record<string, unknown> | undefined, id: string) {
+function serializable(data: Record<string, unknown> | undefined, id: string): PublicCmsDocument {
   return {
     id,
     ...(data || {}),
