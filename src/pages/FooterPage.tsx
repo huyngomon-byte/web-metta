@@ -101,6 +101,13 @@ export default function FooterPage() {
             <Field label="Email"><Input value={current.email} onChange={(e) => update({ email: e.target.value })} /></Field>
             <Field label="Địa chỉ"><Input value={current.address} onChange={(e) => update({ address: e.target.value })} /></Field>
           </div>
+          <Field label="Google Maps URL">
+            <Input
+              value={current.mapUrl || ''}
+              onChange={(e) => update({ mapUrl: e.target.value })}
+              placeholder="https://share.google/w0414JKEjY3GoBG0F"
+            />
+          </Field>
           <div className="grid gap-3 md:grid-cols-3">
             <Field label="Facebook"><Input value={current.socials.facebook || ''} onChange={(e) => updateSocial('facebook', e.target.value)} /></Field>
             <Field label="TikTok"><Input value={current.socials.tiktok || ''} onChange={(e) => updateSocial('tiktok', e.target.value)} /></Field>

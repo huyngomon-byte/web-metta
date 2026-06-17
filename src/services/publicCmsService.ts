@@ -262,6 +262,7 @@ function normalizeSettings(settings: SiteSettings): SiteSettings {
     footerText: normalizeText(normalizedSettings.footerText || seedSettings.footerText),
     headerCtaText: normalizeText(normalizedSettings.headerCtaText || seedSettings.headerCtaText || 'Đăng ký tư vấn'),
     address: normalizeText(normalizedSettings.address),
+    mapUrl: normalizeText(normalizedSettings.mapUrl || seedSettings.mapUrl || ''),
     programs,
     headerLinks: normalizeHeaderLinks(rawHeaderLinks, programs),
     footerColumns: normalizeFooterColumns(rawFooterColumns),

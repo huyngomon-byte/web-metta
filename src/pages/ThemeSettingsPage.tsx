@@ -88,6 +88,28 @@ export default function ThemeSettingsPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle>Thông tin liên hệ</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field label="Hotline">
+            <Input value={current.hotline} onChange={(e) => update({ hotline: e.target.value })} />
+          </Field>
+          <Field label="Email">
+            <Input value={current.email} onChange={(e) => update({ email: e.target.value })} />
+          </Field>
+          <Field label="Địa chỉ">
+            <Input value={current.address} onChange={(e) => update({ address: e.target.value })} />
+          </Field>
+          <Field label="Google Maps URL">
+            <Input
+              value={current.mapUrl || ''}
+              onChange={(e) => update({ mapUrl: e.target.value })}
+              placeholder="https://share.google/w0414JKEjY3GoBG0F"
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
       <div className="sticky bottom-4 z-10 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-lg">
         <Button className="w-fit" onClick={saveSettings} disabled={saving}><Save size={15} /> {saving ? 'Đang lưu...' : 'Lưu settings'}</Button>
         {saved && <span className="text-sm font-semibold text-green-600">Đã lưu. Website public sẽ cập nhật theo Firestore.</span>}

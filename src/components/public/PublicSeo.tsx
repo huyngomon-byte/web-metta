@@ -9,6 +9,7 @@ const DEFAULT_DESCRIPTION = 'Trung tâm Anh ngữ quốc tế METTA Academy – 
 const SITE_URL = 'https://metta.edu.vn';
 const PUBLIC_SITE_URL = 'https://www.metta.edu.vn';
 const LOGO_URL = `${SITE_URL}/logo.png`;
+const DEFAULT_MAP_URL = 'https://share.google/w0414JKEjY3GoBG0F';
 const JSONLD_SCRIPT_ID = 'metta-jsonld';
 
 function isAdminPath(pathname: string) {
@@ -126,7 +127,12 @@ function structuredPageUrl(pathname: string) {
   return `${SITE_URL}${pathname === '/' ? '' : pathname}`;
 }
 
-function buildStructuredData(pathname: string, seo: { title: string; description: string }, organizationDescription = DEFAULT_DESCRIPTION) {
+function buildStructuredData(
+  pathname: string,
+  seo: { title: string; description: string },
+  organizationDescription = DEFAULT_DESCRIPTION,
+  mapUrl = DEFAULT_MAP_URL,
+) {
   const pageUrl = structuredPageUrl(pathname);
   return {
     '@context': 'https://schema.org',
@@ -151,10 +157,10 @@ function buildStructuredData(pathname: string, seo: { title: string; description
             addressCountry: 'VN',
           },
         },
-        hasMap: 'https://share.google/ykBi4cNSOWLJROAGR',
+        hasMap: mapUrl,
         sameAs: [
           'https://www.facebook.com/anhngumetta',
-          'https://share.google/ykBi4cNSOWLJROAGR',
+          mapUrl,
         ],
       },
       {
@@ -316,7 +322,7 @@ export function PublicSeo() {
         const seo = seoForPath(pathname, settings, pages);
         const canonical = canonicalUrl(pathname);
         applyCommonSeo(seo, canonical);
-        upsertStructuredData(buildStructuredData(pathname, seo, settings.seoDescription || DEFAULT_DESCRIPTION));
+        upsertStructuredData(buildStructuredData(pathname, seo, settings.seoDescription || DEFAULT_DESCRIPTION, settings.mapUrl || DEFAULT_MAP_URL));
       })
       .catch(() => {
         if (!active) return;

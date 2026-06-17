@@ -126,7 +126,7 @@ export function PublicFooter() {
           <div className="md:col-span-4 space-y-5">
             <h5 className="font-montserrat font-bold text-base border-l-4 border-cta-orange pl-4">Liên hệ</h5>
             <div className="space-y-3 text-sm text-surface-variant">
-              <FooterContact icon="location_on" text={current.address} />
+              <FooterContact icon="location_on" text={current.address} href={current.mapUrl} />
               <FooterContact icon="call" text={current.hotline} />
               <FooterContact icon="mail" text={current.email} />
             </div>
@@ -141,12 +141,24 @@ export function PublicFooter() {
   );
 }
 
-function FooterContact({ icon, text }: { icon: string; text?: string }) {
+function FooterContact({ icon, text, href }: { icon: string; text?: string; href?: string }) {
   if (!text) return null;
-  return (
-    <div className="flex gap-3 items-start">
+  const content = (
+    <>
       <span className="material-symbols-outlined text-accent-cyan text-[20px] flex-shrink-0">{icon}</span>
       <p>{text}</p>
+    </>
+  );
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer" className="flex gap-3 items-start hover:text-cta-orange transition-colors">
+        {content}
+      </a>
+    );
+  }
+  return (
+    <div className="flex gap-3 items-start">
+      {content}
     </div>
   );
 }

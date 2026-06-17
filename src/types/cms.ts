@@ -87,6 +87,7 @@ export interface SiteSettings {
   hotline: string;
   email: string;
   address: string;
+  mapUrl?: string;
   socials: Record<string, string>;
   footerText: string;
   headerLinks?: Array<{ label: string; href: string; children?: Array<{ label: string; href: string }> }>;
