@@ -56,13 +56,13 @@ async function sendServerEvent(body: Record<string, unknown>) {
 
 async function retryServerEvent(id: string) {
   const token = await auth?.currentUser?.getIdToken().catch(() => '');
-  const response = await fetch('/api/capi-retry-event', {
+  const response = await fetch('/api/capi-send-event', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ id }),
+    body: JSON.stringify({ action: 'retry', id }),
   });
   const payload = await response.json().catch(() => ({})) as { error?: string };
   if (!response.ok) throw new Error(payload.error || 'Retry CAPI event failed.');

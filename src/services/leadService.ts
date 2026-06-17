@@ -297,10 +297,10 @@ async function sendLeadStatusCapiEvent(change: LeadStatusCapiChange) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), CAPI_STATUS_TIMEOUT_MS);
   try {
-    const response = await fetch('/api/capi-lead-status-event', {
+    const response = await fetch('/api/capi-send-event', {
       method: 'POST',
       headers,
-      body: JSON.stringify(change),
+      body: JSON.stringify({ action: 'lead-status', ...change }),
       signal: controller.signal,
     });
     if (!response.ok) {
