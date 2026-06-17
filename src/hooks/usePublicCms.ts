@@ -1,10 +1,30 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { COURSE_OPTIONS } from '@/lib/constants';
 import { publicCmsService } from '@/services/publicCmsService';
 
 export function usePublicThemeSettings() {
-  const settings = useMemo(() => publicCmsService.getSettingsSync(), []);
-  return { settings, setSettings: undefined, loading: false };
+  const fallbackSettings = useMemo(() => publicCmsService.getSettingsSync(), []);
+  const [settings, setSettings] = useState(fallbackSettings);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    publicCmsService.getSettings()
+      .then((nextSettings) => {
+        if (mounted) setSettings(nextSettings || fallbackSettings);
+      })
+      .catch(() => {
+        if (mounted) setSettings(fallbackSettings);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [fallbackSettings]);
+
+  return { settings, setSettings: undefined, loading };
 }
 
 export function usePublicCourseOptions(): string[] {

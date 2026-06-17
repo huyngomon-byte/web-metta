@@ -2,6 +2,12 @@ import { pages as seedPages, sections as seedSections, siteSettings as seedSetti
 import { PUBLIC_PROGRAMS } from '@/lib/constants';
 import type { CmsPage, PageSection, SiteSettings } from '@/types/cms';
 
+type PublicCmsSnapshot = {
+  pages: CmsPage[];
+  sections: PageSection[];
+  settings: SiteSettings;
+};
+
 const CP1252_EXTENSIONS: Record<number, number> = {
   0x20ac: 0x80,
   0x201a: 0x82,
@@ -44,6 +50,20 @@ const METTA_PLUS_SPLIT_TYPES = new Set([
   'Metta+ Reasons',
   'Metta+ Form',
 ]);
+
+const CANONICAL_HOME_BENEFITS = {
+  title: 'Tại sao ba mẹ chọn METTA Academy?',
+  subtitle: 'Hơn 10 năm kiến tạo tương lai thế hệ trẻ',
+  description: '',
+  extraData: JSON.stringify([
+    { icon: 'school', color: '#F45A0A', title: 'Giáo trình chuẩn quốc tế Oxford & Cambridge' },
+    { icon: 'verified', color: '#16A34A', title: '100% Giáo viên bản ngữ & CELTA/TESOL' },
+    { icon: 'groups', color: '#8B5CF6', title: 'Lớp học sĩ số nhỏ tối đa 12-15 học viên' },
+    { icon: 'psychology', color: '#F59E0B', title: 'Phương pháp tư duy phản biện' },
+    { icon: 'workspace_premium', color: '#16A9D8', title: 'Cơ sở hiện đại 5 sao tiêu chuẩn quốc tế' },
+    { icon: 'monitoring', color: '#EC4899', title: 'Báo cáo tiến độ định kỳ cho phụ huynh' },
+  ]),
+};
 
 const HEADER_LABELS: Record<string, string> = {
   '/#about': 'Giới thiệu',
@@ -137,6 +157,37 @@ function normalizeCmsValue<T>(value: T): T {
   return value;
 }
 
+function parseJsonArray(value?: string) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeHomepageBenefitsSection(section: PageSection): PageSection {
+  const isHomeBenefits = section.pageId === 'page-home' && section.type === 'Benefits';
+  if (!isHomeBenefits) return section;
+
+  const items = parseJsonArray(section.extraData);
+  const raw = JSON.stringify(section);
+  const hasLegacyDescriptions = items.some((item) => typeof item?.desc === 'string' && item.desc.trim());
+  const hasBrokenEncoding = /�|ï¿½|Ä’/.test(raw);
+
+  if (!hasLegacyDescriptions && !hasBrokenEncoding) return section;
+
+  return {
+    ...section,
+    ...CANONICAL_HOME_BENEFITS,
+  };
+}
+
+function normalizeSections(items: PageSection[]) {
+  return sortSections(normalizeCmsValue(items).map(normalizeHomepageBenefitsSection));
+}
+
 function sortSections(items: PageSection[]) {
   return [...items].sort((a, b) => a.order - b.order);
 }
@@ -217,7 +268,14 @@ function normalizeSettings(settings: SiteSettings): SiteSettings {
 
 const PUBLIC_SETTINGS = normalizeSettings(clone(seedSettings));
 const PUBLIC_PAGES = normalizeCmsValue(clone(seedPages));
-const PUBLIC_SECTIONS = normalizeCmsValue(clone(seedSections));
+const PUBLIC_SECTIONS = normalizeSections(clone(seedSections));
+const LOCAL_SNAPSHOT: PublicCmsSnapshot = {
+  pages: PUBLIC_PAGES,
+  sections: PUBLIC_SECTIONS,
+  settings: PUBLIC_SETTINGS,
+};
+
+let remoteSnapshotPromise: Promise<PublicCmsSnapshot | null> | null = null;
 
 function hasUsableHomepageSections(items: PageSection[]) {
   const visibleTypes = new Set(items.filter((section) => section.visible).map((section) => section.type));
@@ -232,8 +290,8 @@ function hasMettaPlusLanding(items: PageSection[]) {
   return items.some((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
 }
 
-function fallbackSectionsForPage(pageId: string) {
-  return sortSections(PUBLIC_SECTIONS.filter((section) => section.pageId === pageId));
+function fallbackSectionsForPage(pageId: string, sections = PUBLIC_SECTIONS) {
+  return sortSections(sections.filter((section) => section.pageId === pageId));
 }
 
 function ensureFacilitiesSection(items: PageSection[]) {
@@ -243,20 +301,55 @@ function ensureFacilitiesSection(items: PageSection[]) {
   return sortSections([...items, seed]);
 }
 
-function sectionsForPage(pageId: string) {
-  const local = fallbackSectionsForPage(pageId);
+function sectionsForPage(pageId: string, sections = PUBLIC_SECTIONS) {
+  const local = fallbackSectionsForPage(pageId, sections);
   if (pageId === 'page-home' && !hasUsableHomepageSections(local)) return fallbackSectionsForPage(pageId);
   if (pageId === 'page-phonics' && !hasEbookLanding(local)) return fallbackSectionsForPage(pageId);
   if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(local)) return fallbackSectionsForPage(pageId);
   return pageId === 'page-home' ? ensureFacilitiesSection(local) : local;
 }
 
+function normalizeRemoteSnapshot(input: Partial<PublicCmsSnapshot>): PublicCmsSnapshot {
+  const pages = normalizeCmsValue(clone(input.pages || []));
+  const sections = normalizeSections(clone(input.sections || []));
+  const settings = normalizeSettings(clone(input.settings || seedSettings));
+
+  return {
+    pages: pages.length ? pages : PUBLIC_PAGES,
+    sections: sections.length ? sections : PUBLIC_SECTIONS,
+    settings,
+  };
+}
+
+async function loadRemoteSnapshot() {
+  if (typeof window === 'undefined') return null;
+  if (!remoteSnapshotPromise) {
+    remoteSnapshotPromise = fetch('/api/public-cms', {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return normalizeRemoteSnapshot(await response.json());
+      })
+      .catch((error) => {
+        console.warn('[PublicCMS] Cannot load remote CMS snapshot, using local fallback:', error);
+        return null;
+      });
+  }
+  return remoteSnapshotPromise;
+}
+
+async function getSnapshot() {
+  return (await loadRemoteSnapshot()) || LOCAL_SNAPSHOT;
+}
+
 export const publicCmsService = {
-  getPages: async () => clone(PUBLIC_PAGES),
-  getPage: async (id: string) => clone(PUBLIC_PAGES.find((page) => page.id === id)),
-  getPageBySlug: async (slug: string) => clone(PUBLIC_PAGES.find((page) => page.slug === slug && page.status === 'published')),
-  getVisibleSections: async (pageId: string) => clone(sectionsForPage(pageId).filter((section) => section.visible)),
+  getPages: async () => clone((await getSnapshot()).pages),
+  getPage: async (id: string) => clone((await getSnapshot()).pages.find((page) => page.id === id)),
+  getPageBySlug: async (slug: string) => clone((await getSnapshot()).pages.find((page) => page.slug === slug && page.status === 'published')),
+  getVisibleSections: async (pageId: string) => clone(sectionsForPage(pageId, (await getSnapshot()).sections).filter((section) => section.visible)),
   getSeedVisibleSections: (pageId: string) => clone(sectionsForPage(pageId).filter((section) => section.visible)),
-  getSettings: async () => clone(PUBLIC_SETTINGS),
+  getSettings: async () => clone((await getSnapshot()).settings),
   getSettingsSync: () => clone(PUBLIC_SETTINGS),
 };
