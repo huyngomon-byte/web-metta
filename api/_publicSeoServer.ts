@@ -2,16 +2,17 @@ import { adminDb } from './_firebaseAdmin.js';
 
 type HeaderValue = string | string[] | undefined;
 
-type VercelRequest = {
+export type PublicSeoRequest = {
   method?: string;
   headers: Record<string, HeaderValue>;
   query?: Record<string, HeaderValue>;
 };
 
-type VercelResponse = {
-  setHeader: (name: string, value: string) => void;
-  status: (code: number) => VercelResponse;
-  send: (body: string) => void;
+export type PublicSeoResponse = {
+  setHeader?: (name: string, value: string) => void;
+  status: (code: number) => PublicSeoResponse;
+  send?: (body: string) => void;
+  json: (body: unknown) => void;
 };
 
 type BlogPost = {
@@ -38,11 +39,23 @@ type SeedNewsItem = {
 };
 
 const ORGANIZATION_URL = 'https://metta.edu.vn';
+const SITE_URL = 'https://www.metta.edu.vn';
 const LOGO_URL = `${ORGANIZATION_URL}/logo.png`;
 const DEFAULT_TITLE = 'METTA ACADEMY – Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai';
 const DEFAULT_DESCRIPTION = 'Trung tâm Anh ngữ quốc tế METTA Academy – chương trình tiếng Anh hiện đại giúp trẻ phát triển ngôn ngữ, tư duy phản biện và sự tự tin.';
 
-function firstHeader(value: HeaderValue) {
+const STATIC_ROUTES = [
+  { path: '/', priority: '1.0', changefreq: 'weekly' },
+  { path: '/programs/metta-kiddies', priority: '0.9', changefreq: 'monthly' },
+  { path: '/programs/metta-on-phonics', priority: '0.9', changefreq: 'monthly' },
+  { path: '/programs/metta-young-learner', priority: '0.9', changefreq: 'monthly' },
+  { path: '/programs/ielts-junior', priority: '0.9', changefreq: 'monthly' },
+  { path: '/tin-tuc', priority: '0.8', changefreq: 'weekly' },
+  { path: '/contact', priority: '0.7', changefreq: 'monthly' },
+  { path: '/p/landing-page-phonics', priority: '0.7', changefreq: 'monthly' },
+];
+
+function firstValue(value: HeaderValue) {
   return Array.isArray(value) ? value[0] : value;
 }
 
@@ -53,6 +66,10 @@ function escapeHtml(value: string) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function escapeXml(value: string) {
+  return escapeHtml(value).replace(/&#39;/g, '&apos;');
 }
 
 function slugify(text: string) {
@@ -66,10 +83,16 @@ function slugify(text: string) {
 }
 
 function dateFromVN(value?: string) {
-  if (!value) return new Date().toISOString();
+  if (!value) return '';
   const [day, month, year] = value.split('/').map((part) => Number(part));
-  if (!day || !month || !year) return new Date().toISOString();
+  if (!day || !month || !year) return '';
   return new Date(Date.UTC(year, month - 1, day)).toISOString();
+}
+
+function dateOnly(value?: string) {
+  const timestamp = Date.parse(String(value || ''));
+  if (!Number.isFinite(timestamp)) return new Date().toISOString().slice(0, 10);
+  return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 function parseNewsItems(extraData?: string): SeedNewsItem[] {
@@ -82,9 +105,15 @@ function parseNewsItems(extraData?: string): SeedNewsItem[] {
   }
 }
 
-function canonicalOrigin(req: VercelRequest) {
-  const host = firstHeader(req.headers['x-forwarded-host']) || firstHeader(req.headers.host) || 'www.metta.edu.vn';
-  const proto = firstHeader(req.headers['x-forwarded-proto']) || 'https';
+function sendText(res: PublicSeoResponse, status: number, body: string) {
+  const response = res.status(status);
+  if (response.send) return response.send(body);
+  return response.json(body);
+}
+
+function canonicalOrigin(req: PublicSeoRequest) {
+  const host = firstValue(req.headers['x-forwarded-host']) || firstValue(req.headers.host) || 'www.metta.edu.vn';
+  const proto = firstValue(req.headers['x-forwarded-proto']) || 'https';
   return `${proto}://${host}`;
 }
 
@@ -129,15 +158,19 @@ async function readSeedNewsPosts(): Promise<BlogPost[]> {
   })).filter((post) => post.slug);
 }
 
-async function readPost(slug: string): Promise<BlogPost | null> {
+async function readPublishedBlogPosts(): Promise<BlogPost[]> {
   const snap = await adminDb().collection('blogPosts').get();
-  const remote = snap.docs
+  const posts = snap.docs
     .map((doc) => ({ id: doc.id, ...doc.data() } as BlogPost))
-    .find((post) => post.status === 'published' && post.slug === slug);
-  if (remote) return remote;
+    .filter((post) => post.status === 'published' && post.slug)
+    .sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
 
-  const seedPosts = await readSeedNewsPosts();
-  return seedPosts.find((post) => post.slug === slug) || null;
+  return posts.length ? posts : readSeedNewsPosts();
+}
+
+async function readPost(slug: string): Promise<BlogPost | null> {
+  const posts = await readPublishedBlogPosts();
+  return posts.find((post) => post.slug === slug) || null;
 }
 
 async function readIndexHtml(origin: string) {
@@ -222,13 +255,60 @@ function injectBlogSeo(html: string, post: BlogPost, canonical: string, image: s
     .replace('</head>', `    ${extraHead}\n  </head>`);
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+function renderUrl(path: string, lastmod: string, changefreq: string, priority: string) {
+  return [
+    '  <url>',
+    `    <loc>${escapeXml(`${SITE_URL}${path === '/' ? '/' : path}`)}</loc>`,
+    `    <lastmod>${escapeXml(lastmod)}</lastmod>`,
+    `    <changefreq>${escapeXml(changefreq)}</changefreq>`,
+    `    <priority>${escapeXml(priority)}</priority>`,
+    '  </url>',
+  ].join('\n');
+}
+
+export async function sendSitemap(req: PublicSeoRequest, res: PublicSeoResponse) {
   if (req.method && req.method !== 'GET') {
-    res.setHeader('Allow', 'GET');
-    return res.status(405).send('Method not allowed');
+    res.setHeader?.('Allow', 'GET');
+    return sendText(res, 405, 'Method not allowed');
   }
 
-  const slug = String(firstHeader(req.query?.slug) || '').trim();
+  const today = new Date().toISOString().slice(0, 10);
+  let blogPosts: BlogPost[] = [];
+  try {
+    blogPosts = await readPublishedBlogPosts();
+  } catch (error) {
+    console.warn('[Sitemap] Cannot read blog posts:', error);
+  }
+
+  const staticUrls = STATIC_ROUTES.map((route) => renderUrl(route.path, today, route.changefreq, route.priority));
+  const blogUrls = blogPosts.map((post) => renderUrl(
+    `/tin-tuc/${post.slug}`,
+    dateOnly(post.updatedAt || post.publishedAt),
+    'monthly',
+    '0.7',
+  ));
+
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...staticUrls,
+    ...blogUrls,
+    '</urlset>',
+    '',
+  ].join('\n');
+
+  res.setHeader?.('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader?.('Cache-Control', 's-maxage=300, stale-while-revalidate=3600');
+  return sendText(res, 200, xml);
+}
+
+export async function sendBlogPage(req: PublicSeoRequest, res: PublicSeoResponse) {
+  if (req.method && req.method !== 'GET') {
+    res.setHeader?.('Allow', 'GET');
+    return sendText(res, 405, 'Method not allowed');
+  }
+
+  const slug = String(firstValue(req.query?.slug) || '').trim();
   const origin = canonicalOrigin(req);
   const indexHtml = await readIndexHtml(origin);
   const post = slug ? await readPost(slug).catch((error) => {
@@ -236,16 +316,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return null;
   }) : null;
 
-  if (!post) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(200).send(indexHtml);
-  }
+  res.setHeader?.('Content-Type', 'text/html; charset=utf-8');
+  if (!post) return sendText(res, 200, indexHtml);
 
   const canonical = `${origin}/tin-tuc/${encodeURIComponent(String(post.slug || slug))}`;
   const image = absoluteUrl(post.coverImage, origin);
   const html = injectBlogSeo(indexHtml, post, canonical, image);
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=3600');
-  return res.status(200).send(html);
+  res.setHeader?.('Cache-Control', 's-maxage=300, stale-while-revalidate=3600');
+  return sendText(res, 200, html);
 }

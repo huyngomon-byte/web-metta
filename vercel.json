@@ -28,11 +28,11 @@
     },
     {
       "source": "/sitemap.xml",
-      "destination": "/api/sitemap"
+      "destination": "/api/app-config?id=sitemap"
     },
     {
       "source": "/tin-tuc/:slug",
-      "destination": "/api/blog-page?slug=:slug"
+      "destination": "/api/app-config?id=blogPage&slug=:slug"
     },
     {
       "source": "/login",

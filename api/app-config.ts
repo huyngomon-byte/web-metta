@@ -1,4 +1,5 @@
 import { adminAuth, adminDb } from './_firebaseAdmin.js';
+import { sendBlogPage, sendSitemap } from './_publicSeoServer.js';
 
 type VercelRequest = {
   method?: string;
@@ -10,6 +11,7 @@ type VercelRequest = {
 type VercelResponse = {
   setHeader?: (name: string, value: string) => void;
   status: (code: number) => VercelResponse;
+  send?: (body: string) => void;
   json: (body: unknown) => void;
 };
 
@@ -102,6 +104,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET' && id === 'publicCms') {
       res.setHeader?.('Cache-Control', 'no-store, max-age=0, must-revalidate');
       return res.status(200).json(await readPublicCmsSnapshot());
+    }
+
+    if (req.method === 'GET' && id === 'sitemap') {
+      return sendSitemap(req as Parameters<typeof sendSitemap>[0], res);
+    }
+
+    if (req.method === 'GET' && id === 'blogPage') {
+      return sendBlogPage(req as Parameters<typeof sendBlogPage>[0], res);
     }
 
     const field = configFields[id];
