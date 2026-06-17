@@ -14,8 +14,9 @@ import {
   type QueryDocumentSnapshot,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { STAGE_DEMO_LEAD_PREFIX } from '@/data/stageDemoLeads';
+import { captureLeadTracking, type PublicLeadTracking } from '@/lib/capiTracking';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
 import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
 import { financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
@@ -41,6 +42,7 @@ const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REALTIME_LEADS_LIMIT = 1000;
 const DEFAULT_LEADS_PAGE_SIZE = 300;
+const CAPI_STATUS_TIMEOUT_MS = 8000;
 
 export type LeadPageCursor = {
   id: string;
@@ -59,6 +61,13 @@ type PublicLeadSubmitInput = Partial<Lead> & {
   formId?: string;
   pageSlug?: string;
   sourceUrl?: string;
+  tracking?: PublicLeadTracking;
+};
+
+type LeadStatusCapiChange = {
+  leadId: string;
+  previousStatus: string;
+  nextStatus: string;
 };
 
 type LeadSubscribeMeta = {
@@ -273,6 +282,36 @@ function stripUndefined<T>(value: T): T {
     ) as T;
   }
   return value;
+}
+
+async function authJsonHeaders() {
+  const token = await auth?.currentUser?.getIdToken().catch(() => '');
+  return token ? { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } : null;
+}
+
+async function sendLeadStatusCapiEvent(change: LeadStatusCapiChange) {
+  if (!USE_FIREBASE || !change.leadId || !change.nextStatus || change.previousStatus === change.nextStatus) return;
+  const headers = await authJsonHeaders();
+  if (!headers) return;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CAPI_STATUS_TIMEOUT_MS);
+  try {
+    const response = await fetch('/api/capi-lead-status-event', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(change),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({})) as { error?: string };
+      console.warn('[CAPI] Status event failed:', payload.error || response.statusText);
+    }
+  } catch (error) {
+    console.warn('[CAPI] Status event failed:', error);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function persistLeads() {
@@ -719,6 +758,7 @@ export const leadService = {
     let assignmentNotification: { salesId: string; assignedByName?: string; auto?: boolean } | null = null;
     const activityQueue: Partial<LeadActivity>[] = [];
     let shouldSyncLms = false;
+    let capiStatusChange: LeadStatusCapiChange | null = null;
 
     if (lead.id) {
       const prev = store.leads.find((item) => item.id === lead.id);
@@ -731,6 +771,7 @@ export const leadService = {
         lead.assignedTo !== prev.assignedTo,
       );
       if (prev && statusChanged) {
+        capiStatusChange = { leadId: prev.id, previousStatus: prev.status, nextStatus: lead.status! };
         activityQueue.push({
           leadId: prev.id,
           type: 'status_change',
@@ -898,6 +939,7 @@ export const leadService = {
     }
     const saved = store.leads.find((item) => item.id === lead.id) || store.leads[0];
     await writeFirestoreLead(saved);
+    if (capiStatusChange) await sendLeadStatusCapiEvent(capiStatusChange);
     persistLeads();
     if (assignmentNotification) {
       notifyLeadAssignment(saved, assignmentNotification.salesId, assignmentNotification.assignedByName, assignmentNotification.auto);
@@ -963,6 +1005,7 @@ export const leadService = {
         formId,
         sourceUrl: lead.sourceUrl || window.location.href,
         pageSlug: lead.pageSlug || window.location.pathname.replace(/^\/+/, ''),
+        tracking: { ...captureLeadTracking(), ...lead.tracking },
       }),
     });
     const payload = await response.json().catch(() => ({})) as { leadId?: string; error?: string };

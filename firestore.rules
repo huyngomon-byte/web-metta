@@ -249,6 +249,10 @@ service cloud.firestore {
       allow read, write: if canManageMarketing();
     }
 
+    match /capiSignalLedger/{id} {
+      allow read, write: if canManageMarketing();
+    }
+
     match /activityLogs/{id} {
       allow read, create: if isAdmin() || isManager();
       allow update, delete: if isAdmin();

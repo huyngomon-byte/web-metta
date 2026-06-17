@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { adminAppCheck, adminDb } from './_firebaseAdmin.js';
+import { sendLeadCapiSignal } from './_metaCapi.js';
 import { notifyLeadAssigned, notifyLeadManagers } from './_notifications.js';
 
 const COURSE_OPTIONS = [
@@ -151,6 +152,27 @@ function clampPriority(value: unknown) {
   if (parsed >= 3) return 3;
   if (parsed >= 2) return 2;
   return 1;
+}
+
+function cleanOptional(value: unknown) {
+  const text = String(value || '').trim();
+  return text || undefined;
+}
+
+function trackingFromLead(lead: Record<string, any>, sourceUrl: string, req: VercelRequest, now: string) {
+  const input = lead.tracking && typeof lead.tracking === 'object' ? lead.tracking : {};
+  return {
+    sourceUrl,
+    fbp: cleanOptional(input.fbp),
+    fbc: cleanOptional(input.fbc),
+    fbclid: cleanOptional(input.fbclid),
+    utmSource: cleanOptional(input.utmSource),
+    utmCampaign: cleanOptional(input.utmCampaign),
+    utmContent: cleanOptional(input.utmContent),
+    utmTerm: cleanOptional(input.utmTerm),
+    userAgent: cleanOptional(input.userAgent) || firstHeaderValue(req.headers['user-agent']) || '',
+    capturedAt: cleanOptional(input.capturedAt) || now,
+  };
 }
 
 function activeSales(users: AdminUser[]) {
@@ -338,6 +360,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ]);
   const assignedTo = autoAssignedSales?.salesId || '';
   const assignedToName = autoAssignedSales?.salesName || '';
+  const tracking = trackingFromLead(lead, sourceUrl, req, now);
 
   const payload = {
     id: leadRef.id,
@@ -386,6 +409,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     createdBy: 'public_landing_page',
     pageSlug: lead.pageSlug || '',
     formId: lead.formId || 'public-lead-form',
+    tracking,
     createdAt: now,
     updatedAt: now,
     stageHistory: [{ status: 'Lead mới', enteredAt: now }],
@@ -393,6 +417,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   await leadRef.set(payload);
+
+  const capiResult = await sendLeadCapiSignal({
+    db,
+    lead: payload,
+    eventName: 'Lead',
+    statusKey: 'lead-moi',
+    source: 'server',
+    request: req,
+    formId: payload.formId,
+  }).catch((error) => {
+    console.warn('[PublicLead] CAPI Lead event failed:', error);
+    return null;
+  });
 
   if (assignedTo) {
     await notifyLeadAssigned(db, {
@@ -434,29 +471,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     updatedAt: now,
   }, { merge: true });
 
-  const capiRef = db.collection('capiEvents').doc();
-  await capiRef.set({
-    id: capiRef.id,
-    eventName: 'Lead',
-    eventId,
-    formId: payload.formId,
-    leadId: leadRef.id,
-    sourceUrl,
-    status: 'pending',
-    responseMessage: 'Lead created. CAPI can be sent by /api/capi-send-event.',
-    payloadPreview: {
-      event_name: 'Lead',
-      course: payload.interestedCourse,
-      source: payload.source,
-      lead_status: payload.status,
-    },
-    createdAt: now,
-  });
-
   return res.status(200).json({
     ok: true,
     leadId: leadRef.id,
-    eventId,
-    capi: { triggered: false, eventName: 'Lead', dedupEventId: eventId, logId: capiRef.id },
+    eventId: capiResult?.eventId || eventId,
+    capi: {
+      triggered: Boolean(capiResult?.sent),
+      eventName: 'Lead',
+      dedupEventId: capiResult?.eventId || eventId,
+      logId: capiResult?.logId || '',
+      status: capiResult?.status || 'failed',
+    },
   });
 }

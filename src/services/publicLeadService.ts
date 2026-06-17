@@ -1,4 +1,5 @@
 import type { Lead } from '@/types/crm';
+import { captureLeadTracking, type PublicLeadTracking } from '@/lib/capiTracking';
 
 type PublicLeadSubmitInput = Partial<Lead> & {
   company?: string;
@@ -6,6 +7,7 @@ type PublicLeadSubmitInput = Partial<Lead> & {
   formId?: string;
   pageSlug?: string;
   sourceUrl?: string;
+  tracking?: PublicLeadTracking;
 };
 
 export const publicLeadService = {
@@ -27,6 +29,7 @@ export const publicLeadService = {
         formId,
         sourceUrl: lead.sourceUrl || window.location.href,
         pageSlug: lead.pageSlug || window.location.pathname.replace(/^\/+/, ''),
+        tracking: { ...captureLeadTracking(), ...lead.tracking },
       }),
     });
     const payload = await response.json().catch(() => ({})) as { leadId?: string; error?: string };

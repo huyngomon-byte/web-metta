@@ -1,6 +1,6 @@
 import { ApiError, requireAnyRole, requireApiUser } from './_apiAuth.js';
 import { adminDb } from './_firebaseAdmin.js';
-import { sendManualCapiEvent } from './_metaCapi.js';
+import { retryCapiLog } from './_metaCapi.js';
 
 type VercelRequest = {
   method?: string;
@@ -20,11 +20,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = adminDb();
     const user = await requireApiUser(db, req);
     requireAnyRole(user, ['admin', 'manager', 'ads']);
-    const result = await sendManualCapiEvent(db, req, req.body || {});
-    return res.status(result.ok || result.queued ? 200 : 400).json(result);
+    const logId = String(req.body?.id || req.body?.logId || '');
+    if (!logId) return res.status(400).json({ error: 'Missing event log id.' });
+    const result = await retryCapiLog(db, req, logId);
+    return res.status(200).json(result);
   } catch (error) {
     const status = error instanceof ApiError ? error.status : 500;
-    const message = error instanceof Error ? error.message : 'CAPI server event failed.';
+    const message = error instanceof Error ? error.message : 'Retry CAPI event failed.';
     return res.status(status).json({ error: message });
   }
 }

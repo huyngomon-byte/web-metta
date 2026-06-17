@@ -7,7 +7,7 @@ import {
   query,
   setDoc,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { delay, store } from '@/services/store';
 import type { CapiEventLog, CapiMapping, CapiSettings } from '@/types/capi';
 
@@ -40,13 +40,32 @@ async function readEvents() {
 }
 
 async function sendServerEvent(body: Record<string, unknown>) {
+  const token = await auth?.currentUser?.getIdToken().catch(() => '');
   const response = await fetch('/api/capi-send-event', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => ({})) as { error?: string };
   if (!response.ok) throw new Error(payload.error || 'CAPI server event failed.');
+  return payload;
+}
+
+async function retryServerEvent(id: string) {
+  const token = await auth?.currentUser?.getIdToken().catch(() => '');
+  const response = await fetch('/api/capi-retry-event', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ id }),
+  });
+  const payload = await response.json().catch(() => ({})) as { error?: string };
+  if (!response.ok) throw new Error(payload.error || 'Retry CAPI event failed.');
   return payload;
 }
 
@@ -120,13 +139,7 @@ export const capiService = {
   retryEvent: async (id: string) => {
     const event = store.capiEvents.find((item) => item.id === id);
     if (!event) throw new Error('Event not found.');
-    await sendServerEvent({
-      event_name: event.eventName,
-      event_source_url: event.sourceUrl || window.location.origin,
-      formId: event.formId,
-      leadId: event.leadId,
-      custom_data: event.payloadPreview?.custom_data || {},
-    });
+    await retryServerEvent(id);
     const remote = await readEvents();
     if (remote) store.capiEvents = remote;
     return delay(store.capiEvents);

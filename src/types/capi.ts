@@ -27,12 +27,16 @@ export interface CapiEventLog {
   id: string;
   eventName: string;
   eventId: string;
-  source: 'browser' | 'server' | 'test';
+  source: 'browser' | 'server' | 'test' | 'retry';
   sourceUrl: string;
   leadId?: string;
   formId?: string;
   status: 'success' | 'failed' | 'pending';
   responseMessage: string;
+  ledgerId?: string;
+  attempts?: number;
+  httpStatus?: number;
   createdAt: string;
+  updatedAt?: string;
   payloadPreview: Record<string, unknown>;
 }
