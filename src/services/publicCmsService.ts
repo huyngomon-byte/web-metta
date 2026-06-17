@@ -324,7 +324,7 @@ function normalizeRemoteSnapshot(input: Partial<PublicCmsSnapshot>): PublicCmsSn
 async function loadRemoteSnapshot() {
   if (typeof window === 'undefined') return null;
   if (!remoteSnapshotPromise) {
-    remoteSnapshotPromise = fetch('/api/public-cms', {
+    remoteSnapshotPromise = fetch('/api/app-config?id=publicCms', {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
     })
