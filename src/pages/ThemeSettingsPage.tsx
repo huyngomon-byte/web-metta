@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { siteSettings as seedSettings } from '@/data/seed';
 import { cmsService } from '@/services/cmsService';
 import { useThemeSettings } from '@/hooks/useCms';
@@ -58,6 +59,32 @@ export default function ThemeSettingsPage() {
           <Field label="Primary color"><Input type="color" value={current.primaryColor} onChange={(e) => update({ primaryColor: e.target.value })} /></Field>
           <Field label="Secondary color"><Input type="color" value={current.secondaryColor} onChange={(e) => update({ secondaryColor: e.target.value })} /></Field>
           <Field label="Accent color"><Input type="color" value={current.accentColor} onChange={(e) => update({ accentColor: e.target.value })} /></Field>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>SEO mặc định</CardTitle></CardHeader>
+        <CardContent className="grid gap-4">
+          <Field label="SEO title">
+            <Input
+              value={current.seoTitle || ''}
+              maxLength={90}
+              onChange={(e) => update({ seoTitle: e.target.value })}
+              placeholder="METTA ACADEMY – Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai"
+            />
+          </Field>
+          <Field label="SEO description">
+            <Textarea
+              value={current.seoDescription || ''}
+              maxLength={180}
+              onChange={(e) => update({ seoDescription: e.target.value })}
+              placeholder="Mô tả ngắn hiển thị trên Google khi trang không có meta riêng."
+              className="min-h-24"
+            />
+          </Field>
+          <p className="text-sm leading-6 text-slate-500">
+            Áp dụng cho trang chủ và các trang public chưa có meta riêng. Google có thể cần thời gian crawl lại trước khi kết quả tìm kiếm thay đổi.
+          </p>
         </CardContent>
       </Card>
 

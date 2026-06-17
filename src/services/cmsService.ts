@@ -276,6 +276,8 @@ function normalizeCourseSettings(settings: SiteSettings): SiteSettings {
   return {
     ...normalizedSettings,
     brandName: normalizeText(normalizedSettings.brandName || seedSettings.brandName),
+    seoTitle: normalizeText(normalizedSettings.seoTitle || seedSettings.seoTitle || seedSettings.brandName),
+    seoDescription: normalizeText(normalizedSettings.seoDescription || seedSettings.seoDescription || ''),
     footerText: normalizeText(normalizedSettings.footerText || seedSettings.footerText),
     headerCtaText: normalizeText(normalizedSettings.headerCtaText || seedSettings.headerCtaText || 'Đăng ký tư vấn'),
     address: normalizeText(normalizedSettings.address),

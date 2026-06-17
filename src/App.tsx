@@ -2,6 +2,7 @@ import { Component, Suspense, lazy, useEffect, type ErrorInfo, type ReactNode } 
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import PublicLayout from '@/pages/public/PublicLayout';
 import PublicHomePage from '@/pages/public/PublicHomePage';
+import { PublicSeo } from '@/components/public/PublicSeo';
 
 const CHUNK_RELOAD_KEY = 'metta_chunk_reload_started_at';
 const CHUNK_RELOAD_COOLDOWN_MS = 10000;
@@ -119,6 +120,7 @@ export default function App() {
   const location = useLocation();
   return (
     <>
+      <PublicSeo />
       <ScrollToTop />
       <RouteErrorBoundary key={location.pathname}>
         <Suspense fallback={<PageFallback />}>

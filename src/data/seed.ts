@@ -249,6 +249,8 @@ export const siteSettings: SiteSettings = {
   brandName: 'METTA Academy',
   logoUrl: '/brand/logo-tr%E1%BA%AFng.png?v=20260612-1555',
   faviconUrl: '/favicon.svg',
+  seoTitle: 'METTA ACADEMY – Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
+  seoDescription: 'Trung tâm Anh ngữ quốc tế METTA Academy – chương trình tiếng Anh hiện đại giúp trẻ phát triển ngôn ngữ, tư duy phản biện và sự tự tin.',
   primaryColor: '#003B7A',
   secondaryColor: '#1267AE',
   accentColor: '#F45A0A',

@@ -78,6 +78,8 @@ export interface SiteSettings {
   brandName: string;
   logoUrl: string;
   faviconUrl: string;
+  seoTitle?: string;
+  seoDescription?: string;
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
