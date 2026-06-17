@@ -5,6 +5,8 @@ import type { CmsPage, SiteSettings } from '@/types/cms';
 
 const DEFAULT_TITLE = 'METTA ACADEMY – Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai';
 const DEFAULT_DESCRIPTION = 'Trung tâm Anh ngữ quốc tế METTA Academy – chương trình tiếng Anh hiện đại giúp trẻ phát triển ngôn ngữ, tư duy phản biện và sự tự tin.';
+const SITE_URL = 'https://metta.edu.vn';
+const JSONLD_SCRIPT_ID = 'metta-jsonld';
 
 function isAdminPath(pathname: string) {
   return pathname === '/login'
@@ -83,12 +85,86 @@ function upsertCanonical(url: string) {
   element.setAttribute('href', url);
 }
 
+function structuredPageUrl(pathname: string) {
+  return `${SITE_URL}${pathname === '/' ? '' : pathname}`;
+}
+
+function buildStructuredData(pathname: string, seo: { title: string; description: string }, organizationDescription = DEFAULT_DESCRIPTION) {
+  const pageUrl = structuredPageUrl(pathname);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'EducationalOrganization',
+        '@id': `${SITE_URL}/#organization`,
+        name: 'METTA ACADEMY',
+        alternateName: [
+          'Metta Academy',
+          'Trung tâm Anh ngữ quốc tế METTA Academy',
+          'Trung tâm tiếng Anh Metta Academy',
+        ],
+        url: SITE_URL,
+        logo: `${SITE_URL}/brand/logo.png`,
+        description: organizationDescription,
+        slogan: 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
+        foundingLocation: {
+          '@type': 'Place',
+          address: {
+            '@type': 'PostalAddress',
+            addressCountry: 'VN',
+          },
+        },
+        hasMap: 'https://share.google/ykBi4cNSOWLJROAGR',
+        sameAs: [
+          'https://www.facebook.com/anhngumetta',
+          'https://share.google/ykBi4cNSOWLJROAGR',
+        ],
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${SITE_URL}/#website`,
+        url: SITE_URL,
+        name: 'METTA ACADEMY',
+        alternateName: 'Metta Academy',
+        publisher: {
+          '@id': `${SITE_URL}/#organization`,
+        },
+      },
+      {
+        '@type': 'WebPage',
+        '@id': `${pageUrl}#webpage`,
+        url: pageUrl,
+        name: seo.title,
+        description: seo.description,
+        isPartOf: {
+          '@id': `${SITE_URL}/#website`,
+        },
+        about: {
+          '@id': `${SITE_URL}/#organization`,
+        },
+      },
+    ],
+  };
+}
+
+function upsertStructuredData(data: unknown) {
+  let element = document.getElementById(JSONLD_SCRIPT_ID) as HTMLScriptElement | null;
+  if (!element) {
+    element = document.createElement('script');
+    element.id = JSONLD_SCRIPT_ID;
+    element.type = 'application/ld+json';
+    document.head.appendChild(element);
+  }
+  element.textContent = JSON.stringify(data);
+}
+
 export function PublicSeo() {
   const { pathname } = useLocation();
 
   useEffect(() => {
     if (isAdminPath(pathname)) {
       document.title = 'METTA Admin';
+      document.getElementById(JSONLD_SCRIPT_ID)?.remove();
       return;
     }
     let active = true;
@@ -106,11 +182,13 @@ export function PublicSeo() {
         upsertMeta('twitter:title', seo.title);
         upsertMeta('twitter:description', seo.description);
         upsertCanonical(canonical);
+        upsertStructuredData(buildStructuredData(pathname, seo, settings.seoDescription || DEFAULT_DESCRIPTION));
       })
       .catch(() => {
         if (!active) return;
         document.title = DEFAULT_TITLE;
         upsertMeta('description', DEFAULT_DESCRIPTION);
+        upsertStructuredData(buildStructuredData(pathname, { title: DEFAULT_TITLE, description: DEFAULT_DESCRIPTION }));
       });
 
     return () => {
