@@ -17,7 +17,7 @@ import { useLeads } from '@/hooks/useLeads';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, leadSources, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
 import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
 import { buildLeadTimeline } from '@/lib/leadTimeline';
-import { canAssignLead } from '@/lib/permissions';
+import { canAssignLead, canCreateLead } from '@/lib/permissions';
 import { exportCsv, formatCurrency, formatDate } from '@/lib/utils';
 import { appointmentService } from '@/services/appointmentService';
 import { callCenterService } from '@/services/callCenterService';
@@ -312,6 +312,7 @@ export default function LeadsPage() {
   const [error, setError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const canAssign = canAssignLead(user);
+  const canCreate = canCreateLead(user);
   const activeFilterCount = useMemo(() => {
     const dateRangeActive = Boolean(filters.dateFrom || filters.dateTo);
     return [
@@ -357,6 +358,12 @@ export default function LeadsPage() {
     () => users.filter((item) => item.role === 'sales' && item.active),
     [users],
   );
+  const leadOwnerOptions = useMemo(
+    () => (user?.role === 'sales' && user.active && !salesOptions.some((sales) => sales.id === user.id)
+      ? [user, ...salesOptions]
+      : salesOptions),
+    [salesOptions, user],
+  );
 
   const filtered = useMemo(() => leads.filter((lead) => {
     const haystack = `${lead.fullName} ${lead.parentName || ''} ${lead.studentName || ''} ${lead.phone} ${lead.email}`.toLowerCase();
@@ -396,7 +403,15 @@ export default function LeadsPage() {
 
   function newLeadDraft(): LeadDraft {
     const source = sourceOptions[0] || leadSources[0];
-    return { ...emptyLead, source, centerName: centerOptions[0] || '', priorityLevel: priorityForSource(source) };
+    const draft = { ...emptyLead, source, centerName: centerOptions[0] || '', priorityLevel: priorityForSource(source) };
+    if (user?.role !== 'sales') return draft;
+    return {
+      ...draft,
+      assignedTo: user.id,
+      assignedToName: user.fullName,
+      assignedBy: user.id,
+      assignedStatus: 'accepted',
+    };
   }
 
   async function saveLead() {
@@ -432,7 +447,7 @@ export default function LeadsPage() {
       return;
     }
 
-    const selectedSales = salesOptions.find((sales) => sales.id === editing.assignedTo);
+    const selectedSales = leadOwnerOptions.find((sales) => sales.id === editing.assignedTo);
     let payload: LeadDraft = {
       ...editing,
       fullName: displayName,
@@ -505,7 +520,9 @@ export default function LeadsPage() {
       setError('Vui lòng nhập tên phụ huynh hoặc tên học sinh và số điện thoại.');
       return;
     }
-    const selectedSales = salesOptions.find((sales) => sales.id === quickLead.assignedTo);
+    const selectedSales = user?.role === 'sales'
+      ? user
+      : salesOptions.find((sales) => sales.id === quickLead.assignedTo);
     const timestamp = new Date().toISOString();
     const source = sourceOptions[0] || leadSources[0];
     const centerName = quickLead.centerName || centerOptions[0] || '';
@@ -523,7 +540,7 @@ export default function LeadsPage() {
         assignedToName: selectedSales?.fullName || '',
         assignedBy: selectedSales ? user?.id : '',
         assignedAt: selectedSales ? timestamp : '',
-        assignedStatus: selectedSales ? 'active' : 'unassigned',
+        assignedStatus: selectedSales ? (user?.role === 'sales' ? 'accepted' : 'active') : 'unassigned',
         ...(selectedSales ? { assignedAtMs: Date.now() } : {}),
       });
       setQuickLead({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
@@ -562,13 +579,13 @@ export default function LeadsPage() {
           {canAssign && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowCenterSettings((current) => !current)}>
             Trung tâm
           </Button>}
-          {canAssign && <Button className="w-full sm:w-auto" onClick={() => setEditing(newLeadDraft())}><Plus /> Thêm lead</Button>}
+          {canCreate && <Button className="w-full sm:w-auto" onClick={() => setEditing(newLeadDraft())}><Plus /> Thêm lead</Button>}
         </div>
       </div>
 
       <Card>
         <CardContent className="grid gap-3 p-3 sm:p-4 md:grid-cols-6">
-          {canAssign && <div className="md:col-span-6">
+          {canCreate && <div className="md:col-span-6">
             <div className="mb-2 flex items-center justify-between gap-3">
               <div className="text-xs font-bold uppercase text-slate-500">Nhập lead nhanh</div>
               <button
@@ -589,9 +606,9 @@ export default function LeadsPage() {
                 <option value="">Trung tâm --</option>
                 {centerOptions.map((center) => <option key={center} value={center}>{center}</option>)}
               </Select>
-              <Select value={quickLead.assignedTo} onChange={(event) => setQuickLead({ ...quickLead, assignedTo: event.target.value })}>
+              <Select value={user?.role === 'sales' ? user.id : quickLead.assignedTo} disabled={!canAssign} onChange={(event) => setQuickLead({ ...quickLead, assignedTo: event.target.value })}>
                 <option value="">PIC --</option>
-                {salesOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
+                {leadOwnerOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
               </Select>
               <Button onClick={addQuickLead}><Plus /> Thêm lead</Button>
             </div>
@@ -701,7 +718,7 @@ export default function LeadsPage() {
           onSave={saveLead}
           onCancel={() => setEditing(null)}
           error={error}
-          salesOptions={salesOptions}
+          salesOptions={leadOwnerOptions}
           canAssign={canAssign}
           courseOptions={courseOptions}
           sourceOptions={sourceOptions}
@@ -721,7 +738,7 @@ export default function LeadsPage() {
           lead={detailLead}
           onClose={() => setDetailLead(null)}
           refresh={refresh}
-          salesOptions={salesOptions}
+          salesOptions={leadOwnerOptions}
           canAssign={canAssign}
           courseOptions={courseOptions}
           sourceOptions={sourceOptions}

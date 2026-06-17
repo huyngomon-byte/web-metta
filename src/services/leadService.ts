@@ -820,12 +820,13 @@ export const leadService = {
       }
       store.leads = store.leads.map((item) => (item.id === lead.id ? normalizeLead({ ...item, ...patch } as Lead) : item));
     } else {
-      if (user?.role === 'sales') throw new Error('Sales không được tạo lead trực tiếp.');
-      const autoAssignedSales = lead.assignedTo ? null : await chooseAutoAssignedSalesAsync(store.leads.map(normalizeLead), store.users);
-      const assignedTo = lead.assignedTo || autoAssignedSales?.salesId || '';
-      const assignedToName = lead.assignedToName || autoAssignedSales?.salesName || salesNameById(assignedTo);
-      const assignedBy = lead.assignedBy || (autoAssignedSales ? 'auto-assignment-rule' : '');
+      const salesSelfCreate = user?.role === 'sales';
+      const autoAssignedSales = lead.assignedTo || salesSelfCreate ? null : await chooseAutoAssignedSalesAsync(store.leads.map(normalizeLead), store.users);
+      const assignedTo = salesSelfCreate ? user.id : (lead.assignedTo || autoAssignedSales?.salesId || '');
+      const assignedToName = salesSelfCreate ? user.fullName : (lead.assignedToName || autoAssignedSales?.salesName || salesNameById(assignedTo));
+      const assignedBy = salesSelfCreate ? user.id : (lead.assignedBy || (autoAssignedSales ? 'auto-assignment-rule' : ''));
       const hasAssignment = Boolean(assignedTo);
+      const assignedStatus = hasAssignment ? (salesSelfCreate ? 'accepted' : 'active') : 'unassigned';
       const draftForValidation = normalizeLead({
         id: `lead-${Date.now()}`,
         fullName: lead.fullName || '',
@@ -848,10 +849,10 @@ export const leadService = {
         assignedTo,
         assignedToName,
         assignedBy,
-        assignedStatus: hasAssignment ? 'active' : 'unassigned',
+        assignedStatus,
         assignedAt: hasAssignment ? (lead.assignedAt || timestamp) : '',
         assignedAtMs: hasAssignment ? (lead.assignedAtMs || nowMs) : undefined,
-        assignedExpiresAtMs: hasAssignment ? (lead.assignedExpiresAtMs || nowMs + DAY_MS) : undefined,
+        assignedExpiresAtMs: hasAssignment && !salesSelfCreate ? (lead.assignedExpiresAtMs || nowMs + DAY_MS) : undefined,
         followUpDate: lead.followUpDate,
         consultationDate: lead.consultationDate,
         dealSize: lead.dealSize,
@@ -882,7 +883,7 @@ export const leadService = {
       store.leads.unshift(normalizeLead({
         ...draftForValidation,
       }));
-      if (hasAssignment) {
+      if (hasAssignment && !salesSelfCreate) {
         assignmentNotification = {
           salesId: assignedTo,
           assignedByName: autoAssignedSales ? 'Auto rule' : user?.fullName,

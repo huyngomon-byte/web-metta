@@ -23,6 +23,10 @@ export function canAssignLead(user?: AdminUser | null) {
   return isAdmin(user) || isManager(user);
 }
 
+export function canCreateLead(user?: AdminUser | null) {
+  return !!user?.active && ['admin', 'manager', 'sales'].includes(user.role);
+}
+
 export function canDeleteLead(user?: AdminUser | null) {
   return isAdmin(user) || isManager(user);
 }

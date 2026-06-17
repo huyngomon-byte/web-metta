@@ -83,6 +83,13 @@ service cloud.firestore {
         && assignmentReadable(data);
     }
 
+    function salesCanCreateLead() {
+      return isSales()
+        && request.resource.data.assignedTo == request.auth.uid
+        && request.resource.data.assignedBy == request.auth.uid
+        && request.resource.data.assignedStatus == "accepted";
+    }
+
     function salesCanUpdateLead() {
       return salesCanReadLead(resource.data)
         && request.resource.data.assignedTo == resource.data.assignedTo
@@ -141,7 +148,7 @@ service cloud.firestore {
 
     match /leads/{id} {
       allow read: if canReadLeadDoc(resource.data);
-      allow create: if canManageLeads() || publicLeadCreate();
+      allow create: if canManageLeads() || salesCanCreateLead() || publicLeadCreate();
       allow update: if canManageLeads() || salesCanUpdateLead();
       allow delete: if canManageLeads();
     }
