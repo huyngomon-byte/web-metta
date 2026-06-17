@@ -47,6 +47,7 @@ export function useCourseOptions(): string[] {
   const { settings } = useThemeSettings();
   return useMemo(() => {
     const fromCms = settings?.programs
+      ?.filter((program) => program.visible !== false)
       ?.map((p) => p.title?.trim())
       .filter((t): t is string => Boolean(t));
     if (fromCms && fromCms.length > 0) return fromCms;

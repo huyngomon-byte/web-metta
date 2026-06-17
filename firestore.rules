@@ -68,6 +68,11 @@ service cloud.firestore {
         && canManageLeads();
     }
 
+    function canReadLeadAppConfig(id) {
+      return canManageLeadAppConfig(id)
+        || (activeUser() && (id == "leadCenterConfigs" || id == "leadSourceConfigs"));
+    }
+
     function canManageMarketingAppConfig(id) {
       return id == "sourceEngineState" && canManageMarketing();
     }
@@ -192,7 +197,8 @@ service cloud.firestore {
     }
 
     match /appConfig/{id} {
-      allow read, write: if canManageLeadAppConfig(id) || canManageMarketingAppConfig(id);
+      allow read: if canReadLeadAppConfig(id) || canManageMarketingAppConfig(id);
+      allow create, update, delete: if canManageLeadAppConfig(id) || canManageMarketingAppConfig(id);
     }
 
     match /callCenterSettings/{id} {

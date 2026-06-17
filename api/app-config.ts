@@ -18,11 +18,18 @@ type PublicCmsDocument = {
   [key: string]: unknown;
 };
 
+type AppConfigUser = {
+  role: string;
+  active: boolean;
+};
+
 const configFields: Record<string, 'configs' | 'rules'> = {
   leadCenterConfigs: 'configs',
   leadSourceConfigs: 'configs',
   salesAssignmentRules: 'rules',
 };
+
+const activeUserReadableConfigs = new Set(['leadCenterConfigs', 'leadSourceConfigs']);
 
 function bearer(req: VercelRequest) {
   const raw = req.headers?.authorization;
@@ -64,7 +71,7 @@ async function readPublicCmsSnapshot() {
   };
 }
 
-async function requireManagerAccess(req: VercelRequest) {
+async function requireActiveUser(req: VercelRequest): Promise<AppConfigUser> {
   const token = bearer(req);
   if (!token) throw new Error('Missing auth token');
   const decoded = await adminAuth().verifyIdToken(token);
@@ -72,7 +79,20 @@ async function requireManagerAccess(req: VercelRequest) {
   const data = snap.exists ? snap.data() || {} : {};
   const role = data.role || decoded.role;
   const active = snap.exists ? data.active !== false : true;
-  if (!active || !['admin', 'manager'].includes(role)) throw new Error('Only admin or manager can manage app config');
+  if (!active) throw new Error('Inactive user');
+  return { role: String(role || ''), active };
+}
+
+function isLeadManager(user: AppConfigUser) {
+  return user.active && ['admin', 'manager'].includes(user.role);
+}
+
+function canReadAppConfig(id: string, user: AppConfigUser) {
+  return isLeadManager(user) || activeUserReadableConfigs.has(id);
+}
+
+function requireManagerAccess(user: AppConfigUser) {
+  if (!isLeadManager(user)) throw new Error('Only admin or manager can manage app config');
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -84,19 +104,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(await readPublicCmsSnapshot());
     }
 
-    await requireManagerAccess(req);
     const field = configFields[id];
     if (!field) return res.status(400).json({ error: 'Invalid config id' });
+    const user = await requireActiveUser(req);
 
     const db = adminDb();
     const ref = db.collection('appConfig').doc(id);
 
     if (req.method === 'GET') {
+      if (!canReadAppConfig(id, user)) throw new Error('Only admin or manager can read this app config');
       const snap = await ref.get();
       return res.status(200).json({ id, ...(snap.exists ? snap.data() : {}) });
     }
 
     if (req.method === 'PUT' || req.method === 'PATCH') {
+      requireManagerAccess(user);
       const value = req.body?.[field];
       if (!Array.isArray(value)) return res.status(400).json({ error: `Missing ${field} array` });
       const payload = { [field]: value, updatedAt: new Date().toISOString() };

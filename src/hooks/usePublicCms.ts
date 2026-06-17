@@ -31,6 +31,7 @@ export function usePublicCourseOptions(): string[] {
   const { settings } = usePublicThemeSettings();
   return useMemo(() => {
     const fromCms = settings.programs
+      ?.filter((program) => program.visible !== false)
       ?.map((program) => program.title?.trim())
       .filter((title): title is string => Boolean(title));
     return fromCms?.length ? fromCms : [...COURSE_OPTIONS];

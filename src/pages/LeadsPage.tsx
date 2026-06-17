@@ -364,6 +364,12 @@ export default function LeadsPage() {
       : salesOptions),
     [salesOptions, user],
   );
+  const salesFilterOptions = useMemo(
+    () => (user?.role === 'sales' && user.active
+      ? leadOwnerOptions.filter((sales) => sales.id === user.id)
+      : salesOptions),
+    [leadOwnerOptions, salesOptions, user],
+  );
 
   const filtered = useMemo(() => leads.filter((lead) => {
     const haystack = `${lead.fullName} ${lead.parentName || ''} ${lead.studentName || ''} ${lead.phone} ${lead.email}`.toLowerCase();
@@ -391,11 +397,37 @@ export default function LeadsPage() {
   }, [leads, sourceConfigs]);
 
   const centerOptions = useMemo(() => {
-    return centerConfigs
-      .filter((center) => center.active)
-      .map((center) => center.name)
-      .filter(Boolean);
-  }, [centerConfigs]);
+    const names = new Set([
+      ...centerConfigs.filter((center) => center.active).map((center) => center.name).filter((name): name is string => Boolean(name)),
+      ...leads.map((lead) => lead.centerName).filter((name): name is string => Boolean(name)),
+    ]);
+    return Array.from(names);
+  }, [centerConfigs, leads]);
+
+  useEffect(() => {
+    setFilters((current) => {
+      const allowedSalesIds = new Set(salesFilterOptions.map((sales) => sales.id));
+      const next = { ...current };
+      let changed = false;
+      if (next.source && !sourceOptions.includes(next.source)) {
+        next.source = '';
+        changed = true;
+      }
+      if (next.centerName && !centerOptions.includes(next.centerName)) {
+        next.centerName = '';
+        changed = true;
+      }
+      if (next.course && !courseOptions.includes(next.course)) {
+        next.course = '';
+        changed = true;
+      }
+      if (next.assignedTo && !allowedSalesIds.has(next.assignedTo)) {
+        next.assignedTo = '';
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [centerOptions, courseOptions, salesFilterOptions, sourceOptions]);
 
   function priorityForSource(source?: string, fallback?: number) {
     return sourcePriority(sourceConfigs, source, fallback);
@@ -665,7 +697,7 @@ export default function LeadsPage() {
           </Select>
           <Select value={filters.assignedTo} onChange={(event) => setFilters({ ...filters, assignedTo: event.target.value })}>
             <option value="">Tất cả sales</option>
-            {salesOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
+            {salesFilterOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
           </Select>
           <DateRangePicker
             from={filters.dateFrom}
