@@ -23,6 +23,18 @@
   ],
   "rewrites": [
     {
+      "source": "/logo.png",
+      "destination": "/brand/logo.png"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
+      "source": "/tin-tuc/:slug",
+      "destination": "/api/blog-page?slug=:slug"
+    },
+    {
       "source": "/login",
       "destination": "/login.html"
     },

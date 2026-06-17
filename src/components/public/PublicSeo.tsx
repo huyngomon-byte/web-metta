@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { publicCmsService } from '@/services/publicCmsService';
-import type { CmsPage, SiteSettings } from '@/types/cms';
+import { publicBlogService } from '@/services/publicBlogService';
+import type { BlogPost, CmsPage, SiteSettings } from '@/types/cms';
 
 const DEFAULT_TITLE = 'METTA ACADEMY – Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai';
 const DEFAULT_DESCRIPTION = 'Trung tâm Anh ngữ quốc tế METTA Academy – chương trình tiếng Anh hiện đại giúp trẻ phát triển ngôn ngữ, tư duy phản biện và sự tự tin.';
 const SITE_URL = 'https://metta.edu.vn';
+const PUBLIC_SITE_URL = 'https://www.metta.edu.vn';
+const LOGO_URL = `${SITE_URL}/logo.png`;
 const JSONLD_SCRIPT_ID = 'metta-jsonld';
 
 function isAdminPath(pathname: string) {
@@ -29,6 +32,10 @@ function pageSlugForPath(pathname: string) {
   if (pathname === '/p/landing-page-phonics' || pathname === '/p/ebook-mam-non' || pathname === '/lp/sach-tien-tieu-hoc') return 'ebook-mam-non';
   const publicPageMatch = pathname.match(/^\/p\/([^/]+)/);
   return publicPageMatch?.[1] || '';
+}
+
+function blogSlugForPath(pathname: string) {
+  return pathname.match(/^\/tin-tuc\/([^/]+)$/)?.[1] || '';
 }
 
 function seoForPath(pathname: string, settings: SiteSettings, pages: CmsPage[]) {
@@ -63,9 +70,19 @@ function seoForPath(pathname: string, settings: SiteSettings, pages: CmsPage[]) 
   return { title: homeTitle || DEFAULT_TITLE, description: homeDescription || DEFAULT_DESCRIPTION };
 }
 
+function seoForBlogPost(post: BlogPost) {
+  return {
+    title: post.metaTitle || post.title || DEFAULT_TITLE,
+    description: post.metaDescription || post.excerpt || DEFAULT_DESCRIPTION,
+  };
+}
+
 function upsertMeta(key: string, value: string, attr: 'name' | 'property' = 'name') {
-  if (!value) return null;
   let element = document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`);
+  if (!value) {
+    element?.remove();
+    return null;
+  }
   if (!element) {
     element = document.createElement('meta');
     element.setAttribute(attr, key);
@@ -73,6 +90,10 @@ function upsertMeta(key: string, value: string, attr: 'name' | 'property' = 'nam
   }
   element.setAttribute('content', value);
   return element;
+}
+
+function removeMeta(key: string, attr: 'name' | 'property' = 'name') {
+  document.head.querySelector<HTMLMetaElement>(`meta[${attr}="${key}"]`)?.remove();
 }
 
 function upsertCanonical(url: string) {
@@ -83,6 +104,22 @@ function upsertCanonical(url: string) {
     document.head.appendChild(element);
   }
   element.setAttribute('href', url);
+}
+
+function canonicalUrl(pathname: string) {
+  return `${window.location.origin}${pathname === '/' ? '/' : pathname}`;
+}
+
+function absoluteUrl(value?: string, baseUrl = PUBLIC_SITE_URL) {
+  const raw = String(value || '').trim();
+  if (!raw || raw.startsWith('data:')) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.startsWith('//')) return `https:${raw}`;
+  try {
+    return new URL(raw, baseUrl).href;
+  } catch {
+    return '';
+  }
 }
 
 function structuredPageUrl(pathname: string) {
@@ -104,7 +141,7 @@ function buildStructuredData(pathname: string, seo: { title: string; description
           'Trung tâm tiếng Anh Metta Academy',
         ],
         url: SITE_URL,
-        logo: `${SITE_URL}/brand/logo.png`,
+        logo: LOGO_URL,
         description: organizationDescription,
         slogan: 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
         foundingLocation: {
@@ -147,6 +184,55 @@ function buildStructuredData(pathname: string, seo: { title: string; description
   };
 }
 
+function buildBlogPostingStructuredData(post: BlogPost, canonical: string, image: string) {
+  const seo = seoForBlogPost(post);
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${SITE_URL}/#organization`,
+        name: 'METTA ACADEMY',
+        url: SITE_URL,
+        logo: LOGO_URL,
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${SITE_URL}/#website`,
+        url: SITE_URL,
+        name: 'METTA ACADEMY',
+        alternateName: 'Metta Academy',
+        publisher: {
+          '@id': `${SITE_URL}/#organization`,
+        },
+      },
+      {
+        '@type': 'BlogPosting',
+        '@id': `${canonical}#blogposting`,
+        headline: seo.title,
+        description: seo.description,
+        ...(image ? { image } : {}),
+        datePublished: post.publishedAt,
+        dateModified: post.updatedAt || post.publishedAt,
+        author: {
+          '@type': 'Organization',
+          name: 'METTA ACADEMY',
+          url: SITE_URL,
+        },
+        publisher: {
+          '@type': 'Organization',
+          name: 'METTA ACADEMY',
+          logo: LOGO_URL,
+        },
+        mainEntityOfPage: {
+          '@type': 'WebPage',
+          '@id': canonical,
+        },
+      },
+    ],
+  };
+}
+
 function upsertStructuredData(data: unknown) {
   let element = document.getElementById(JSONLD_SCRIPT_ID) as HTMLScriptElement | null;
   if (!element) {
@@ -156,6 +242,47 @@ function upsertStructuredData(data: unknown) {
     document.head.appendChild(element);
   }
   element.textContent = JSON.stringify(data);
+}
+
+function applyCommonSeo(seo: { title: string; description: string }, canonical: string) {
+  document.title = seo.title;
+  upsertMeta('description', seo.description);
+  upsertMeta('og:title', seo.title, 'property');
+  upsertMeta('og:description', seo.description, 'property');
+  upsertMeta('og:url', canonical, 'property');
+  upsertMeta('og:type', 'website', 'property');
+  upsertMeta('twitter:title', seo.title);
+  upsertMeta('twitter:description', seo.description);
+  removeMeta('og:image', 'property');
+  removeMeta('twitter:image');
+  removeMeta('twitter:card');
+  removeMeta('article:published_time', 'property');
+  removeMeta('article:modified_time', 'property');
+  removeMeta('article:author', 'property');
+  removeMeta('article:section', 'property');
+  upsertCanonical(canonical);
+}
+
+function applyBlogSeo(post: BlogPost, canonical: string) {
+  const seo = seoForBlogPost(post);
+  const image = absoluteUrl(post.coverImage, window.location.origin);
+  document.title = seo.title;
+  upsertMeta('description', seo.description);
+  upsertMeta('og:title', seo.title, 'property');
+  upsertMeta('og:description', seo.description, 'property');
+  upsertMeta('og:url', canonical, 'property');
+  upsertMeta('og:type', 'article', 'property');
+  upsertMeta('og:image', image, 'property');
+  upsertMeta('article:published_time', post.publishedAt, 'property');
+  upsertMeta('article:modified_time', post.updatedAt || post.publishedAt, 'property');
+  upsertMeta('article:author', 'METTA ACADEMY', 'property');
+  upsertMeta('article:section', post.category || 'Tin tức', 'property');
+  upsertMeta('twitter:card', image ? 'summary_large_image' : 'summary');
+  upsertMeta('twitter:title', seo.title);
+  upsertMeta('twitter:description', seo.description);
+  upsertMeta('twitter:image', image);
+  upsertCanonical(canonical);
+  upsertStructuredData(buildBlogPostingStructuredData(post, canonical, image));
 }
 
 export function PublicSeo() {
@@ -168,20 +295,27 @@ export function PublicSeo() {
       return;
     }
     let active = true;
+    const blogSlug = blogSlugForPath(pathname);
+
+    if (blogSlug) {
+      publicBlogService.getBySlug(blogSlug)
+        .then((post) => {
+          if (!active || !post) return;
+          applyBlogSeo(post, canonicalUrl(pathname));
+        })
+        .catch(() => undefined);
+
+      return () => {
+        active = false;
+      };
+    }
 
     Promise.all([publicCmsService.getSettings(), publicCmsService.getPages()])
       .then(([settings, pages]) => {
         if (!active) return;
         const seo = seoForPath(pathname, settings, pages);
-        const canonical = `${window.location.origin}${pathname}`;
-        document.title = seo.title;
-        upsertMeta('description', seo.description);
-        upsertMeta('og:title', seo.title, 'property');
-        upsertMeta('og:description', seo.description, 'property');
-        upsertMeta('og:url', canonical, 'property');
-        upsertMeta('twitter:title', seo.title);
-        upsertMeta('twitter:description', seo.description);
-        upsertCanonical(canonical);
+        const canonical = canonicalUrl(pathname);
+        applyCommonSeo(seo, canonical);
         upsertStructuredData(buildStructuredData(pathname, seo, settings.seoDescription || DEFAULT_DESCRIPTION));
       })
       .catch(() => {

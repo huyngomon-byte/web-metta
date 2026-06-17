@@ -1,5 +1,12 @@
+import {
+  collection,
+  getDocs,
+} from 'firebase/firestore';
+import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { publicCmsService } from '@/services/publicCmsService';
 import type { BlogPost } from '@/types/cms';
+
+const USE_FIREBASE = isFirebaseConfigured && !!db;
 
 type SeedNewsItem = {
   title: string;
@@ -46,6 +53,8 @@ async function seedPosts(): Promise<BlogPost[]> {
     category: item.category || 'Tin tức',
     author: 'METTA Academy',
     excerpt: item.excerpt || '',
+    metaTitle: item.title,
+    metaDescription: item.excerpt || '',
     content: `<p>${item.excerpt || ''}</p>`,
     coverImage: item.image || '',
     status: 'published',
@@ -55,10 +64,28 @@ async function seedPosts(): Promise<BlogPost[]> {
   }));
 }
 
+async function firestorePosts(): Promise<BlogPost[]> {
+  if (!USE_FIREBASE || !db) return [];
+  try {
+    const snap = await getDocs(collection(db, 'blogPosts'));
+    return snap.docs
+      .map((doc) => ({ id: doc.id, ...doc.data() } as BlogPost))
+      .filter((post) => post.status === 'published')
+      .sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
+  } catch (error) {
+    console.warn('[PublicBlog] Cannot read Firestore blog posts, using CMS news fallback:', error);
+    return [];
+  }
+}
+
 export const publicBlogService = {
-  getPublished: async () => seedPosts(),
+  getPublished: async () => {
+    const remote = await firestorePosts();
+    return remote.length ? remote : seedPosts();
+  },
   getBySlug: async (slug: string) => {
-    const posts = await seedPosts();
+    const remote = await firestorePosts();
+    const posts = remote.length ? remote : await seedPosts();
     return posts.find((post) => post.slug === slug);
   },
 };

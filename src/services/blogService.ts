@@ -69,6 +69,8 @@ export const blogService = {
       category: post.category || 'Tin tức',
       author: post.author || '',
       excerpt: post.excerpt || '',
+      metaTitle: post.metaTitle || '',
+      metaDescription: post.metaDescription || '',
       content: post.content || '',
       coverImage: post.coverImage || '',
       status: post.status || 'draft',

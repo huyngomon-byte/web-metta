@@ -31,6 +31,8 @@ export default function BlogAdminPage() {
       category: 'Tin tức',
       author: '',
       excerpt: '',
+      metaTitle: '',
+      metaDescription: '',
       content: '',
       coverImage: '',
       status: 'draft',
@@ -252,6 +254,33 @@ function BlogEditor({ post, onSave, onCancel }: {
                   placeholder="Mô tả ngắn hiển thị ở trang tin tức..."
                   value={draft.excerpt}
                   onChange={(e) => set('excerpt', e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-bold text-slate-700">SEO bài viết</CardTitle>
+            </CardHeader>
+            <CardContent className="p-4 flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">SEO title</label>
+                <Input
+                  maxLength={90}
+                  placeholder="Nếu để trống sẽ dùng tiêu đề bài viết"
+                  value={draft.metaTitle || ''}
+                  onChange={(e) => set('metaTitle', e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase">SEO description</label>
+                <Textarea
+                  rows={2}
+                  maxLength={180}
+                  placeholder="Nếu để trống sẽ dùng mô tả ngắn"
+                  value={draft.metaDescription || ''}
+                  onChange={(e) => set('metaDescription', e.target.value)}
                 />
               </div>
             </CardContent>

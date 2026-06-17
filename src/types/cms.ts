@@ -180,6 +180,8 @@ export interface BlogPost {
   category: string;
   author: string;
   excerpt: string;
+  metaTitle?: string;
+  metaDescription?: string;
   content: string; // HTML rich text
   coverImage: string;
   status: 'published' | 'draft';
