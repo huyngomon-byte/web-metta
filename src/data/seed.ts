@@ -3,18 +3,9 @@ import type { ClassItem, ClassSession, ClassStudent, Course, Student } from '@/t
 import type { CmsPage, MediaItem, PageSection, ProgramCms, SiteSettings } from '@/types/cms';
 import type { Appointment, Lead, LeadActivity } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
-import { DEAL_QUOTED_STATUS, DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, pendingReasonOptions } from '@/lib/constants';
-import { expectedRevenueFrom } from '@/lib/leadFinance';
-import { stageDemoLeads } from '@/data/stageDemoLeads';
 
 const now = '2026-05-26T09:00:00+07:00';
 
-function addMinutes(value: string, minutes: number) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  date.setMinutes(date.getMinutes() + minutes);
-  return date.toISOString();
-}
 
 const DEFAULT_PRIVACY_POLICY = `<h2>CHÍNH SÁCH BẢO MẬT</h2>
 <p><em>Cập nhật lần cu�i: 03/06/2026</em></p>
@@ -475,16 +466,11 @@ export const sections: PageSection[] = [
     ]),
   },
   {
-    id: 'sec-6', pageId: 'page-home', type: 'Teachers', order: 6, visible: true, anchorId: 'teachers', createdAt: now, updatedAt: now,
+    id: 'sec-6', pageId: 'page-home', type: 'Teachers', order: 6, visible: false, anchorId: 'teachers', createdAt: now, updatedAt: now,
     title: 'Đ�"i ngũ giáo viên xuất sắc',
     subtitle: '100% giáo viên bản ngữ & chuyên gia TESOL/CELTA',
     description: 'M�i giáo viên tại METTA �ều �ược tuyỒn chọn kỹ lưỡng về chuyên môn, kinh nghi�!m và khả nĒng truyền cảm hứng cho trẻ em.',
-    extraData: JSON.stringify([
-      { name: 'Ms. Sarah Johnson', role: 'Head of Academics', exp: 'CELTA | 8 nĒm kinh nghi�!m', nationality: '�x!��x!� British', photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&q=80&auto=format&fit=crop' },
-      { name: 'Mr. David Kim', role: 'Senior Teacher', exp: 'TESOL | 6 nĒm kinh nghi�!m', nationality: '�x!��x!� Australian', photo: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=400&q=80&auto=format&fit=crop' },
-      { name: 'Ms. Linh Nguy�&n', role: 'Academic Coordinator', exp: 'M.Ed | 7 nĒm kinh nghi�!m', nationality: '�x!��x!� Vietnamese', photo: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&q=80&auto=format&fit=crop' },
-      { name: 'Mr. James Brown', role: 'Phonics Specialist', exp: 'DELTA | 5 nĒm kinh nghi�!m', nationality: '�x!��x!� American', photo: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80&auto=format&fit=crop' },
-    ]),
+    extraData: JSON.stringify([]),
   },
   {
     id: 'sec-7', pageId: 'page-home', type: 'News', order: 7, visible: true, createdAt: now, updatedAt: now,
@@ -612,8 +598,6 @@ export const mediaItems: MediaItem[] = [
 
 export const users: AdminUser[] = [
   { id: 'u1', fullName: 'METTA Admin', email: 'admin@mettaacademy.vn', role: 'admin', active: true, createdAt: now },
-  { id: 'u2', fullName: 'Linh', email: 'linh@mettaacademy.vn', role: 'sales', active: true, createdAt: now },
-  { id: 'u3', fullName: 'Chi', email: 'chi@mettaacademy.vn', role: 'sales', active: true, createdAt: now }
 ];
 
 export const courses: Course[] = [
@@ -623,203 +607,16 @@ export const courses: Course[] = [
   { id: 'course-ij', name: 'IELTS Junior', code: 'IELTS-JUNIOR', description: 'Chương trình THCS 11-15 tu�"i, xây nền IELTS học thuật từ s�:m v�:i mục tiêu 1.5 �ến 3.0+ và cam kết �ầu ra.', ageRange: '11-15 tu�"i', level: 'Secondary', totalSessions: 72, sessionDuration: '90 phút', tuitionFee: 9800000, curriculum: 'AI-powered practice, CLIL, IELTS skills, Knowledge Chunking', status: 'Đang mở', createdAt: now, updatedAt: now }
 ];
 
-export const classes: ClassItem[] = [
-  { id: 'class-mg-01', name: 'MG-01', code: 'MG-01', courseId: 'course-mg', teacherId: 'Teacher An', assistantId: 'Ms. Linh', startDate: '2026-06-03', expectedEndDate: '2026-09-30', scheduleText: 'Thứ 3, Thứ 5 - 17:30', room: 'Room A1', maxStudents: 12, currentStudentCount: 4, status: 'Sắp khai giảng', notes: 'L�:p mẫu giáo m�:i', createdAt: now, updatedAt: now },
-  { id: 'class-mg-02', name: 'MG-02', code: 'MG-02', courseId: 'course-mg', teacherId: 'Teacher An', startDate: '2026-05-10', expectedEndDate: '2026-08-30', scheduleText: 'Thứ 7, Chủ nhật - 09:00', room: 'Room A2', maxStudents: 12, currentStudentCount: 3, status: 'Đang học', notes: '', createdAt: now, updatedAt: now },
-  { id: 'class-tn-01', name: 'TN-01', code: 'TN-01', courseId: 'course-tn', teacherId: 'Teacher Bình', startDate: '2026-05-15', expectedEndDate: '2026-10-15', scheduleText: 'Thứ 2, Thứ 4 - 18:00', room: 'Room B1', maxStudents: 16, currentStudentCount: 5, status: 'Đang học', notes: '', createdAt: now, updatedAt: now },
-  { id: 'class-tn-02', name: 'TN-02', code: 'TN-02', courseId: 'course-tn', teacherId: 'Teacher Bình', startDate: '2026-06-08', expectedEndDate: '2026-11-08', scheduleText: 'Thứ 6 - 18:00, Chủ nhật - 15:00', room: 'Room B2', maxStudents: 16, currentStudentCount: 2, status: 'Sắp khai giảng', notes: '', createdAt: now, updatedAt: now },
-  { id: 'class-ph-01', name: 'PHONICS-01', code: 'PHONICS-01', courseId: 'course-ph', teacherId: 'Teacher Chi', startDate: '2026-05-12', expectedEndDate: '2026-08-12', scheduleText: 'Thứ 3, Thứ 5 - 18:30', room: 'Room C1', maxStudents: 14, currentStudentCount: 4, status: 'Đang học', notes: '', createdAt: now, updatedAt: now },
-  { id: 'class-ph-02', name: 'PHONICS-02', code: 'PHONICS-02', courseId: 'course-ph', teacherId: 'Teacher Chi', startDate: '2026-06-20', expectedEndDate: '2026-09-20', scheduleText: 'Thứ 7 - 14:00', room: 'Room C2', maxStudents: 14, currentStudentCount: 2, status: 'Sắp khai giảng', notes: '', createdAt: now, updatedAt: now }
-];
-
-const studentNames = ['Nguy�&n Minh Anh', 'Trần Gia Bảo', 'Lê Khánh Linh', 'Phạm Hà My', 'Đặng Quang Minh', 'Võ An Nhiên', 'Bùi Nhật Nam', 'Hoàng Tu�! Lâm', 'Đ� Hoàng Phúc', 'Mai Ngọc Hân', 'Phan Đức Anh', 'Tạ Bảo Ngọc', 'Lý Minh Khang', 'Đinh Gia Huy', 'Cao Phương Thảo', 'Ngô Hải Nam', 'Tr�9nh Mai Chi', 'Vũ Quỳnh Anh', 'H� Tuấn Ki�!t', 'Dương Bảo Châu'];
-const courseCycle = ['METTA Kiddies', 'METTA on Phonics', 'METTA Young Learner', 'IELTS Junior'] as const;
-const classCycle = ['class-mg-01', 'class-tn-01', 'class-ph-01', 'class-mg-02', 'class-tn-02', 'class-ph-02'];
-export const students: Student[] = studentNames.map((name, i) => {
-  const interestedCourse = courseCycle[i % courseCycle.length];
-  const currentClassId = classCycle[i % classCycle.length];
-  return {
-    id: `stu-${i + 1}`,
-    fullName: name,
-    phone: `09${String(10000000 + i * 12345).slice(0, 8)}`,
-    email: `student${i + 1}@example.com`,
-    dateOfBirth: `201${i % 6}-0${(i % 9) + 1}-12`,
-    age: `${4 + (i % 8)}`,
-    school: i % 2 ? 'TiỒu học Nguy�&n Du' : 'Mầm non Hoa Sen',
-    currentClass: i % 3 === 0 ? 'Mẫu giáo l�:n' : `L�:p ${1 + (i % 5)}`,
-    parentName: `Phụ huynh ${name}`,
-    parentPhone: `08${String(90000000 + i * 23456).slice(0, 8)}`,
-    parentEmail: `parent${i + 1}@example.com`,
-    sourceLeadId: i < 5 ? `lead-${i + 1}` : undefined,
-    interestedCourse,
-    currentCourseId: interestedCourse === 'METTA Kiddies' ? 'course-mg' : interestedCourse === 'METTA on Phonics' ? 'course-ph' : interestedCourse === 'METTA Young Learner' ? 'course-tn' : 'course-ij',
-    currentClassId,
-    currentLevel: i % 2 ? 'Starter' : 'Beginner',
-    targetGoal: 'Tự tin nghe nói và phát âm chuẩn',
-    status: ['Đang học', 'Đã �Ēng ký', 'Bảo lưu', 'Hoàn thành khóa', 'Tạm ngh�0'][i % 5] as Student['status'],
-    assignedTo: i % 2 ? 'Ms. Linh' : 'Teacher An',
-    notes: 'Seed student MVP',
-    createdAt: `2026-05-${String(1 + (i % 25)).padStart(2, '0')}T09:00:00+07:00`,
-    updatedAt: now
-  };
-});
-
-export const classStudents: ClassStudent[] = students.slice(0, 18).map((student, i) => ({
-  id: `cs-${i + 1}`,
-  classId: student.currentClassId || classCycle[i % classCycle.length],
-  studentId: student.id,
-  joinedAt: '2026-05-20T09:00:00+07:00',
-  status: 'Đang học',
-  notes: ''
-}));
-
-export const classSessions: ClassSession[] = classes.flatMap((classItem, classIndex) =>
-  Array.from({ length: 4 }, (_, i) => ({
-    id: `session-${classItem.id}-${i + 1}`,
-    classId: classItem.id,
-    sessionNumber: i + 1,
-    title: `Bu�"i ${i + 1}: ${i === 0 ? 'Orientation' : 'Practice'}`,
-    date: `2026-05-${String(26 + i).padStart(2, '0')}`,
-    startTime: classItem.scheduleText.includes('18') ? '18:00' : '17:30',
-    endTime: classItem.scheduleText.includes('18') ? '19:30' : '18:45',
-    teacherId: classItem.teacherId,
-    room: classItem.room,
-    lessonContent: ['Warm-up, vocabulary, speaking practice', 'Phonics sounds and blending', 'Storytelling and role-play'][classIndex % 3],
-    homework: 'Practice worksheet',
-    status: i === 0 ? 'Đã hoàn thành' : 'Sắp diễn ra',
-    createdAt: now,
-    updatedAt: now
-  }))
-);
-
-const demoLeadSources = [
-  ['Meta Lead Form', 5],
-  ['Referral', 5],
-  ['Website', 4],
-  ['Meta Ads', 4],
-  ['Zalo OA', 4],
-  ['Sales input', 3],
-  ['TikTok Ads', 3],
-  ['Walk-in', 3],
-  ['Instagram Ads', 3],
-  ['Khác', 1],
-] as const;
-
-const demoLeadCenters = ['METTA'] as const;
-const demoPendingOptions = [
-  pendingReasonOptions[0],
-  pendingReasonOptions[6],
-  pendingReasonOptions[9],
-] as const;
-
-const demoLeadNames = [
-  ['Ch�9 Hạnh Nguy�&n', 'Bé Bảo An'],
-  ['Anh Minh Trần', 'Minh Khang'],
-  ['Ch�9 Thu Hà', 'Gia Linh'],
-  ['Anh Qu�c Bảo', 'Bảo Châu'],
-  ['Ch�9 Mai Anh', 'Tu�! Lâm'],
-  ['Ch�9 Ngọc Di�!p', 'Khánh An'],
-  ['Anh Hải Nam', 'Nhật Minh'],
-  ['Ch�9 Phương Thảo', 'Hoàng Phúc'],
-  ['Anh Đức Huy', 'Quỳnh Anh'],
-  ['Ch�9 Thanh Vân', 'Minh Quân'],
-] as const;
-
-const demoPriorityLeads: Lead[] = demoLeadNames.map(([parentName, studentName], index) => {
-  const [source, priorityLevel] = demoLeadSources[index];
-  const course = courseCycle[index % courseCycle.length];
-  const statusCycle = ['Lead m?i', '?? li?n h?', 'Ch?a nghe m?y', '?? h?n t? v?n', '?? t? v?n/??t l?ch test', '?? test/H?c th?', DEAL_QUOTED_STATUS, DEAL_QUOTED_STATUS, WON_LEAD_STATUS, LOST_LEAD_STATUS] as Lead['status'][];
-  const status = statusCycle[index % statusCycle.length];
-  const pendingOption = status === DEAL_QUOTED_STATUS ? demoPendingOptions[index % demoPendingOptions.length] : undefined;
-  const discountPercent = discountPercentOptions[index % discountPercentOptions.length];
-  const expectedRevenue = expectedRevenueFrom(DEFAULT_COURSE_DEAL_SIZE, discountPercent);
-  const isWon = status === WON_LEAD_STATUS;
-  const hasFinance = Boolean(pendingOption || isWon);
-  return {
-    id: `lead-demo-priority-${index + 1}`,
-    fullName: studentName,
-    parentName,
-    studentName,
-    phone: `0988${String(100000 + index * 137).slice(0, 6)}`,
-    email: `demo-lead-${index + 1}@example.com`,
-    contactType: 'parent',
-    age: `${5 + (index % 7)}`,
-    school: index % 2 ? 'TiỒu học Nguy�&n Du' : 'Trường qu�c tế Vi�!t �ac',
-    currentClass: index % 3 === 0 ? 'Mẫu giáo l�:n' : `L�:p ${1 + (index % 5)}`,
-    interestedCourse: course,
-    currentLevel: '',
-    targetGoal: '',
-    source,
-    centerName: demoLeadCenters[index % demoLeadCenters.length],
-    priorityLevel,
-    status,
-    assignedTo: index % 2 ? 'u3' : 'u2',
-    assignedToName: index % 2 ? 'Chi' : 'Linh',
-    followUpDate: `2026-06-${String(3 + (index % 8)).padStart(2, '0')}T${String(9 + (index % 7)).padStart(2, '0')}:30:00+07:00`,
-    consultationDate: index % 3 === 0 ? `2026-06-${String(4 + index).padStart(2, '0')}T17:30:00+07:00` : '',
-    ...(hasFinance ? {
-      dealSize: DEFAULT_COURSE_DEAL_SIZE,
-      dealCurrency: DEFAULT_DEAL_CURRENCY,
-      discountPercent,
-      dealPackage: `${course} demo package`,
-      dealNote: isWon ? 'Demo lead �ã �Ēng ký học, expected revenue �ã chuyỒn thành revenue.' : 'Đã báo phí demo �Ồ kiỒm tra discount, expected revenue và warmth trên Kanban.',
-      expectedRevenue,
-      ...(isWon ? { revenue: expectedRevenue, revenueAt: now, wonAt: now } : {}),
-      expectedCloseDate: `2026-06-${String(12 + index).padStart(2, '0')}`,
-      ...(pendingOption ? {
-        pendingReason: pendingOption.reason,
-        pendingReasonNote: pendingOption.defaultNote,
-        pendingWarmthPercent: pendingOption.warmthPercent,
-      } : {}),
-    } : {}),
-    ...(status === LOST_LEAD_STATUS ? { lostReason: 'L�9ch học không phù hợp', lostNote: 'Demo lead mất vì l�9ch học chưa phù hợp �Ồ kiỒm tra c�"t và báo cáo.' } : {}),
-    initialNote: `Demo lead ưu tiên P${priorityLevel} từ ${source}.`,
-    createdAt: `2026-06-${String(1 + index).padStart(2, '0')}T0${8 + (index % 2)}:00:00+07:00`,
-    updatedAt: now,
-  };
-});
-
-const demoPriorityConsultationAppointments: Appointment[] = demoPriorityLeads
-  .filter((lead) => lead.status === 'Đã hẹn tư vấn' && lead.consultationDate)
-  .map((lead) => ({
-    id: `ap-demo-priority-consultation-${lead.id}`,
-    leadId: lead.id,
-    title: `${lead.studentName || lead.fullName} - ${lead.phone}`,
-    type: 'Tư vấn',
-    startTime: lead.consultationDate!,
-    endTime: addMinutes(lead.consultationDate!, 45),
-    assignedTo: lead.assignedTo || '',
-    assignedToName: lead.assignedToName || '',
-    status: 'upcoming',
-    notes: 'Demo appointment bắt bu�"c khi lead �x trạng thái Đã hẹn tư vấn.',
-    createdAt: lead.createdAt,
-    updatedAt: lead.updatedAt,
-  }));
+export const classes: ClassItem[] = [];
+export const students: Student[] = [];
+export const classStudents: ClassStudent[] = [];
+export const classSessions: ClassSession[] = [];
 
 export const leads: Lead[] = [];
-
 export const leadActivities: LeadActivity[] = [];
-
-const stageDemoConsultationAppointments: Appointment[] = stageDemoLeads
-  .filter((lead) => lead.consultationDate || lead.followUpDate)
-  .map((lead) => ({
-    id: `ap-demo-stage-consultation-${lead.id}`,
-    leadId: lead.id,
-    title: `${lead.studentName || lead.fullName} - ${lead.phone}`,
-    type: lead.status === 'Đã tư vấn/Đặt lịch test' || lead.status === 'Đã test/Học thử' ? 'Test đầu vào' : lead.consultationDate ? 'Tư vấn' : 'Gọi lại',
-    startTime: lead.consultationDate || lead.followUpDate!,
-    endTime: addMinutes(lead.consultationDate || lead.followUpDate!, 45),
-    assignedTo: lead.assignedTo || '',
-    assignedToName: lead.assignedToName || '',
-    status: 'upcoming',
-    notes: 'Demo appointment ��ng b�" từ lead �Ồ test Appointments và rule stage bắt bu�"c.',
-    createdAt: lead.createdAt,
-    updatedAt: lead.updatedAt,
-  }));
-
 export const appointments: Appointment[] = [];
 
-export const capiSettings: CapiSettings = { id: 'capi-main', pixelId: '123456789000000', accessToken: 'mock-token-hidden-in-production', testEventCode: 'TEST12345', defaultSourceUrl: 'https://mettaacademy.vn', enableBrowserPixel: true, enableServerCapi: true, enableDeduplication: true, updatedAt: now };
+export const capiSettings: CapiSettings = { id: 'capi-main', pixelId: '', accessToken: '', testEventCode: '', defaultSourceUrl: 'https://www.metta.edu.vn', enableBrowserPixel: false, enableServerCapi: true, enableDeduplication: true, updatedAt: now };
 
 export const capiMappings: CapiMapping[] = [
   { id: 'map-1', formId: 'phonics-form', formName: 'Landing Page Phonics Form', eventName: 'Lead', landingPageSlug: 'landing-page-phonics', enabled: true, sendBrowserEvent: true, sendServerEvent: true, customDataFields: ['course', 'source'], updatedAt: now },
@@ -827,16 +624,4 @@ export const capiMappings: CapiMapping[] = [
   { id: 'map-3', formId: 'contact-form', formName: 'Contact Form', eventName: 'Contact', landingPageSlug: 'contact', enabled: true, sendBrowserEvent: true, sendServerEvent: false, customDataFields: ['source'], updatedAt: now }
 ];
 
-export const capiEventLogs: CapiEventLog[] = Array.from({ length: 10 }, (_, i) => ({
-  id: `capi-${i + 1}`,
-  eventName: ['Lead', 'Contact', 'CompleteRegistration'][i % 3],
-  eventId: `metta_${Date.now() - i * 100000}_${i}`,
-  source: i % 2 ? 'server' : 'browser',
-  sourceUrl: `https://mettaacademy.vn/${i % 2 ? 'landing-page-phonics' : ''}`,
-  leadId: i < 5 ? `lead-${i + 1}` : undefined,
-  formId: ['phonics-form', 'contact-form', 'consultation-form'][i % 3],
-  status: i === 3 || i === 8 ? 'failed' : 'success',
-  responseMessage: i === 3 || i === 8 ? 'Invalid access token mock error' : 'Event accepted by Meta mock API',
-  createdAt: `2026-05-26T0${Math.min(i + 1, 9)}:15:00+07:00`,
-  payloadPreview: { event_name: ['Lead', 'Contact', 'CompleteRegistration'][i % 3], action_source: 'website', course: courseCycle[i % courseCycle.length] }
-}));
+export const capiEventLogs: CapiEventLog[] = [];

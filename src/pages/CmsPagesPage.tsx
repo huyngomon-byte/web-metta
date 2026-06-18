@@ -45,7 +45,7 @@ export default function CmsPagesPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div><h1 className="text-3xl font-extrabold text-slate-950">Website CMS</h1><p className="text-slate-500">Quản lý page, landing page, preview và publish.</p></div>
-        <Button variant="outline" onClick={() => cmsService.resetToSeed()}><DatabaseBackup /> Khôi phục dữ liệu mẫu CMS</Button>
+        <Button variant="outline" onClick={() => cmsService.resetToSeed()}><DatabaseBackup /> Khôi phục nội dung mặc định CMS</Button>
       </div>
       <Card>
         <CardHeader><CardTitle>Tạo page mới</CardTitle></CardHeader>

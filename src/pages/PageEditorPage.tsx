@@ -1560,7 +1560,7 @@ export default function PageEditorPage() {
 
   if (!id) return <p className="p-8 text-slate-500">Không tìm thấy ID trang.</p>;
   if (page === undefined) return <p className="p-8 text-slate-500">Đang tải trang...</p>;
-  if (page === null) return <p className="p-8 text-slate-500">Không tìm thấy trang. Quay lại Website CMS và khôi phục dữ liệu mẫu CMS.</p>;
+  if (page === null) return <p className="p-8 text-slate-500">Không tìm thấy trang. Quay lại Website CMS và khôi phục nội dung mặc định CMS.</p>;
 
   async function savePage() {
     if (!page) return;

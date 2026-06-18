@@ -204,7 +204,7 @@ export function CallCenterSettingsCard() {
                   <option value="">Chọn sales CRM</option>
                   {salesUsers.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
                 </Select>
-                <Input value={mapping.stringeeUserId} onChange={(event) => updateMapping(index, { stringeeUserId: event.target.value })} placeholder="Stringee userId, ví dụ u2" />
+                <Input value={mapping.stringeeUserId} onChange={(event) => updateMapping(index, { stringeeUserId: event.target.value })} placeholder="Stringee userId" />
                 <Input value={mapping.agentPhoneNumber || ''} onChange={(event) => updateMapping(index, { agentPhoneNumber: event.target.value })} placeholder="SĐT agent nếu route phone" />
                 <Select value={String(mapping.routingType || 1)} onChange={(event) => updateMapping(index, { routingType: Number(event.target.value) as 1 | 2 })}>
                   <option value="1">App/SIP</option>

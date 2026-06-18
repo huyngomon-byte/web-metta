@@ -68,15 +68,7 @@ function salesUsers() {
 }
 
 function defaultUserMappings() {
-  const sales = salesUsers();
-  const linh = sales.find((user) => user.fullName.toLowerCase().includes('linh')) || sales[1] || sales[0];
-  const chi = sales.find((user) => user.fullName.toLowerCase().includes('chi')) || sales[0];
-  const base = [
-    linh && { crmUserId: linh.id, crmName: linh.fullName, stringeeUserId: 'u2', active: true, routingType: 1 as const, answerTimeoutSec: 15 },
-    chi && { crmUserId: chi.id, crmName: chi.fullName, stringeeUserId: 'u3', active: true, routingType: 1 as const, answerTimeoutSec: 15 },
-  ].filter(Boolean) as CallCenterSettings['userMappings'];
-  const unique = new Map(base.map((item) => [item.crmUserId, item]));
-  return Array.from(unique.values());
+  return [];
 }
 
 export function defaultCallCenterSettings(): CallCenterSettings {
@@ -86,7 +78,7 @@ export function defaultCallCenterSettings(): CallCenterSettings {
     enabled: true,
     pccMode: true,
     fromNumber: '842471058267',
-    fallbackAgentId: firstSales?.id || 'u2',
+    fallbackAgentId: firstSales?.id || '',
     fallbackAgentName: firstSales?.fullName || 'Sales lead',
     userMappings: defaultUserMappings(),
     dispositions: [...DEFAULT_CALL_DISPOSITIONS],

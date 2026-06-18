@@ -16,7 +16,7 @@ export const BRAND = {
 };
 
 export const COURSE_OPTIONS = ['METTA Kiddies', 'METTA on Phonics', 'METTA Young Learner', 'IELTS Junior'] as const;
-export const STAFF_OPTIONS = ['METTA Admin', 'Chi', 'Linh'] as const;
+export const STAFF_OPTIONS = ['METTA Admin'] as const;
 
 export const COURSES = [
   { name: 'METTA Kiddies', code: 'KIDDIES', ageRange: '3-6 tuổi', level: 'Preschool' },

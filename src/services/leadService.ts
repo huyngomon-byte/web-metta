@@ -15,7 +15,6 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
-import { STAGE_DEMO_LEAD_PREFIX } from '@/data/stageDemoLeads';
 import { captureLeadTracking, type PublicLeadTracking } from '@/lib/capiTracking';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
 import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
@@ -39,6 +38,7 @@ const COL_LEADS = 'leads';
 const COL_ACTIVITIES = 'leadActivities';
 const COL_APPOINTMENTS = 'appointments';
 const COL_AUDIT_LOGS = 'activityLogs';
+const STAGE_DEMO_ID_PREFIX = 'lead-demo-stage-';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REALTIME_LEADS_LIMIT = 1000;
@@ -110,7 +110,7 @@ function isDemoLead(lead: Partial<Lead>) {
 
 function isDemoLeadId(id?: string) {
   const value = String(id || '');
-  return value.startsWith(STAGE_DEMO_LEAD_PREFIX)
+  return value.startsWith(STAGE_DEMO_ID_PREFIX)
     || value.startsWith(FINANCE_DEMO_ID_PREFIX)
     || /^lead-[1-5]$/.test(value)
     || /^lead-x\d+$/.test(value);
@@ -135,30 +135,6 @@ function activeSalesUsers() {
   return store.users.filter((user) => user.role === 'sales' && user.active);
 }
 
-function findSalesByNameHint(hint: string, fallbackIndex: number) {
-  const salesUsers = activeSalesUsers();
-  const normalizedHint = hint.toLowerCase();
-  return salesUsers.find((sales) => sales.fullName.toLowerCase().includes(normalizedHint))
-    || salesUsers[fallbackIndex]
-    || salesUsers[0];
-}
-
-function legacySalesUser(idOrName?: string, displayName?: string) {
-  const key = `${idOrName || ''} ${displayName || ''}`.toLowerCase();
-  if (key.includes('ms. linh') || key.includes('linh') || key.includes('u2')) return findSalesByNameHint('linh', 1);
-  if (key.includes('teacher an') || key.includes('u3')) return findSalesByNameHint('chi', 0);
-  return undefined;
-}
-
-function shouldRepointSales(idOrName: string | undefined, displayName: string | undefined, sales: AdminUser) {
-  const key = `${idOrName || ''} ${displayName || ''}`.toLowerCase();
-  return key.includes('ms. linh')
-    || key.includes('teacher an')
-    || key.includes('u2')
-    || key.includes('u3')
-    || Boolean(displayName && displayName === sales.fullName && idOrName !== sales.id);
-}
-
 function normalizedSalesKey(value?: string) {
   return String(value || '').trim().toLowerCase();
 }
@@ -169,12 +145,11 @@ function salesUserFromAssignment(idOrName?: string, displayName?: string) {
   const assignedKey = normalizedSalesKey(idOrName);
   const salesUsers = activeSalesUsers();
   return salesUsers.find((sales) => sales.id === idKey)
-    || salesUsers.find((sales) => normalizedSalesKey(sales.fullName) === nameKey || normalizedSalesKey(sales.fullName) === assignedKey)
-    || legacySalesUser(idOrName, displayName);
+    || salesUsers.find((sales) => normalizedSalesKey(sales.fullName) === nameKey || normalizedSalesKey(sales.fullName) === assignedKey);
 }
 
 function shouldNormalizeSales(idOrName: string | undefined, displayName: string | undefined, sales: AdminUser) {
-  return idOrName !== sales.id || displayName !== sales.fullName || shouldRepointSales(idOrName, displayName, sales);
+  return idOrName !== sales.id || displayName !== sales.fullName;
 }
 
 function normalizeSalesAssignmentFields<T extends Partial<Lead>>(input: T): T {
@@ -221,30 +196,13 @@ async function repairNormalizedAssignments(leads: Lead[], originals: Lead[], use
   })));
 }
 
-function demoPhoneFromIndex(globalIndex: number) {
-  return `09${String(71000000 + globalIndex * 13791).padStart(8, '0').slice(0, 8)}`;
-}
-
-function referralPhoneFromDemoLeadId(id?: string) {
-  const match = String(id || '').match(/^lead-demo-stage-(\d+)-(\d+)$/);
-  if (!match) return '';
-  const stageIndex = Number(match[1]) - 1;
-  const indexInStage = Number(match[2]) - 1;
-  if (!Number.isFinite(stageIndex) || !Number.isFinite(indexInStage) || stageIndex < 0 || indexInStage < 0) return '';
-  const globalIndex = stageIndex * 10 + indexInStage;
-  const referrerIndex = Math.max(0, globalIndex - ((globalIndex % 9) + 1));
-  return demoPhoneFromIndex(referrerIndex);
-}
-
 function repairReferralPhone(lead: Lead) {
   if (!isReferralSource(lead.source)) {
     lead.referralPhone = lead.referralPhone || '';
     return;
   }
 
-  if (String(lead.referralPhone || '').replace(/\D/g, '').length >= 9) return;
-  const demoReferralPhone = referralPhoneFromDemoLeadId(lead.id);
-  if (demoReferralPhone) lead.referralPhone = demoReferralPhone;
+  lead.referralPhone = lead.referralPhone || '';
 }
 
 function notifyLeadAssignment(lead: Lead, salesId?: string, assignedByName?: string, auto = false) {
@@ -478,10 +436,6 @@ async function writeFirestoreLead(lead: Lead) {
   await setDoc(doc(db!, COL_LEADS, lead.id), stripUndefined(lead));
 }
 
-async function syncMissingStageDemoLeadsToFirestore(current: Lead[]) {
-  void current;
-}
-
 async function writeFirestoreActivity(activity: LeadActivity) {
   if (!USE_FIREBASE) return;
   await setDoc(doc(db!, COL_ACTIVITIES, activity.id), stripUndefined(activity));
@@ -633,7 +587,6 @@ export const leadService = {
         await repairNormalizedAssignments(remoteLeads, rawLeads, user);
         remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
         store.leads = mergeDemoSeeds(remoteLeads);
-        await syncMissingStageDemoLeadsToFirestore(remoteLeads);
         await expireOverdueAssignments(user);
       }
       persistLeads();

@@ -157,14 +157,14 @@ export default function SourceEnginePage() {
     setMessage(output.result.source ? `Matched: ${output.result.source.name}` : 'Chưa match rule, cần review.');
   }
 
-  async function resetSamples() {
-    const next = await sourceEngineService.resetSamples();
+  async function resetDefaults() {
+    const next = await sourceEngineService.resetDefaults();
     setState(next);
     setResult(null);
     setSourceDraft(emptySource());
     setConnectorDraft(emptyConnector());
     setRuleDraft(emptyRule(next.sources[0]?.id || ''));
-    setMessage('Đã reset Source Engine về data mẫu.');
+    setMessage('Đã reset Source Engine về cấu hình mặc định.');
   }
 
   return (
@@ -176,7 +176,7 @@ export default function SourceEnginePage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void refresh()}><Search /> Refresh</Button>
-          <Button variant="outline" onClick={() => void resetSamples()}><ListRestart /> Reset mẫu</Button>
+          <Button variant="outline" onClick={() => void resetDefaults()}><ListRestart /> Reset mặc định</Button>
         </div>
       </div>
 

@@ -135,41 +135,7 @@ const sampleRules: AttributionRule[] = [
   },
 ];
 
-const sampleLogs: AttributionLog[] = [
-  {
-    id: 'log-1',
-    leadName: 'Bảo An demo',
-    rawChannel: 'Meta webhook',
-    campaign: 'Kiddies June Intake',
-    sourceName: 'Meta Lead Form',
-    matchedRuleName: 'Meta Lead Form ID',
-    confidence: 95,
-    status: 'matched',
-    receivedAt: now(),
-  },
-  {
-    id: 'log-2',
-    leadName: 'Minh Khang demo',
-    rawChannel: 'Website form',
-    campaign: 'phonics_landing',
-    sourceName: 'Website Form',
-    matchedRuleName: 'Website UTM',
-    confidence: 85,
-    status: 'matched',
-    receivedAt: now(),
-  },
-  {
-    id: 'log-3',
-    leadName: 'Lead chưa rõ nguồn',
-    rawChannel: 'Manual import',
-    campaign: '',
-    sourceName: 'Needs review',
-    matchedRuleName: 'No rule matched',
-    confidence: 20,
-    status: 'review',
-    receivedAt: now(),
-  },
-];
+const sampleLogs: AttributionLog[] = [];
 
 const defaultState: SourceEngineState = {
   sources: sampleSources,
@@ -237,7 +203,7 @@ function evaluate(state: SourceEngineState, payload: AttributionPayload): Attrib
 export const sourceEngineService = {
   getState: async () => delay(await readState()),
 
-  resetSamples: async () => {
+  resetDefaults: async () => {
     const next = cloneState(defaultState);
     await writeState(next);
     return delay(next);
