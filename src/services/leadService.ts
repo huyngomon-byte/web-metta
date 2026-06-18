@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { captureLeadTracking, type PublicLeadTracking } from '@/lib/capiTracking';
-import { DEAL_QUOTED_STATUS, DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
 import { financeDefaultsForLead, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
@@ -260,7 +260,7 @@ function currentCourseDealSizes(): CourseDealSizeRule[] {
   const programs = store.siteSettings?.programs?.filter((program) => program.visible !== false) || [];
   return programs.map((program) => ({
     courseName: program.title?.trim() || program.courseName?.trim() || program.slug,
-    dealSize: Number(program.dealSize) > 0 ? Number(program.dealSize) : DEFAULT_COURSE_DEAL_SIZE,
+    dealSize: resolveCourseDealSizeForProgram(program),
     aliases: [program.courseName, program.slug].map((item) => item?.trim()).filter((item): item is string => Boolean(item)),
   })).filter((item) => Boolean(item.courseName));
 }

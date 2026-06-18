@@ -1,21 +1,26 @@
-import { Activity, Brain, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Cpu, Eye, EyeOff, FlaskConical, GraduationCap, Globe, Hand, Layers, Lightbulb, MessageCircle, Mic, Music, Plus, Save, Star, Target, Trash2, Trophy, Upload, Users, Zap, type LucideIcon } from 'lucide-react';
+import { Activity, Brain, BookOpen, CheckCircle2, ChevronDown, ChevronUp, Cpu, Eye, EyeOff, FlaskConical, GraduationCap, Globe, Hand, Layers, Lightbulb, MessageCircle, Mic, Music, Plus, Save, Sparkles, Star, Target, Trash2, Trophy, Upload, Users, Zap, type LucideIcon } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS } from '@/lib/constants';
+import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, defaultCourseDealSizeForProgram, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { useThemeSettings } from '@/hooks/useCms';
 import { formatCurrency } from '@/lib/utils';
 import { cmsService } from '@/services/cmsService';
-import type { HighlightCard, ProgramCms, RoadmapCard, SkillPetal } from '@/types/cms';
+import type { HighlightCard, ProgramCms, RoadmapCard, SkillPetal, SummerStat, SummerAudienceItem, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage } from '@/types/cms';
 
 const DEFAULT_PROGRAMS: ProgramCms[] = PUBLIC_PROGRAMS.map((program) => ({
   ...program,
+  images: 'images' in program ? [...program.images] : undefined,
   highlights: [...program.highlights],
+  highlightCards: 'highlightCards' in program ? program.highlightCards.map((card) => ({ ...card })) : undefined,
   methodology: [...program.methodology],
   outcomes: [...program.outcomes],
+  outcomeCards: 'outcomeCards' in program ? program.outcomeCards.map((card) => ({ ...card })) : undefined,
   roadmap: [...program.roadmap],
+  roadmapCards: 'roadmapCards' in program ? program.roadmapCards.map((card) => ({ ...card })) : undefined,
+  skills: 'skills' in program ? program.skills.map((skill) => ({ ...skill })) : undefined,
 }));
 
 function ArrayEditor({
@@ -617,6 +622,294 @@ async function uploadProgramImage(file: File): Promise<string | null> {
   });
 }
 
+/* ── Helpers & editors riêng cho trang Summer ── */
+function LabeledInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <Input className="text-sm" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+    </label>
+  );
+}
+
+function LabeledTextarea({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <Textarea className="text-sm" rows={3} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+    </label>
+  );
+}
+
+function SummerImageField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
+      <div className="flex items-center gap-3">
+        <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-lg border bg-slate-100">{value && <img src={value} alt="" className="h-full w-full object-cover" />}</div>
+        <div className="flex flex-1 flex-col gap-1">
+          <label className="inline-flex w-fit cursor-pointer items-center gap-1 rounded border px-2 py-1 text-xs font-bold hover:bg-slate-50">
+            <Upload size={12} /> Upload
+            <input type="file" className="hidden" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const u = await uploadProgramImage(f); if (u) onChange(u); } }} />
+          </label>
+          <Input className="text-xs" value={value} onChange={(e) => onChange(e.target.value)} placeholder="URL ảnh" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummerStatsEditor({ stats, onChange }: { stats: SummerStat[]; onChange: (s: SummerStat[]) => void }) {
+  const update = (i: number, field: keyof SummerStat, val: string) => { const c = [...stats]; c[i] = { ...c[i], [field]: val }; onChange(c); };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Số liệu nổi (hero)</span>
+        <Button variant="outline" size="sm" onClick={() => onChange([...stats, { value: '', label: '', color: '#003B7A' }])}><Plus size={14} /> Thêm</Button>
+      </div>
+      {stats.map((s, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input type="color" value={s.color || '#003B7A'} onChange={(e) => update(i, 'color', e.target.value)} className="h-9 w-9 flex-shrink-0 cursor-pointer rounded border" />
+          <Input className="w-24" value={s.value} onChange={(e) => update(i, 'value', e.target.value)} placeholder="6" />
+          <Input value={s.label} onChange={(e) => update(i, 'label', e.target.value)} placeholder="tuần" />
+          <button type="button" onClick={() => onChange(stats.filter((_, j) => j !== i))} className="flex-shrink-0 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummerAudienceEditor({ items, onChange }: { items: SummerAudienceItem[]; onChange: (s: SummerAudienceItem[]) => void }) {
+  const update = (i: number, field: keyof SummerAudienceItem, val: string) => { const c = [...items]; c[i] = { ...c[i], [field]: val }; onChange(c); };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Đối tượng phù hợp</span>
+        <Button variant="outline" size="sm" onClick={() => onChange([...items, { title: '', description: '' }])}><Plus size={14} /> Thêm</Button>
+      </div>
+      {items.map((it, i) => (
+        <div key={i} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex items-center gap-2">
+            <Input value={it.title} onChange={(e) => update(i, 'title', e.target.value)} placeholder="Tên nhóm" />
+            <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="flex-shrink-0 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+          </div>
+          <Textarea className="text-sm" rows={2} value={it.description} onChange={(e) => update(i, 'description', e.target.value)} placeholder="Mô tả" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummerWeeklyEditor({ columns, rows, onColumns, onRows }: { columns: string[]; rows: string[][]; onColumns: (c: string[]) => void; onRows: (r: string[][]) => void }) {
+  const setCol = (ci: number, val: string) => { const c = [...columns]; c[ci] = val; onColumns(c); };
+  const setCell = (ri: number, ci: number, val: string) => { const c = rows.map((r) => [...r]); if (!c[ri]) return; c[ri][ci] = val; onRows(c); };
+  const addRow = () => onRows([...rows, Array.from({ length: columns.length }, () => '')]);
+  const addCol = () => { onColumns([...columns, '']); onRows(rows.map((r) => [...r, ''])); };
+  const removeCol = (ci: number) => { onColumns(columns.filter((_, j) => j !== ci)); onRows(rows.map((r) => r.filter((_, j) => j !== ci))); };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Lịch học từng tuần</span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={addCol}><Plus size={14} /> Cột</Button>
+          <Button variant="outline" size="sm" onClick={addRow}><Plus size={14} /> Dòng</Button>
+        </div>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {columns.map((c, ci) => (
+          <div key={ci} className="flex min-w-[150px] items-center gap-1">
+            <Input className="text-xs font-bold" value={c} onChange={(e) => setCol(ci, e.target.value)} placeholder={`Cột ${ci + 1}`} />
+            <button type="button" onClick={() => removeCol(ci)} className="flex-shrink-0 text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-2">
+        {rows.map((row, ri) => (
+          <div key={ri} className="flex items-start gap-2 overflow-x-auto rounded-lg border border-slate-100 bg-white p-2">
+            {columns.map((_, ci) => (
+              <Textarea key={ci} className="min-w-[150px] text-xs" rows={2} value={row[ci] ?? ''} onChange={(e) => setCell(ri, ci, e.target.value)} />
+            ))}
+            <button type="button" onClick={() => onRows(rows.filter((_, j) => j !== ri))} className="mt-1 flex-shrink-0 text-slate-400 hover:text-red-500"><Trash2 size={15} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SummerShowcaseEditor({ items, onChange }: { items: SummerShowcaseItem[]; onChange: (s: SummerShowcaseItem[]) => void }) {
+  const update = (i: number, field: keyof SummerShowcaseItem, val: string) => { const c = [...items]; c[i] = { ...c[i], [field]: val }; onChange(c); };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Hạng mục Showcase</span>
+        <Button variant="outline" size="sm" onClick={() => onChange([...items, { icon: 'Star', title: '', description: '' }])}><Plus size={14} /> Thêm</Button>
+      </div>
+      {items.map((it, i) => (
+        <div key={i} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          <div className="flex flex-wrap gap-1">
+            {HIGHLIGHT_ICONS.map((ic) => (
+              <button key={ic.name} type="button" title={ic.label} onClick={() => update(i, 'icon', ic.name)}
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${it.icon === ic.name ? 'scale-110 bg-[#003B7A] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                <ic.Icon size={15} />
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <Input value={it.title} onChange={(e) => update(i, 'title', e.target.value)} placeholder="Tiêu đề" />
+            <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="flex-shrink-0 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+          </div>
+          <Input value={it.description} onChange={(e) => update(i, 'description', e.target.value)} placeholder="Mô tả" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummerClassInfoEditor({ rows, onChange }: { rows: SummerClassInfoRow[]; onChange: (r: SummerClassInfoRow[]) => void }) {
+  const update = (i: number, field: keyof SummerClassInfoRow, val: string) => { const c = [...rows]; c[i] = { ...c[i], [field]: val }; onChange(c); };
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Bảng thông tin lớp học</span>
+        <Button variant="outline" size="sm" onClick={() => onChange([...rows, { label: '', value: '' }])}><Plus size={14} /> Thêm</Button>
+      </div>
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <Input className="w-1/3" value={r.label} onChange={(e) => update(i, 'label', e.target.value)} placeholder="Nhãn" />
+          <Input value={r.value} onChange={(e) => update(i, 'value', e.target.value)} placeholder="Giá trị" />
+          <button type="button" onClick={() => onChange(rows.filter((_, j) => j !== i))} className="flex-shrink-0 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SummerGalleryEditor({ images, onChange }: { images: SummerGalleryImage[]; onChange: (g: SummerGalleryImage[]) => void }) {
+  const update = (i: number, field: keyof SummerGalleryImage, val: string) => { const c = [...images]; c[i] = { ...c[i], [field]: val }; onChange(c); };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Ảnh thư viện</span>
+        <Button variant="outline" size="sm" onClick={() => onChange([...images, { src: '', title: '', alt: '' }])}><Plus size={14} /> Thêm</Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {images.map((img, i) => (
+          <div key={i} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div className="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border bg-slate-100">{img.src && <img src={img.src} alt="" className="h-full w-full object-cover" />}</div>
+            <div className="flex flex-1 flex-col gap-1.5">
+              <label className="inline-flex w-fit cursor-pointer items-center gap-1 rounded border px-2 py-1 text-[10px] font-bold hover:bg-slate-50">
+                <Upload size={11} /> Upload
+                <input type="file" className="hidden" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const u = await uploadProgramImage(f); if (u) update(i, 'src', u); } }} />
+              </label>
+              <Input className="text-xs" value={img.src} onChange={(e) => update(i, 'src', e.target.value)} placeholder="URL ảnh" />
+              <Input className="text-xs" value={img.title} onChange={(e) => update(i, 'title', e.target.value)} placeholder="Tiêu đề (caption)" />
+            </div>
+            <button type="button" onClick={() => onChange(images.filter((_, j) => j !== i))} className="flex-shrink-0 text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function summerClassInfoRowsForProgram(program: ProgramCms, rows: SummerClassInfoRow[]) {
+  const price = `${formatCurrency(resolveCourseDealSizeForProgram(program), program.dealCurrency || DEFAULT_DEAL_CURRENCY)} / trọn khóa`;
+  return rows.map((row) => {
+    if (row.label === 'Tên chương trình') return { ...row, value: program.title || row.value };
+    if (row.label === 'Độ tuổi') return { ...row, value: program.ageRange || row.value };
+    if (row.label === 'Thời lượng') return { ...row, value: program.duration || row.value };
+    if (row.label === 'Học phí') return { ...row, value: price };
+    return row;
+  });
+}
+
+function SummerContentEditor({ program, onChange }: { program: ProgramCms; onChange: (p: ProgramCms) => void }) {
+  const set = (field: keyof ProgramCms, value: unknown) => onChange({ ...program, [field]: value });
+  const D = SUMMER_DEFAULTS;
+  const classInfoRows = summerClassInfoRowsForProgram(program, program.summerClassInfo ?? D.classInfo);
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border-2 border-dashed border-[#F45A0A]/30 bg-[#FFF7ED]/50 p-4">
+      <div className="flex items-center gap-2 text-sm font-extrabold text-[#9A3412]">
+        <Sparkles size={16} /> Nội dung riêng trang Summer
+      </div>
+
+      <EditorSection title="Hero (Summer)" subtitle="Dòng phụ, chip và số liệu nổi ở đầu trang." defaultOpen>
+        <div className="flex flex-col gap-3">
+          <LabeledInput label="Dòng phụ dưới tiêu đề" value={program.summerSubtitle ?? D.subtitle} onChange={(v) => set('summerSubtitle', v)} />
+          <ArrayEditor label="Chip (hero)" items={program.summerChips ?? D.chips} onChange={(v) => set('summerChips', v)} />
+          <SummerStatsEditor stats={program.summerHeroStats ?? D.heroStats} onChange={(v) => set('summerHeroStats', v)} />
+        </div>
+      </EditorSection>
+
+      <EditorSection title="Tổng quan chương trình">
+        <div className="grid gap-2">
+          <LabeledInput label="Eyebrow" value={program.summerOverviewEyebrow ?? D.overviewEyebrow} onChange={(v) => set('summerOverviewEyebrow', v)} />
+          <LabeledInput label="Tiêu đề" value={program.summerOverviewTitle ?? D.overviewTitle} onChange={(v) => set('summerOverviewTitle', v)} />
+          <LabeledTextarea label="Nội dung" value={program.summerOverviewBody ?? D.overviewBody} onChange={(v) => set('summerOverviewBody', v)} />
+        </div>
+      </EditorSection>
+
+      <EditorSection title="Đối tượng phù hợp">
+        <LabeledInput label="Tiêu đề section" value={program.summerAudienceTitle ?? D.audienceTitle} onChange={(v) => set('summerAudienceTitle', v)} />
+        <div className="mt-3"><SummerAudienceEditor items={program.summerAudience ?? D.audience} onChange={(v) => set('summerAudience', v)} /></div>
+      </EditorSection>
+
+      <EditorSection title="4 bộ môn">
+        <div className="mb-3 grid gap-2 md:grid-cols-2">
+          <LabeledInput label="Eyebrow" value={program.summerModulesEyebrow ?? D.modulesEyebrow} onChange={(v) => set('summerModulesEyebrow', v)} />
+          <LabeledInput label="Tiêu đề" value={program.summerModulesTitle ?? D.modulesTitle} onChange={(v) => set('summerModulesTitle', v)} />
+        </div>
+        <HighlightCardsEditor label="Các bộ môn" cards={(program.summerModules ?? D.modules) as HighlightCard[]} onChange={(cards) => set('summerModules', cards)} defaultColors={['#F45A0A', '#003B7A', '#8B5CF6', '#16A34A']} />
+      </EditorSection>
+
+      <EditorSection title="Lộ trình & lịch tuần">
+        <div className="mb-3 grid gap-2 md:grid-cols-2">
+          <LabeledInput label="Eyebrow" value={program.summerRoadmapEyebrow ?? D.roadmapEyebrow} onChange={(v) => set('summerRoadmapEyebrow', v)} />
+          <LabeledInput label="Tiêu đề" value={program.summerRoadmapTitle ?? D.roadmapTitle} onChange={(v) => set('summerRoadmapTitle', v)} />
+        </div>
+        <RoadmapCardsEditor cards={program.summerStages ?? D.stages} onChange={(cards) => set('summerStages', cards)} />
+        <div className="mt-4"><SummerWeeklyEditor columns={program.summerWeeklyColumns ?? D.weeklyColumns} rows={program.summerWeeklyPlan ?? D.weeklyPlan} onColumns={(v) => set('summerWeeklyColumns', v)} onRows={(v) => set('summerWeeklyPlan', v)} /></div>
+      </EditorSection>
+
+      <EditorSection title="Kết quả (Sau 6 tuần)">
+        <LabeledInput label="Tiêu đề" value={program.summerOutcomesTitle ?? D.outcomesTitle} onChange={(v) => set('summerOutcomesTitle', v)} />
+        <div className="mt-2"><ArrayEditor label="Danh sách kết quả" items={program.summerOutcomesList ?? D.outcomes} onChange={(v) => set('summerOutcomesList', v)} /></div>
+      </EditorSection>
+
+      <EditorSection title="Showcase cuối khóa">
+        <div className="mb-3 grid gap-2">
+          <LabeledInput label="Eyebrow" value={program.summerShowcaseEyebrow ?? D.showcaseEyebrow} onChange={(v) => set('summerShowcaseEyebrow', v)} />
+          <LabeledInput label="Tiêu đề" value={program.summerShowcaseTitle ?? D.showcaseTitle} onChange={(v) => set('summerShowcaseTitle', v)} />
+          <LabeledTextarea label="Nội dung" value={program.summerShowcaseBody ?? D.showcaseBody} onChange={(v) => set('summerShowcaseBody', v)} />
+          <SummerImageField label="Ảnh showcase" value={program.summerShowcaseImage ?? D.showcaseImage} onChange={(v) => set('summerShowcaseImage', v)} />
+        </div>
+        <SummerShowcaseEditor items={program.summerShowcaseItems ?? D.showcaseItems} onChange={(v) => set('summerShowcaseItems', v)} />
+      </EditorSection>
+
+      <EditorSection title="Thông tin lớp học">
+        <div className="mb-3 grid gap-2">
+          <LabeledInput label="Tiêu đề" value={program.summerClassInfoTitle ?? D.classInfoTitle} onChange={(v) => set('summerClassInfoTitle', v)} />
+          <LabeledTextarea label="Mô tả" value={program.summerClassInfoBody ?? D.classInfoBody} onChange={(v) => set('summerClassInfoBody', v)} />
+        </div>
+        <SummerClassInfoEditor rows={classInfoRows} onChange={(v) => set('summerClassInfo', v)} />
+      </EditorSection>
+
+      <EditorSection title="Thư viện ảnh">
+        <LabeledInput label="Tiêu đề" value={program.summerGalleryTitle ?? D.galleryTitle} onChange={(v) => set('summerGalleryTitle', v)} />
+        <div className="mt-2"><SummerGalleryEditor images={program.summerGallery ?? D.gallery} onChange={(v) => set('summerGallery', v)} /></div>
+      </EditorSection>
+
+      <EditorSection title="CTA cuối trang">
+        <div className="grid gap-2">
+          <LabeledInput label="Tiêu đề" value={program.summerCtaTitle ?? D.ctaTitle} onChange={(v) => set('summerCtaTitle', v)} />
+          <LabeledTextarea label="Nội dung" value={program.summerCtaBody ?? D.ctaBody} onChange={(v) => set('summerCtaBody', v)} />
+        </div>
+      </EditorSection>
+    </div>
+  );
+}
+
 function ProgramCard({
   program,
   index,
@@ -638,6 +931,8 @@ function ProgramCard({
 
   const set = (field: keyof ProgramCms, value: unknown) =>
     onChange({ ...program, [field]: value });
+  const defaultDealSize = defaultCourseDealSizeForProgram(program);
+  const effectiveDealSize = resolveCourseDealSizeForProgram(program);
 
   return (
     <Card className={`${open ? 'border-[#003B7A]/30 shadow-md' : ''} ${program.visible === false ? 'opacity-60 grayscale-[0.2]' : ''}`}>
@@ -719,15 +1014,17 @@ function ProgramCard({
                 type="number"
                 min={0}
                 step={100000}
-                value={program.dealSize ?? DEFAULT_COURSE_DEAL_SIZE}
+                placeholder={String(defaultDealSize)}
+                value={program.dealSize ?? ''}
                 onChange={(e) => {
-                  const parsed = Number(e.target.value);
-                  set('dealSize', Number.isFinite(parsed) && parsed > 0 ? parsed : undefined);
+                  const raw = e.target.value;
+                  const parsed = Number(raw);
+                  set('dealSize', raw !== '' && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined);
                   set('dealCurrency', DEFAULT_DEAL_CURRENCY);
                 }}
               />
               <p className="text-[11px] font-semibold text-slate-400">
-                Lead sẽ lấy: {formatCurrency(program.dealSize ?? DEFAULT_COURSE_DEAL_SIZE, program.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                Lead sẽ lấy: {formatCurrency(effectiveDealSize, program.dealCurrency || DEFAULT_DEAL_CURRENCY)}
               </p>
             </div>
           </div>
@@ -856,6 +1153,10 @@ function ProgramCard({
             onChange={(skills) => onChange({ ...program, skills })}
           />
           </EditorSection>
+
+          {program.slug === 'metta-summer-2026' && (
+            <SummerContentEditor program={program} onChange={onChange} />
+          )}
         </CardContent>
       )}
     </Card>

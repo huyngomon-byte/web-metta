@@ -62,6 +62,73 @@ export interface ProgramCms {
   roadmap: string[];
   roadmapCards?: RoadmapCard[];
   skills?: SkillPetal[];
+
+  /* ── Nội dung đặc thù cho trang Summer (chương trình hè đa bộ môn) ── */
+  summerSubtitle?: string;                 // dòng phụ dưới tiêu đề hero
+  summerChips?: string[];                  // các chip nhỏ ở hero
+  summerHeroStats?: SummerStat[];          // 3 ô số liệu nổi dưới ảnh hero
+  summerOverviewEyebrow?: string;
+  summerOverviewTitle?: string;
+  summerOverviewBody?: string;
+  summerAudienceTitle?: string;
+  summerAudience?: SummerAudienceItem[];   // "Chương trình phù hợp với ai?"
+  summerModulesEyebrow?: string;
+  summerModulesTitle?: string;
+  summerModules?: SummerModule[];          // 4 bộ môn
+  summerRoadmapEyebrow?: string;
+  summerRoadmapTitle?: string;
+  summerStages?: RoadmapCard[];            // lộ trình theo tuần (3 giai đoạn)
+  summerWeeklyColumns?: string[];          // tiêu đề cột bảng lịch tuần
+  summerWeeklyPlan?: string[][];           // các dòng bảng lịch tuần
+  summerOutcomesTitle?: string;
+  summerOutcomesList?: string[];           // "Sau 6 tuần, con có gì?"
+  summerShowcaseEyebrow?: string;
+  summerShowcaseTitle?: string;
+  summerShowcaseBody?: string;
+  summerShowcaseImage?: string;
+  summerShowcaseItems?: SummerShowcaseItem[];
+  summerClassInfoTitle?: string;
+  summerClassInfoBody?: string;
+  summerClassInfo?: SummerClassInfoRow[];
+  summerGalleryTitle?: string;
+  summerGallery?: SummerGalleryImage[];
+  summerCtaTitle?: string;
+  summerCtaBody?: string;
+}
+
+export interface SummerStat {
+  value: string;
+  label: string;
+  color?: string;
+}
+
+export interface SummerAudienceItem {
+  title: string;
+  description: string;
+}
+
+export interface SummerModule {
+  icon: string;        // Lucide icon name
+  color: string;       // hex màu nhấn
+  title: string;
+  description: string;
+}
+
+export interface SummerShowcaseItem {
+  icon: string;        // Lucide icon name
+  title: string;
+  description: string;
+}
+
+export interface SummerClassInfoRow {
+  label: string;
+  value: string;
+}
+
+export interface SummerGalleryImage {
+  src: string;
+  title: string;
+  alt?: string;
 }
 
 export interface SkillPetal {

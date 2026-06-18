@@ -1,3 +1,5 @@
+import type { SummerStat, SummerAudienceItem, SummerModule, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage, RoadmapCard } from '@/types/cms';
+
 const LOGO_ASSET_VERSION = '20260612-1555';
 
 export const BRAND_LOGOS = {
@@ -228,6 +230,122 @@ export const PUBLIC_PROGRAMS = [
     ],
   },
 ] as const;
+
+type ProgramDealSource = {
+  slug?: string;
+  title?: string;
+  courseName?: string;
+  dealSize?: number | string | null;
+};
+
+export function defaultCourseDealSizeForProgram(program?: ProgramDealSource | null) {
+  const matched = program
+    ? PUBLIC_PROGRAMS.find((item) => (
+      item.slug === program.slug
+      || item.title === program.title
+      || item.courseName === program.courseName
+    ))
+    : undefined;
+  const parsed = Number(matched?.dealSize);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_COURSE_DEAL_SIZE;
+}
+
+export function resolveCourseDealSizeForProgram(program?: ProgramDealSource | null) {
+  const parsed = Number(program?.dealSize);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultCourseDealSizeForProgram(program);
+}
+
+/* ── Nội dung mặc định cho trang Summer (dùng chung cho web + CMS editor) ── */
+export const SUMMER_DEFAULTS = {
+  subtitle: 'Chương trình hè trải nghiệm đa bộ môn cho trẻ 4–11 tuổi',
+  chips: ['4–11 tuổi', '6 tuần', '24 buổi', '4 bộ môn', 'Showcase cuối khóa'] as string[],
+  heroStats: [
+    { value: '6', label: 'tuần', color: '#F45A0A' },
+    { value: '24', label: 'buổi', color: '#003B7A' },
+    { value: '4', label: 'bộ môn', color: '#16A34A' },
+  ] as SummerStat[],
+  overviewEyebrow: 'Tổng quan chương trình',
+  overviewTitle: 'Một mùa hè để con khám phá, phát triển và tỏa sáng',
+  overviewBody:
+    'METTA Summer 2026 là chương trình hè đa bộ môn dành cho trẻ mầm non và tiểu học. Trong 6 tuần, học viên được trải nghiệm nghệ thuật, tư duy, âm nhạc và vận động thông qua các hoạt động phù hợp với lứa tuổi.',
+  audienceTitle: 'Chương trình phù hợp với ai?',
+  audience: [
+    {
+      title: 'Nhóm mầm non 4–6 tuổi',
+      description: 'Hoạt động nhiều hình ảnh, âm nhạc, vận động và sản phẩm thủ công nhỏ để con làm quen nhẹ nhàng, vui vẻ và tự tin tham gia cùng bạn.',
+    },
+    {
+      title: 'Nhóm tiểu học 6–11 tuổi',
+      description: 'Tăng dần thử thách về kỹ thuật, tư duy chiến thuật, trình diễn nhóm và hoàn thiện sản phẩm cho Showcase cuối khóa.',
+    },
+  ] as SummerAudienceItem[],
+  modulesEyebrow: '4 bộ môn',
+  modulesTitle: '4 bộ môn trong chương trình',
+  modules: [
+    { icon: 'Sparkles', color: '#F45A0A', title: 'Mỹ thuật', description: 'Màu sắc, hình khối, tranh mùa hè và sản phẩm thủ công giúp con thể hiện ý tưởng bằng chất liệu trực quan.' },
+    { icon: 'Brain', color: '#003B7A', title: 'Cờ vua', description: 'Làm quen bàn cờ, quân cờ, luật chơi, chiến thuật cơ bản và mini tournament phù hợp độ tuổi.' },
+    { icon: 'Mic', color: '#8B5CF6', title: 'Thanh nhạc', description: 'Cảm thụ âm nhạc, luyện hơi, hát nhóm và chuẩn bị tiết mục biểu diễn tự tin trước tập thể.' },
+    { icon: 'Music', color: '#16A34A', title: 'Nhảy & Múa', description: 'Rèn nhịp điệu, động tác cơ bản, phối hợp đội hình và trình diễn nhóm trong Showcase.' },
+  ] as SummerModule[],
+  roadmapEyebrow: 'Lộ trình học',
+  roadmapTitle: 'Lộ trình học 6 tuần',
+  stages: [
+    { label: 'Tuần 1–2', title: 'Khám phá', description: 'Con làm quen chất liệu, bàn cờ, giọng hát và nhịp điệu cơ bản qua hoạt động nhẹ nhàng.', color: '#16A9D8' },
+    { label: 'Tuần 3–4', title: 'Phát triển', description: 'Con luyện kỹ thuật, hoàn thiện bài tập nhỏ và bắt đầu phối hợp với nhóm.', color: '#F45A0A' },
+    { label: 'Tuần 5–6', title: 'Hoàn thiện', description: 'Con chỉnh sửa sản phẩm, ráp tiết mục và chuẩn bị tâm thế cho Showcase cuối khóa.', color: '#16A34A' },
+  ] as RoadmapCard[],
+  weeklyColumns: ['Tuần', 'Mỹ thuật', 'Cờ vua', 'Thanh nhạc', 'Nhảy & Múa'] as string[],
+  weeklyPlan: [
+    ['Tuần 1', 'Làm quen màu sắc, hình khối và chất liệu mùa hè', 'Nhận biết bàn cờ, quân cờ và cách di chuyển cơ bản', 'Cảm thụ giai điệu, tư thế hát và luyện hơi nhẹ', 'Nhịp điệu cơ bản, làm quen chuyển động theo nhạc'],
+    ['Tuần 2', 'Vẽ tranh chủ đề mùa hè và hoàn thiện sản phẩm nhỏ', 'Luật chơi, cách bảo vệ quân và bài tập quan sát', 'Hát nhóm, giữ nhịp và phát âm lời bài hát rõ ràng', 'Động tác tay chân cơ bản và phối hợp theo nhóm'],
+    ['Tuần 3', 'Thủ công sáng tạo, phối màu và bố cục đơn giản', 'Chiến thuật khai cuộc đơn giản và tình huống mini', 'Luyện câu hát, biểu cảm và nghe bạn trong nhóm', 'Tổ hợp động tác ngắn và ghi nhớ đội hình'],
+    ['Tuần 4', 'Dự án tranh cá nhân hoặc sản phẩm thủ công nâng cao', 'Mini game, xử lý nước đi và rèn tinh thần fair-play', 'Chọn tiết mục, luyện đoạn biểu diễn chính', 'Ráp bài nhóm, nhịp chuyển đoạn và tương tác sân khấu'],
+    ['Tuần 5', 'Hoàn thiện sản phẩm trưng bày và đặt tên tác phẩm', 'Luyện mini tournament và cách bắt tay sau ván đấu', 'Tổng duyệt tiết mục hát nhóm hoặc cá nhân', 'Tổng duyệt bài nhảy/múa và biểu cảm trình diễn'],
+    ['Tuần 6', 'Chuẩn bị góc triển lãm và chia sẻ về sản phẩm', 'Giải cờ vua mini trong không khí vui vẻ', 'Biểu diễn trong METTA Summer Showcase 2026', 'Trình diễn nhóm, nhận chứng nhận và chụp ảnh cùng phụ huynh'],
+  ] as string[][],
+  outcomesTitle: 'Sau 6 tuần, con có gì?',
+  outcomes: [
+    'Có tranh cá nhân và sản phẩm thủ công sáng tạo.',
+    'Biết luật chơi và chiến thuật cờ vua cơ bản.',
+    'Biểu diễn ít nhất một bài hát hoặc tiết mục nhóm.',
+    'Tham gia một bài nhảy/múa hoàn chỉnh.',
+    'Tự tin hơn khi đứng trước tập thể.',
+    'Nhận chứng nhận hoàn thành chương trình.',
+    'Tham gia METTA Summer Showcase 2026 cùng phụ huynh.',
+  ] as string[],
+  showcaseEyebrow: 'Điểm nhấn cuối khóa',
+  showcaseTitle: 'METTA Summer Showcase 2026',
+  showcaseBody:
+    'Cuối khóa, học viên tham gia triển lãm sản phẩm mỹ thuật, giải cờ vua mini, biểu diễn thanh nhạc, nhảy múa, trao chứng nhận và chụp ảnh cùng phụ huynh.',
+  showcaseImage: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop',
+  showcaseItems: [
+    { icon: 'Sparkles', title: 'Art Exhibition', description: 'Trưng bày tranh và sản phẩm thủ công của học viên.' },
+    { icon: 'Brain', title: 'Chess Mini Tournament', description: 'Không gian thi đấu nhỏ, vui vẻ và khích lệ tinh thần chiến thuật.' },
+    { icon: 'Mic', title: 'Music Performance', description: 'Tiết mục thanh nhạc cá nhân hoặc nhóm trước phụ huynh.' },
+    { icon: 'Music', title: 'Dance Showcase', description: 'Bài nhảy/múa hoàn chỉnh với đội hình và biểu cảm sân khấu.' },
+  ] as SummerShowcaseItem[],
+  classInfoTitle: 'Thông tin lớp học',
+  classInfoBody: 'Thông tin chính để phụ huynh nắm nhanh lịch học, độ tuổi, học phí và bộ môn trong chương trình.',
+  classInfo: [
+    { label: 'Tên chương trình', value: 'METTA Summer 2026' },
+    { label: 'Độ tuổi', value: '4–11 tuổi' },
+    { label: 'Thời lượng', value: '6 tuần' },
+    { label: 'Tổng số buổi', value: '24 buổi' },
+    { label: 'Lịch học', value: 'Thứ 2 · Thứ 4 · Thứ 6 · Chủ nhật' },
+    { label: 'Mỗi buổi', value: '1h30' },
+    { label: 'Học phí', value: '1.999.000đ / trọn khóa' },
+    { label: 'Bộ môn', value: 'Mỹ thuật · Cờ vua · Thanh nhạc · Nhảy & Múa' },
+  ] as SummerClassInfoRow[],
+  galleryTitle: 'Hình ảnh hoạt động',
+  gallery: [
+    { src: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800&q=85&auto=format&fit=crop', title: 'Mỹ thuật & thủ công', alt: 'Trẻ học vẽ và thực hành mỹ thuật' },
+    { src: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=800&q=85&auto=format&fit=crop', title: 'Cờ vua', alt: 'Bàn cờ vua và hoạt động tư duy chiến thuật' },
+    { src: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=800&q=85&auto=format&fit=crop', title: 'Thanh nhạc', alt: 'Hoạt động âm nhạc và luyện hát' },
+    { src: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=800&q=85&auto=format&fit=crop', title: 'Nhảy & Múa', alt: 'Hoạt động nhảy múa và trình diễn nhóm' },
+  ] as SummerGalleryImage[],
+  ctaTitle: 'Sẵn sàng cho con một mùa hè đáng nhớ tại METTA?',
+  ctaBody: 'Để lại thông tin để METTA tư vấn lịch học, độ tuổi phù hợp và hướng dẫn đăng ký giữ chỗ cho con.',
+};
 
 export const DEAL_QUOTED_STATUS = 'Đã báo phí/Chờ chốt';
 export const WON_LEAD_STATUS = 'Đã đăng ký học';

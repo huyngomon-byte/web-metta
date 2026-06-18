@@ -241,10 +241,15 @@ function CoursesBlock({ section }: { section: PageSection }) {
   const { settings, loading } = usePublicThemeSettings();
   const fallbackPrograms: ProgramCms[] = PUBLIC_PROGRAMS.map((program) => ({
     ...program,
+    images: 'images' in program ? [...program.images] : undefined,
     highlights: [...program.highlights],
+    highlightCards: 'highlightCards' in program ? program.highlightCards.map((card) => ({ ...card })) : undefined,
     methodology: [...program.methodology],
     outcomes: [...program.outcomes],
+    outcomeCards: 'outcomeCards' in program ? program.outcomeCards.map((card) => ({ ...card })) : undefined,
     roadmap: [...program.roadmap],
+    roadmapCards: 'roadmapCards' in program ? program.roadmapCards.map((card) => ({ ...card })) : undefined,
+    skills: 'skills' in program ? program.skills.map((skill) => ({ ...skill })) : undefined,
   }));
   const programs = (settings?.programs?.length ? settings.programs : fallbackPrograms)
     .filter((program) => program.visible !== false);

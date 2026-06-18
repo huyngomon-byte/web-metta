@@ -1,9 +1,10 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock, GraduationCap, Sparkles, Users, Music, BookOpen, Eye, Brain, Globe, Zap, Mic, MessageCircle, Star, Cpu, FlaskConical, Trophy, Target, Lightbulb, Hand, type LucideIcon } from 'lucide-react';
-import { type ReactNode, useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
-import { PUBLIC_PROGRAMS } from '@/lib/constants';
+import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
+import { formatCurrency } from '@/lib/utils';
 import type { ProgramCms } from '@/types/cms';
 
 export default function PublicProgramDetailPage() {
@@ -233,274 +234,182 @@ export default function PublicProgramDetailPage() {
   );
 }
 
-const summerChips = ['4–11 tuổi', '6 tuần', '24 buổi', '4 bộ môn', 'Showcase cuối khóa'];
 
-const summerAudience = [
-  {
-    title: 'Nhóm mầm non 4–6 tuổi',
-    description: 'Hoạt động nhiều hình ảnh, âm nhạc, vận động và sản phẩm thủ công nhỏ để con làm quen nhẹ nhàng, vui vẻ và tự tin tham gia cùng bạn.',
-  },
-  {
-    title: 'Nhóm tiểu học 6–11 tuổi',
-    description: 'Tăng dần thử thách về kỹ thuật, tư duy chiến thuật, trình diễn nhóm và hoàn thiện sản phẩm cho Showcase cuối khóa.',
-  },
-];
-
-const summerModules: Array<{ title: string; description: string; Icon: LucideIcon; color: string; bg: string }> = [
-  {
-    title: 'Mỹ thuật',
-    description: 'Màu sắc, hình khối, tranh mùa hè và sản phẩm thủ công giúp con thể hiện ý tưởng bằng chất liệu trực quan.',
-    Icon: Sparkles,
-    color: '#F45A0A',
-    bg: '#FFF3E8',
-  },
-  {
-    title: 'Cờ vua',
-    description: 'Làm quen bàn cờ, quân cờ, luật chơi, chiến thuật cơ bản và mini tournament phù hợp độ tuổi.',
-    Icon: Brain,
-    color: '#003B7A',
-    bg: '#EEF6FF',
-  },
-  {
-    title: 'Thanh nhạc',
-    description: 'Cảm thụ âm nhạc, luyện hơi, hát nhóm và chuẩn bị tiết mục biểu diễn tự tin trước tập thể.',
-    Icon: Mic,
-    color: '#8B5CF6',
-    bg: '#F5F0FF',
-  },
-  {
-    title: 'Nhảy & Múa',
-    description: 'Rèn nhịp điệu, động tác cơ bản, phối hợp đội hình và trình diễn nhóm trong Showcase.',
-    Icon: Music,
-    color: '#16A34A',
-    bg: '#ECFDF3',
-  },
-];
-
-const summerStages = [
-  {
-    label: 'Tuần 1–2',
-    title: 'Khám phá',
-    description: 'Con làm quen chất liệu, bàn cờ, giọng hát và nhịp điệu cơ bản qua hoạt động nhẹ nhàng.',
-    color: '#16A9D8',
-  },
-  {
-    label: 'Tuần 3–4',
-    title: 'Phát triển',
-    description: 'Con luyện kỹ thuật, hoàn thiện bài tập nhỏ và bắt đầu phối hợp với nhóm.',
-    color: '#F45A0A',
-  },
-  {
-    label: 'Tuần 5–6',
-    title: 'Hoàn thiện',
-    description: 'Con chỉnh sửa sản phẩm, ráp tiết mục và chuẩn bị tâm thế cho Showcase cuối khóa.',
-    color: '#16A34A',
-  },
-];
-
-const summerWeeklyPlan = [
-  {
-    week: 'Tuần 1',
-    art: 'Làm quen màu sắc, hình khối và chất liệu mùa hè',
-    chess: 'Nhận biết bàn cờ, quân cờ và cách di chuyển cơ bản',
-    vocal: 'Cảm thụ giai điệu, tư thế hát và luyện hơi nhẹ',
-    dance: 'Nhịp điệu cơ bản, làm quen chuyển động theo nhạc',
-  },
-  {
-    week: 'Tuần 2',
-    art: 'Vẽ tranh chủ đề mùa hè và hoàn thiện sản phẩm nhỏ',
-    chess: 'Luật chơi, cách bảo vệ quân và bài tập quan sát',
-    vocal: 'Hát nhóm, giữ nhịp và phát âm lời bài hát rõ ràng',
-    dance: 'Động tác tay chân cơ bản và phối hợp theo nhóm',
-  },
-  {
-    week: 'Tuần 3',
-    art: 'Thủ công sáng tạo, phối màu và bố cục đơn giản',
-    chess: 'Chiến thuật khai cuộc đơn giản và tình huống mini',
-    vocal: 'Luyện câu hát, biểu cảm và nghe bạn trong nhóm',
-    dance: 'Tổ hợp động tác ngắn và ghi nhớ đội hình',
-  },
-  {
-    week: 'Tuần 4',
-    art: 'Dự án tranh cá nhân hoặc sản phẩm thủ công nâng cao',
-    chess: 'Mini game, xử lý nước đi và rèn tinh thần fair-play',
-    vocal: 'Chọn tiết mục, luyện đoạn biểu diễn chính',
-    dance: 'Ráp bài nhóm, nhịp chuyển đoạn và tương tác sân khấu',
-  },
-  {
-    week: 'Tuần 5',
-    art: 'Hoàn thiện sản phẩm trưng bày và đặt tên tác phẩm',
-    chess: 'Luyện mini tournament và cách bắt tay sau ván đấu',
-    vocal: 'Tổng duyệt tiết mục hát nhóm hoặc cá nhân',
-    dance: 'Tổng duyệt bài nhảy/múa và biểu cảm trình diễn',
-  },
-  {
-    week: 'Tuần 6',
-    art: 'Chuẩn bị góc triển lãm và chia sẻ về sản phẩm',
-    chess: 'Giải cờ vua mini trong không khí vui vẻ',
-    vocal: 'Biểu diễn trong METTA Summer Showcase 2026',
-    dance: 'Trình diễn nhóm, nhận chứng nhận và chụp ảnh cùng phụ huynh',
-  },
-];
-
-const summerOutcomes = [
-  'Có tranh cá nhân và sản phẩm thủ công sáng tạo.',
-  'Biết luật chơi và chiến thuật cờ vua cơ bản.',
-  'Biểu diễn ít nhất một bài hát hoặc tiết mục nhóm.',
-  'Tham gia một bài nhảy/múa hoàn chỉnh.',
-  'Tự tin hơn khi đứng trước tập thể.',
-  'Nhận chứng nhận hoàn thành chương trình.',
-  'Tham gia METTA Summer Showcase 2026 cùng phụ huynh.',
-];
-
-const summerShowcaseItems = [
-  { title: 'Art Exhibition', description: 'Trưng bày tranh và sản phẩm thủ công của học viên.', Icon: Sparkles },
-  { title: 'Chess Mini Tournament', description: 'Không gian thi đấu nhỏ, vui vẻ và khích lệ tinh thần chiến thuật.', Icon: Brain },
-  { title: 'Music Performance', description: 'Tiết mục thanh nhạc cá nhân hoặc nhóm trước phụ huynh.', Icon: Mic },
-  { title: 'Dance Showcase', description: 'Bài nhảy/múa hoàn chỉnh với đội hình và biểu cảm sân khấu.', Icon: Music },
-];
-
-const summerClassInfo = [
-  ['Tên chương trình', 'METTA Summer 2026'],
-  ['Độ tuổi', '4–11 tuổi'],
-  ['Thời lượng', '6 tuần'],
-  ['Tổng số buổi', '24 buổi'],
-  ['Lịch học', 'Thứ 2 · Thứ 4 · Thứ 6 · Chủ nhật'],
-  ['Mỗi buổi', '1h30'],
-  ['Học phí', '1.999.000đ / trọn khóa'],
-  ['Bộ môn', 'Mỹ thuật · Cờ vua · Thanh nhạc · Nhảy & Múa'],
-];
-
-const summerGallery = [
-  { src: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800&q=85&auto=format&fit=crop', title: 'Mỹ thuật & thủ công', alt: 'Trẻ học vẽ và thực hành mỹ thuật' },
-  { src: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=800&q=85&auto=format&fit=crop', title: 'Cờ vua', alt: 'Bàn cờ vua và hoạt động tư duy chiến thuật' },
-  { src: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=800&q=85&auto=format&fit=crop', title: 'Thanh nhạc', alt: 'Hoạt động âm nhạc và luyện hát' },
-  { src: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=800&q=85&auto=format&fit=crop', title: 'Nhảy & Múa', alt: 'Hoạt động nhảy múa và trình diễn nhóm' },
-];
+function summerClassInfoFromProgram(program: ProgramCms) {
+  const price = `${formatCurrency(resolveCourseDealSizeForProgram(program), program.dealCurrency || DEFAULT_DEAL_CURRENCY)} / trọn khóa`;
+  const rows = program.summerClassInfo?.length ? program.summerClassInfo : SUMMER_DEFAULTS.classInfo;
+  return rows.map((row) => {
+    if (row.label === 'Tên chương trình') return { ...row, value: program.title || row.value };
+    if (row.label === 'Độ tuổi') return { ...row, value: program.ageRange || row.value };
+    if (row.label === 'Thời lượng') return { ...row, value: program.duration || row.value };
+    if (row.label === 'Học phí') return { ...row, value: price };
+    return row;
+  });
+}
 
 function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCtaClick: () => void }) {
   const [showPlan, setShowPlan] = useState(false);
 
+  // Nội dung lấy từ CMS, fallback về SUMMER_DEFAULTS nếu chưa nhập
+  const subtitle = program.summerSubtitle || SUMMER_DEFAULTS.subtitle;
+  const chips = program.summerChips?.length ? program.summerChips : SUMMER_DEFAULTS.chips;
+  const heroStats = program.summerHeroStats?.length ? program.summerHeroStats : SUMMER_DEFAULTS.heroStats;
+  const heroImage = program.image || program.images?.[0] || SUMMER_DEFAULTS.showcaseImage;
+  const overviewEyebrow = program.summerOverviewEyebrow || SUMMER_DEFAULTS.overviewEyebrow;
+  const overviewTitle = program.summerOverviewTitle || SUMMER_DEFAULTS.overviewTitle;
+  const overviewBody = program.summerOverviewBody || SUMMER_DEFAULTS.overviewBody;
+  const audienceTitle = program.summerAudienceTitle || SUMMER_DEFAULTS.audienceTitle;
+  const audience = program.summerAudience?.length ? program.summerAudience : SUMMER_DEFAULTS.audience;
+  const modulesEyebrow = program.summerModulesEyebrow || SUMMER_DEFAULTS.modulesEyebrow;
+  const modulesTitle = program.summerModulesTitle || SUMMER_DEFAULTS.modulesTitle;
+  const modules = program.summerModules?.length ? program.summerModules : SUMMER_DEFAULTS.modules;
+  const roadmapEyebrow = program.summerRoadmapEyebrow || SUMMER_DEFAULTS.roadmapEyebrow;
+  const roadmapTitle = program.summerRoadmapTitle || SUMMER_DEFAULTS.roadmapTitle;
+  const stages = program.summerStages?.length ? program.summerStages : SUMMER_DEFAULTS.stages;
+  const weeklyColumns = program.summerWeeklyColumns?.length ? program.summerWeeklyColumns : SUMMER_DEFAULTS.weeklyColumns;
+  const weeklyPlan = program.summerWeeklyPlan?.length ? program.summerWeeklyPlan : SUMMER_DEFAULTS.weeklyPlan;
+  const outcomesTitle = program.summerOutcomesTitle || SUMMER_DEFAULTS.outcomesTitle;
+  const outcomes = program.summerOutcomesList?.length ? program.summerOutcomesList : SUMMER_DEFAULTS.outcomes;
+  const showcaseEyebrow = program.summerShowcaseEyebrow || SUMMER_DEFAULTS.showcaseEyebrow;
+  const showcaseTitle = program.summerShowcaseTitle || SUMMER_DEFAULTS.showcaseTitle;
+  const showcaseBody = program.summerShowcaseBody || SUMMER_DEFAULTS.showcaseBody;
+  const showcaseImage = program.summerShowcaseImage || SUMMER_DEFAULTS.showcaseImage;
+  const showcaseItems = program.summerShowcaseItems?.length ? program.summerShowcaseItems : SUMMER_DEFAULTS.showcaseItems;
+  const classInfoTitle = program.summerClassInfoTitle || SUMMER_DEFAULTS.classInfoTitle;
+  const classInfoBody = program.summerClassInfoBody || SUMMER_DEFAULTS.classInfoBody;
+  const classInfo = summerClassInfoFromProgram(program);
+  const galleryTitle = program.summerGalleryTitle || SUMMER_DEFAULTS.galleryTitle;
+  const gallery = program.summerGallery?.length ? program.summerGallery : SUMMER_DEFAULTS.gallery;
+  const ctaTitle = program.summerCtaTitle || SUMMER_DEFAULTS.ctaTitle;
+  const ctaBody = program.summerCtaBody || SUMMER_DEFAULTS.ctaBody;
+
   return (
     <main className="bg-white">
+      {/* ── Hero ── */}
       <section className="relative overflow-hidden bg-gradient-to-br from-[#FFF8EA] via-white to-[#EAF7FF] pt-24">
         <div className="absolute right-[-120px] top-12 h-72 w-72 rounded-full bg-[#F45A0A]/10 blur-3xl" />
         <div className="absolute bottom-[-140px] left-[-120px] h-80 w-80 rounded-full bg-[#16A9D8]/14 blur-3xl" />
-        <div className="relative mx-auto grid min-h-[680px] max-w-[1180px] items-center gap-10 px-5 py-10 lg:grid-cols-[1fr_0.9fr] lg:px-4">
+        <div className="relative mx-auto grid min-h-[660px] max-w-[1180px] items-center gap-12 px-5 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:px-4">
           <div>
-            <Link to="/#programs" className="mb-7 inline-flex items-center gap-2 text-sm font-bold text-[#003B7A]/70 transition-colors hover:text-[#003B7A]">
+            <Link to="/#programs" className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-[#003B7A]/70 transition-colors hover:text-[#003B7A]">
               <ArrowLeft size={18} /> Quay lại chương trình học
             </Link>
-            <h1 className="max-w-3xl text-4xl font-extrabold leading-tight text-[#003B7A] md:text-6xl">
-              METTA Summer 2026
+            {program.eyebrow && (
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#F45A0A]/25 bg-[#F45A0A]/10 px-3.5 py-2">
+                <Sparkles size={15} className="text-[#F45A0A]" />
+                <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#F45A0A]">{program.eyebrow}</span>
+              </div>
+            )}
+            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] text-[#003B7A] md:text-6xl">
+              {program.title}
             </h1>
-            <p className="mt-4 max-w-2xl text-xl font-bold leading-8 text-[#1267AE]">
-              Chương trình hè trải nghiệm đa bộ môn cho trẻ 4–11 tuổi
-            </p>
-            <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">
-              Một mùa hè để con khám phá năng khiếu, rèn kỹ năng và tự tin tỏa sáng qua 4 bộ môn: Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa.
-            </p>
+            {subtitle && <p className="mt-4 max-w-2xl text-lg font-bold leading-8 text-[#1267AE] md:text-xl">{subtitle}</p>}
+            {program.description && <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">{program.description}</p>}
             <div className="mt-7 flex flex-wrap gap-2.5">
-              {summerChips.map((chip) => (
+              {chips.map((chip) => (
                 <span key={chip} className="rounded-full border border-[#16A9D8]/20 bg-white px-4 py-2 text-sm font-extrabold text-[#003B7A] shadow-sm">
                   {chip}
                 </span>
               ))}
             </div>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#F45A0A] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-600/20 transition-colors hover:bg-orange-600">
+              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-7 py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-orange-600">
                 Tư vấn chương trình <ArrowRight size={18} />
               </button>
-              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center rounded-md border border-[#003B7A]/15 bg-white px-6 py-3.5 text-sm font-bold text-[#003B7A] shadow-sm transition-colors hover:bg-[#F4FAFF]">
+              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center rounded-2xl border-2 border-[#003B7A]/15 bg-white px-7 py-4 text-sm font-bold uppercase tracking-wide text-[#003B7A] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F4FAFF]">
                 Đăng ký giữ chỗ
               </button>
             </div>
           </div>
 
           <div className="relative">
-            <div className="aspect-[4/5] overflow-hidden rounded-2xl bg-white p-3 shadow-2xl shadow-[#003B7A]/12">
-              <img src={program.image || '/brand/workshop-kids.jpg'} alt="METTA Summer 2026" className="h-full w-full rounded-xl object-cover" />
+            <div className="aspect-[4/5] overflow-hidden rounded-3xl bg-white p-3 shadow-2xl shadow-[#003B7A]/15">
+              <img src={heroImage} alt={program.title} className="h-full w-full rounded-2xl object-cover" />
             </div>
-            <div className="absolute -bottom-5 left-5 right-5 rounded-xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur">
-              <div className="grid grid-cols-3 gap-3 text-center">
-                <div>
-                  <p className="text-2xl font-extrabold text-[#F45A0A]">6</p>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">tuần</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-extrabold text-[#003B7A]">24</p>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">buổi</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-extrabold text-[#16A34A]">4</p>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">bộ môn</p>
+            {heroStats.length > 0 && (
+              <div className="absolute -bottom-6 left-5 right-5 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur">
+                <div className="grid gap-3 text-center" style={{ gridTemplateColumns: `repeat(${heroStats.length}, minmax(0, 1fr))` }}>
+                  {heroStats.map((stat) => (
+                    <div key={stat.label}>
+                      <p className="text-2xl font-extrabold" style={{ color: stat.color || '#003B7A' }}>{stat.value}</p>
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{stat.label}</p>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </section>
 
+      {/* ── Tổng quan ── */}
       <section className="py-14 lg:py-16">
         <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
-              <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">Tổng quan chương trình</p>
-              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-slate-950 md:text-4xl">
-                Một mùa hè để con khám phá, phát triển và tỏa sáng
-              </h2>
+              <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">{overviewEyebrow}</p>
+              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-slate-950 md:text-4xl">{overviewTitle}</h2>
             </div>
-            <p className="text-base leading-8 text-slate-600">
-              METTA Summer 2026 là chương trình hè đa bộ môn dành cho trẻ mầm non và tiểu học. Trong 6 tuần, học viên được trải nghiệm nghệ thuật, tư duy, âm nhạc và vận động thông qua các hoạt động phù hợp với lứa tuổi.
-            </p>
+            <p className="text-base leading-8 text-slate-600">{overviewBody}</p>
           </div>
         </div>
       </section>
 
-      <section className="bg-[#F7FAFD] py-14 lg:py-16">
-        <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
-          <h2 className="text-3xl font-extrabold text-slate-950">Chương trình phù hợp với ai?</h2>
-          <div className="mt-7 grid gap-5 md:grid-cols-2">
-            {summerAudience.map((item) => (
-              <article key={item.title} className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#EAF7FF] text-[#003B7A]">
-                  <Users size={24} />
-                </div>
-                <h3 className="text-xl font-extrabold text-[#003B7A]">{item.title}</h3>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{item.description}</p>
-              </article>
-            ))}
+      {/* ── Đối tượng phù hợp ── */}
+      {audience.length > 0 && (
+        <section className="bg-[#F7FAFD] py-14 lg:py-16">
+          <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
+            <h2 className="text-3xl font-extrabold text-slate-950">{audienceTitle}</h2>
+            <div className="mt-7 grid gap-5 md:grid-cols-2">
+              {audience.map((item, i) => (
+                <article key={item.title || i} className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-transform hover:-translate-y-1">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#EAF7FF] text-[#003B7A]">
+                    <Users size={24} />
+                  </div>
+                  <h3 className="text-xl font-extrabold text-[#003B7A]">{item.title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-slate-600">{item.description}</p>
+                </article>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      <section className="py-14 lg:py-16">
-        <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
-          <div className="max-w-2xl">
-            <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">4 bộ môn</p>
-            <h2 className="mt-3 text-3xl font-extrabold text-slate-950">4 bộ môn trong chương trình</h2>
+      {/* ── 4 bộ môn ── */}
+      {modules.length > 0 && (
+        <section className="py-14 lg:py-16">
+          <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
+            <div className="max-w-2xl">
+              <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">{modulesEyebrow}</p>
+              <h2 className="mt-3 text-3xl font-extrabold text-slate-950">{modulesTitle}</h2>
+            </div>
+            <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+              {modules.map((mod, i) => {
+                const Icon = iconFromName(mod.icon);
+                return (
+                  <article key={mod.title || i} className="group relative overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg">
+                    <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: mod.color }} />
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ color: mod.color, backgroundColor: `${mod.color}1A` }}>
+                      <Icon size={24} />
+                    </div>
+                    <h3 className="mt-5 text-lg font-extrabold text-slate-950">{mod.title}</h3>
+                    <p className="mt-3 text-sm leading-7 text-slate-600">{mod.description}</p>
+                  </article>
+                );
+              })}
+            </div>
           </div>
-          <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-            {summerModules.map(({ title, description, Icon, color, bg }) => (
-              <article key={title} className="rounded-xl border border-slate-100 bg-white p-5 shadow-sm transition-transform hover:-translate-y-1">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl" style={{ color, backgroundColor: bg }}>
-                  <Icon size={24} />
-                </div>
-                <h3 className="mt-5 text-lg font-extrabold text-slate-950">{title}</h3>
-                <p className="mt-3 text-sm leading-7 text-slate-600">{description}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
+      {/* ── Lộ trình + lịch tuần ── */}
       <section className="bg-[#003B7A] py-14 text-white lg:py-16">
         <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
-          <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F6B43C]">Lộ trình học</p>
-          <h2 className="mt-3 text-3xl font-extrabold">Lộ trình học 6 tuần</h2>
+          <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F6B43C]">{roadmapEyebrow}</p>
+          <h2 className="mt-3 text-3xl font-extrabold">{roadmapTitle}</h2>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
-            {summerStages.map((stage) => (
-              <article key={stage.title} className="rounded-xl bg-white/10 p-5 backdrop-blur-sm">
+            {stages.map((stage, i) => (
+              <article key={stage.title || i} className="rounded-2xl bg-white/10 p-5 backdrop-blur-sm ring-1 ring-white/10">
                 <p className="text-sm font-extrabold uppercase tracking-widest" style={{ color: stage.color }}>{stage.label}</p>
                 <h3 className="mt-2 text-2xl font-extrabold">{stage.title}</h3>
                 <p className="mt-3 text-sm leading-7 text-white/75">{stage.description}</p>
@@ -508,140 +417,150 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
             ))}
           </div>
 
-          <div className="mt-8 rounded-xl border border-white/15 bg-white/10">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-extrabold"
-              onClick={() => setShowPlan((current) => !current)}
-              aria-expanded={showPlan}
-            >
-              Xem lộ trình chi tiết từng tuần
-              <span className="text-2xl leading-none">{showPlan ? '-' : '+'}</span>
-            </button>
-            {showPlan && (
-              <div className="overflow-x-auto border-t border-white/15">
-                <table className="w-full min-w-[820px] text-left text-sm">
-                  <thead className="bg-white/10 text-xs uppercase tracking-widest text-white/70">
-                    <tr>
-                      <th className="px-4 py-3">Tuần</th>
-                      <th className="px-4 py-3">Mỹ thuật</th>
-                      <th className="px-4 py-3">Cờ vua</th>
-                      <th className="px-4 py-3">Thanh nhạc</th>
-                      <th className="px-4 py-3">Nhảy & Múa</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summerWeeklyPlan.map((row) => (
-                      <tr key={row.week} className="border-t border-white/10">
-                        <td className="px-4 py-4 font-extrabold text-[#F6B43C]">{row.week}</td>
-                        <td className="px-4 py-4 text-white/80">{row.art}</td>
-                        <td className="px-4 py-4 text-white/80">{row.chess}</td>
-                        <td className="px-4 py-4 text-white/80">{row.vocal}</td>
-                        <td className="px-4 py-4 text-white/80">{row.dance}</td>
+          {weeklyPlan.length > 0 && (
+            <div className="mt-8 overflow-hidden rounded-2xl border border-white/15 bg-white/10">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-extrabold"
+                onClick={() => setShowPlan((current) => !current)}
+                aria-expanded={showPlan}
+              >
+                Xem lộ trình chi tiết từng tuần
+                <span className="text-2xl leading-none">{showPlan ? '−' : '+'}</span>
+              </button>
+              {showPlan && (
+                <div className="overflow-x-auto border-t border-white/15">
+                  <table className="w-full min-w-[820px] text-left text-sm">
+                    <thead className="bg-white/10 text-xs uppercase tracking-widest text-white/70">
+                      <tr>
+                        {weeklyColumns.map((col) => (
+                          <th key={col} className="px-4 py-3">{col}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    </thead>
+                    <tbody>
+                      {weeklyPlan.map((row, ri) => (
+                        <tr key={ri} className="border-t border-white/10">
+                          {row.map((cell, ci) => (
+                            <td key={ci} className={ci === 0 ? 'px-4 py-4 font-extrabold text-[#F6B43C]' : 'px-4 py-4 text-white/80'}>{cell}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="py-14 lg:py-16">
-        <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
-          <h2 className="text-3xl font-extrabold text-slate-950">Sau 6 tuần, con có gì?</h2>
-          <div className="mt-7 grid gap-4 md:grid-cols-2">
-            {summerOutcomes.map((item) => (
-              <div key={item} className="flex gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
-                <CheckCircle2 className="mt-0.5 shrink-0 text-[#16A34A]" size={22} />
-                <p className="text-sm font-semibold leading-7 text-slate-700">{item}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-[#FFF8EA] py-14 lg:py-16">
-        <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
-          <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-            <div className="overflow-hidden rounded-2xl shadow-xl">
-              <img src="https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop" alt="METTA Summer Showcase 2026" className="h-[320px] w-full object-cover md:h-[420px]" />
-            </div>
-            <div>
-              <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">Điểm nhấn cuối khóa</p>
-              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-slate-950">METTA Summer Showcase 2026</h2>
-              <p className="mt-4 text-base leading-8 text-slate-600">
-                Cuối khóa, học viên tham gia triển lãm sản phẩm mỹ thuật, giải cờ vua mini, biểu diễn thanh nhạc, nhảy múa, trao chứng nhận và chụp ảnh cùng phụ huynh.
-              </p>
-            </div>
-          </div>
-          <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {summerShowcaseItems.map(({ title, description, Icon }) => (
-              <article key={title} className="rounded-xl bg-white p-5 shadow-sm">
-                <Icon size={24} className="text-[#F45A0A]" />
-                <h3 className="mt-4 text-base font-extrabold text-[#003B7A]">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-14 lg:py-16">
-        <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
-          <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
-            <div>
-              <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">Thông tin lớp học</p>
-              <h2 className="mt-3 text-3xl font-extrabold text-slate-950">Thông tin lớp học</h2>
-              <p className="mt-4 text-sm leading-7 text-slate-600">Thông tin chính để phụ huynh nắm nhanh lịch học, độ tuổi, học phí và bộ môn trong chương trình.</p>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              {summerClassInfo.map(([label, value]) => (
-                <div key={label} className="grid gap-1 border-b border-slate-100 px-5 py-4 last:border-b-0 sm:grid-cols-[200px_1fr]">
-                  <p className="text-sm font-extrabold text-slate-500">{label}</p>
-                  <p className="text-sm font-bold leading-6 text-slate-900">{value}</p>
+      {/* ── Kết quả ── */}
+      {outcomes.length > 0 && (
+        <section className="py-14 lg:py-16">
+          <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
+            <h2 className="text-3xl font-extrabold text-slate-950">{outcomesTitle}</h2>
+            <div className="mt-7 grid gap-4 md:grid-cols-2">
+              {outcomes.map((item, i) => (
+                <div key={item || i} className="flex gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                  <CheckCircle2 className="mt-0.5 shrink-0 text-[#16A34A]" size={22} />
+                  <p className="text-sm font-semibold leading-7 text-slate-700">{item}</p>
                 </div>
               ))}
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
-      <section className="bg-[#F7FAFD] py-14 lg:py-16">
+      {/* ── Showcase ── */}
+      <section className="bg-[#FFF8EA] py-14 lg:py-16">
         <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
-          <h2 className="text-3xl font-extrabold text-slate-950">Hình ảnh hoạt động</h2>
-          <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {summerGallery.map((image) => (
-              <figure key={image.title} className="overflow-hidden rounded-xl bg-white shadow-sm">
-                <img src={image.src} alt={image.alt} className="h-56 w-full object-cover transition-transform duration-700 hover:scale-105" />
-                <figcaption className="px-4 py-3 text-sm font-extrabold text-[#003B7A]">{image.title}</figcaption>
-              </figure>
-            ))}
+          <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            <div className="overflow-hidden rounded-3xl shadow-xl">
+              <img src={showcaseImage} alt={showcaseTitle} className="h-[320px] w-full object-cover md:h-[420px]" />
+            </div>
+            <div>
+              <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">{showcaseEyebrow}</p>
+              <h2 className="mt-3 text-3xl font-extrabold leading-tight text-slate-950">{showcaseTitle}</h2>
+              <p className="mt-4 text-base leading-8 text-slate-600">{showcaseBody}</p>
+            </div>
           </div>
+          {showcaseItems.length > 0 && (
+            <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {showcaseItems.map((item, i) => {
+                const Icon = iconFromName(item.icon);
+                return (
+                  <article key={item.title || i} className="rounded-2xl bg-white p-5 shadow-sm transition-transform hover:-translate-y-1">
+                    <Icon size={24} className="text-[#F45A0A]" />
+                    <h3 className="mt-4 text-base font-extrabold text-[#003B7A]">{item.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </div>
       </section>
 
+      {/* ── Thông tin lớp học ── */}
+      {classInfo.length > 0 && (
+        <section className="py-14 lg:py-16">
+          <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
+            <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
+              <div>
+                <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">{classInfoTitle}</p>
+                <h2 className="mt-3 text-3xl font-extrabold text-slate-950">{classInfoTitle}</h2>
+                <p className="mt-4 text-sm leading-7 text-slate-600">{classInfoBody}</p>
+              </div>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                {classInfo.map((row, i) => (
+                  <div key={row.label || i} className="grid gap-1 border-b border-slate-100 px-5 py-4 last:border-b-0 sm:grid-cols-[200px_1fr]">
+                    <p className="text-sm font-extrabold text-slate-500">{row.label}</p>
+                    <p className="text-sm font-bold leading-6 text-slate-900">{row.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Thư viện ảnh ── */}
+      {gallery.length > 0 && (
+        <section className="bg-[#F7FAFD] py-14 lg:py-16">
+          <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
+            <h2 className="text-3xl font-extrabold text-slate-950">{galleryTitle}</h2>
+            <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {gallery.map((image, i) => (
+                <figure key={image.src || i} className="overflow-hidden rounded-2xl bg-white shadow-sm">
+                  <img src={image.src} alt={image.alt || image.title} className="h-56 w-full object-cover transition-transform duration-700 hover:scale-105" />
+                  {image.title && <figcaption className="px-4 py-3 text-sm font-extrabold text-[#003B7A]">{image.title}</figcaption>}
+                </figure>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── CTA ── */}
       <section className="bg-[#003B7A] py-14 text-white lg:py-16">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-5 lg:flex-row lg:items-center lg:justify-between lg:px-4">
           <div className="max-w-2xl">
-            <h2 className="text-3xl font-extrabold leading-tight">Sẵn sàng cho con một mùa hè đáng nhớ tại METTA?</h2>
-            <p className="mt-4 text-sm leading-7 text-white/75">
-              Để lại thông tin để METTA tư vấn lịch học, độ tuổi phù hợp và hướng dẫn đăng ký giữ chỗ cho con.
-            </p>
+            <h2 className="text-3xl font-extrabold leading-tight">{ctaTitle}</h2>
+            <p className="mt-4 text-sm leading-7 text-white/75">{ctaBody}</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#F45A0A] px-6 py-3.5 text-sm font-bold text-white transition-colors hover:bg-orange-600">
+            <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-7 py-4 text-sm font-bold uppercase tracking-wide text-white transition-all hover:-translate-y-0.5 hover:bg-orange-600">
               Tư vấn chương trình <ArrowRight size={18} />
             </button>
-            <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center rounded-md border border-white/25 bg-white/10 px-6 py-3.5 text-sm font-bold text-white transition-colors hover:bg-white/20">
+            <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center rounded-2xl border-2 border-white/25 bg-white/10 px-7 py-4 text-sm font-bold uppercase tracking-wide text-white transition-all hover:-translate-y-0.5 hover:bg-white/20">
               Đăng ký giữ chỗ
             </button>
           </div>
         </div>
       </section>
 
-      <PublicLeadForm formId="metta-summer-2026-form" title="Tư vấn chương trình METTA Summer 2026" />
+      <PublicLeadForm formId="metta-summer-2026-form" title={`Tư vấn chương trình ${program.title}`} />
     </main>
   );
 }
@@ -683,7 +602,7 @@ type CardInfo = { Icon: LucideIcon; title: string; sub: string };
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Music, BookOpen, Eye, Brain, Globe, Zap, Mic, MessageCircle, GraduationCap,
-  Star, Cpu, FlaskConical, Trophy, Target, Hand, Lightbulb, Users, CheckCircle2,
+  Star, Cpu, FlaskConical, Trophy, Target, Hand, Lightbulb, Users, CheckCircle2, Sparkles,
   Activity: Zap, Layers: Globe, // mapped to nearest available
 };
 
@@ -761,16 +680,6 @@ function parseOutcome(text: string, index: number): CardInfo {
   const words = text.split(' ');
   const mid = Math.min(4, Math.floor(words.length / 2));
   return { Icon, title: words.slice(0, mid).join(' '), sub: words.slice(mid).join(' ') };
-}
-
-function Info({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm p-4">
-      <div className="text-[#16A9D8]">{icon}</div>
-      <p className="mt-3 text-xs font-bold uppercase tracking-widest text-white/60">{label}</p>
-      <p className="mt-1 font-extrabold text-white">{value}</p>
-    </div>
-  );
 }
 
 /* ── Skills Flower / Metta 5 ── */
@@ -932,7 +841,7 @@ function ProgramHero({ program, onCtaClick }: { program: ProgramCms; onCtaClick:
   }, [current, imgList.length]);
 
   return (
-    <section className="relative min-h-[600px] md:min-h-[700px] overflow-hidden">
+    <section className="relative overflow-hidden" style={{ minHeight: 'clamp(580px, 41.666vw, 800px)' }}>
       {/* Background slider */}
       <div className="absolute inset-0">
         <div
@@ -949,8 +858,9 @@ function ProgramHero({ program, onCtaClick }: { program: ProgramCms; onCtaClick:
             </div>
           ))}
         </div>
-        {/* Dark overlay for text readability */}
-        <div className="absolute inset-0 bg-gradient-to-r from-[#003B7A]/90 via-[#003B7A]/70 to-[#003B7A]/40" />
+        {/* Gradient overlay: tối trái → sáng phải (desktop), tối đều hơn (mobile) — giống hero homepage */}
+        <div className="absolute inset-0 hidden md:block" style={{ background: 'linear-gradient(90deg, rgba(8,45,82,0.88) 0%, rgba(8,45,82,0.62) 45%, rgba(8,45,82,0.18) 100%)' }} />
+        <div className="absolute inset-0 md:hidden" style={{ background: 'linear-gradient(180deg, rgba(8,45,82,0.82) 0%, rgba(8,45,82,0.72) 60%, rgba(8,45,82,0.55) 100%)' }} />
       </div>
 
       {/* Dots */}
@@ -967,25 +877,75 @@ function ProgramHero({ program, onCtaClick }: { program: ProgramCms; onCtaClick:
       )}
 
       {/* Content */}
-      <div className="relative z-10 mx-auto max-w-[1180px] px-5 pt-28 pb-16 flex flex-col justify-center min-h-[600px] md:min-h-[700px]">
-        <Link to="/#programs" className="inline-flex items-center gap-2 text-sm font-bold text-white/70 hover:text-white mb-8 w-fit">
+      <div className="relative z-10 mx-auto flex max-w-[1180px] flex-col px-5 pt-28 pb-14 lg:px-4 lg:pt-32">
+        <Link to="/#programs" className="mb-6 inline-flex w-fit items-center gap-2 text-sm font-bold text-white/70 transition-colors hover:text-white">
           <ArrowLeft size={18} /> Quay lại chương trình học
         </Link>
-        <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">{program.eyebrow}</p>
-        <h1 className="mt-4 text-4xl font-extrabold leading-tight text-white md:text-6xl max-w-2xl">{program.title}</h1>
-        <p className="mt-5 max-w-2xl text-lg leading-8 text-white/80">{program.description}</p>
-        <div className="mt-8 grid gap-3 sm:grid-cols-3 max-w-xl">
-          <Info icon={<Users />} label="Độ tuổi" value={program.ageRange} />
-          <Info icon={<Clock />} label="Thời lượng" value={program.duration} />
-          <Info icon={<GraduationCap />} label="Nhóm khóa" value={program.courseName} />
-        </div>
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#F45A0A] px-6 py-3.5 text-sm font-bold text-white hover:bg-orange-600 shadow-lg">
-            Đăng ký tư vấn <ArrowRight size={18} />
-          </button>
-          <a href="#roadmap" className="inline-flex items-center justify-center rounded-md border border-white/30 bg-white/10 backdrop-blur-sm px-6 py-3.5 text-sm font-bold text-white hover:bg-white/20">
-            Xem lộ trình
-          </a>
+
+        {/* Glass card — giống hero homepage */}
+        <div
+          className="w-full max-w-[600px] p-8 sm:p-9 lg:p-10"
+          style={{
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.18)',
+            borderRadius: '24px',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+          }}
+        >
+          {/* Badge */}
+          {program.eyebrow && (
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#F45A0A]/25 bg-[#F45A0A]/15 px-3.5 py-2">
+              <Sparkles size={15} className="text-[#F45A0A]" />
+              <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#F45A0A]">{program.eyebrow}</span>
+            </div>
+          )}
+
+          {/* Heading */}
+          <h1 className="mb-4 font-extrabold text-white" style={{ fontSize: 'clamp(34px, 4vw, 52px)', lineHeight: 1.06, letterSpacing: '-0.5px' }}>
+            {program.title}
+          </h1>
+
+          {/* Description */}
+          {program.description && (
+            <p className="mb-6 text-[15px] leading-[1.8] text-white/75 lg:text-base">{program.description}</p>
+          )}
+
+          {/* Stat strip — 3 ô bằng nhau, cao bằng nhau */}
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            {[
+              { Icon: Users, label: 'Độ tuổi', value: program.ageRange },
+              { Icon: Clock, label: 'Thời lượng', value: program.duration },
+              { Icon: GraduationCap, label: 'Nhóm khóa', value: program.courseName },
+            ].map(({ Icon, label, value }) => (
+              <div key={label} className="flex flex-col rounded-2xl border border-white/12 bg-white/5 px-4 py-3.5">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[#16A9D8]">
+                  <Icon size={15} className="shrink-0" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-white/55">{label}</span>
+                </div>
+                <p className="text-[13.5px] font-extrabold leading-snug text-white">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* CTA Buttons */}
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={onCtaClick}
+              className="inline-flex items-center justify-center gap-2 bg-[#F45A0A] text-[14px] font-bold uppercase tracking-wide text-white shadow-lg shadow-[#F45A0A]/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[#F45A0A]/35 active:scale-[0.98]"
+              style={{ height: '54px', padding: '0 28px', borderRadius: '16px' }}
+            >
+              Đăng ký tư vấn <ArrowRight size={18} />
+            </button>
+            <a
+              href="#roadmap"
+              className="inline-flex items-center justify-center border-2 border-white/50 text-[14px] font-bold uppercase tracking-wide text-white transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#003B7A]"
+              style={{ height: '54px', padding: '0 28px', borderRadius: '16px' }}
+            >
+              Xem lộ trình
+            </a>
+          </div>
         </div>
       </div>
     </section>

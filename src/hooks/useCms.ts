@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cmsService } from '@/services/cmsService';
-import { COURSE_OPTIONS, DEFAULT_COURSE_DEAL_SIZE } from '@/lib/constants';
+import { COURSE_OPTIONS, courseDealSizeDefaults, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import type { CourseDealSizeRule } from '@/lib/leadFinance';
 import type { CmsPage, PageSection, ProgramCms, SiteSettings } from '@/types/cms';
 
@@ -44,11 +44,10 @@ export function useThemeSettings() {
 }
 
 function courseDealSizeFromProgram(program: ProgramCms) {
-  const parsed = Number(program.dealSize);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_COURSE_DEAL_SIZE;
+  return resolveCourseDealSizeForProgram(program);
 }
 
-function courseCatalogFromSettings(settings: SiteSettings | null) {
+function courseCatalogFromSettings(settings: SiteSettings | null): { courseOptions: string[]; courseDealSizes: CourseDealSizeRule[] } {
   const programs = settings?.programs?.filter((program) => program.visible !== false) || [];
   const courseOptions = programs
     .map((program) => program.title?.trim())
@@ -65,11 +64,8 @@ function courseCatalogFromSettings(settings: SiteSettings | null) {
   if (courseOptions.length > 0) return { courseOptions, courseDealSizes };
 
   return {
-    courseOptions: [...COURSE_OPTIONS],
-    courseDealSizes: COURSE_OPTIONS.map((courseName) => ({
-      courseName,
-      dealSize: DEFAULT_COURSE_DEAL_SIZE,
-    })),
+    courseOptions: [...COURSE_OPTIONS] as string[],
+    courseDealSizes: courseDealSizeDefaults.map((item) => ({ ...item })),
   };
 }
 
