@@ -618,19 +618,13 @@ export const leadService = {
       await refreshUsersForAssignmentRepair(user);
       if (canViewAllLeads(user)) await purgeDemoDataOnServerOnce();
       if (user?.role === 'sales') {
-        const nowMs = Date.now();
-        const activeSnap = await getDocs(query(
+        const snap = await getDocs(query(
           collection(db!, COL_LEADS),
           where('assignedTo', '==', user.id),
-          where('assignedStatus', '==', 'active'),
-          where('assignedExpiresAtMs', '>', nowMs),
         ));
-        const acceptedSnap = await getDocs(query(
-          collection(db!, COL_LEADS),
-          where('assignedTo', '==', user.id),
-          where('assignedStatus', '==', 'accepted'),
-        ));
-        const remoteLeads = [...activeSnap.docs, ...acceptedSnap.docs].map((item) => normalizeLead(item.data() as Lead));
+        const remoteLeads = snap.docs
+          .map((item) => normalizeLead({ ...(item.data() as Lead), id: (item.data() as Lead).id || item.id }))
+          .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
         store.leads = mergeDemoSeeds(remoteLeads);
       } else {
         const snap = await getDocs(query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc')));
@@ -717,18 +711,21 @@ export const leadService = {
     };
 
     if (user?.role === 'sales') {
-      let activeLeads: Lead[] = [];
-      let acceptedLeads: Lead[] = [];
+      let assignedLeads: Lead[] = [];
       let expiryTimer: number | undefined;
       const emitSales = () => {
-        const byId = new Map<string, Lead>();
-        [...activeLeads.filter((lead) => !leadAssignmentExpired(lead)), ...acceptedLeads].forEach((lead) => byId.set(lead.id, lead));
-        void emit(Array.from(byId.values()).sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')), { replace: true });
+        void emit(
+          assignedLeads
+            .map(normalizeLead)
+            .sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || '')),
+          { replace: true },
+        );
       };
       const scheduleExpiryRefresh = () => {
         if (expiryTimer) window.clearTimeout(expiryTimer);
         const nowMs = Date.now();
-        const nextExpiry = activeLeads
+        const nextExpiry = assignedLeads
+          .filter((lead) => lead.assignedStatus === 'active')
           .map((lead) => Number(lead.assignedExpiresAtMs || 0))
           .filter((value) => value > nowMs)
           .sort((a, b) => a - b)[0];
@@ -736,33 +733,19 @@ export const leadService = {
           expiryTimer = window.setTimeout(emitSales, Math.min(nextExpiry - nowMs + 1000, 2147483647));
         }
       };
-      const nowMs = Date.now();
-      const activeQuery = query(
+      const assignedQuery = query(
         collection(db!, COL_LEADS),
         where('assignedTo', '==', user.id),
-        where('assignedStatus', '==', 'active'),
-        where('assignedExpiresAtMs', '>', nowMs),
       );
-      const acceptedQuery = query(
-        collection(db!, COL_LEADS),
-        where('assignedTo', '==', user.id),
-        where('assignedStatus', '==', 'accepted'),
-      );
-      const unsubActive = onSnapshot(activeQuery, (snap) => {
+      const unsubAssigned = onSnapshot(assignedQuery, (snap) => {
         dispatchRealtimeOk();
-        activeLeads = snap.docs.map((item) => item.data() as Lead);
+        assignedLeads = snap.docs.map((item) => ({ ...(item.data() as Lead), id: (item.data() as Lead).id || item.id }));
         scheduleExpiryRefresh();
-        emitSales();
-      }, handleError);
-      const unsubAccepted = onSnapshot(acceptedQuery, (snap) => {
-        dispatchRealtimeOk();
-        acceptedLeads = snap.docs.map((item) => item.data() as Lead);
         emitSales();
       }, handleError);
       return () => {
         if (expiryTimer) window.clearTimeout(expiryTimer);
-        unsubActive();
-        unsubAccepted();
+        unsubAssigned();
       };
     }
 

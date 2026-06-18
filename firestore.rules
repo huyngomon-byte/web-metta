@@ -84,7 +84,11 @@ service cloud.firestore {
 
     function salesCanReadLead(data) {
       return isSales()
-        && data.assignedTo == request.auth.uid
+        && data.assignedTo == request.auth.uid;
+    }
+
+    function salesCanWorkLead(data) {
+      return salesCanReadLead(data)
         && assignmentReadable(data);
     }
 
@@ -96,7 +100,7 @@ service cloud.firestore {
     }
 
     function salesCanUpdateLead() {
-      return salesCanReadLead(resource.data)
+      return salesCanWorkLead(resource.data)
         && request.resource.data.assignedTo == resource.data.assignedTo
         && request.resource.data.assignedToName == resource.data.assignedToName
         && request.resource.data.assignedBy == resource.data.assignedBy
