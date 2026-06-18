@@ -526,6 +526,8 @@ function TeachersBlock({ section }: { section: PageSection }) {
 }
 
 /* ── News ─────────────────────────────────────────────────────────────────── */
+const HOME_NEWS_LIMIT = 3;
+
 function NewsBlock({ section }: { section: PageSection }) {
   type NewsItem = { title: string; date: string; category: string; image: string; excerpt: string; link?: string };
   const seedItems = parseExtra<NewsItem[]>(section.extraData);
@@ -535,7 +537,7 @@ function NewsBlock({ section }: { section: PageSection }) {
   useEffect(() => {
     publicBlogService.getPublished().then((posts) => {
       if (posts.length > 0) {
-        setBlogPosts(posts.slice(0, 6).map((p) => ({
+        setBlogPosts(posts.slice(0, HOME_NEWS_LIMIT).map((p) => ({
           title: p.title,
           date: new Date(p.publishedAt).toLocaleDateString('vi-VN'),
           category: p.category,
@@ -549,7 +551,7 @@ function NewsBlock({ section }: { section: PageSection }) {
   }, []);
 
   // Use real blog posts if available, otherwise fall back to seed
-  const items = blogPosts.length > 0 ? blogPosts : (loaded ? [] : seedItems);
+  const items = blogPosts.length > 0 ? blogPosts : (loaded ? [] : seedItems.slice(0, HOME_NEWS_LIMIT));
 
   return (
     <section id={sectionId(section, 'news')} className="py-8 lg:py-section bg-[#F5F9FC]">
