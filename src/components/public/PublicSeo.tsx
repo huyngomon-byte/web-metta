@@ -63,8 +63,8 @@ function seoForPath(pathname: string, settings: SiteSettings, pages: CmsPage[]) 
   const program = programSlug ? settings.programs?.find((item) => item.slug === programSlug) : undefined;
   if (program) {
     return {
-      title: `${program.title} | METTA Academy`,
-      description: program.summary || program.description || homeDescription || DEFAULT_DESCRIPTION,
+      title: program.seoTitle || `${program.title} | METTA Academy`,
+      description: program.seoDescription || program.summary || program.description || homeDescription || DEFAULT_DESCRIPTION,
     };
   }
 

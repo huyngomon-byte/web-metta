@@ -15,7 +15,7 @@ export const BRAND = {
   cyan: '#16A9D8',
 };
 
-export const COURSE_OPTIONS = ['METTA Kiddies', 'METTA on Phonics', 'METTA Young Learner', 'IELTS Junior'] as const;
+export const COURSE_OPTIONS = ['METTA Kiddies', 'METTA on Phonics', 'METTA Young Learner', 'IELTS Junior', 'METTA Summer 2026'] as const;
 export const STAFF_OPTIONS = ['METTA Admin'] as const;
 export const DEFAULT_DEAL_CURRENCY = 'VND';
 export const DEFAULT_COURSE_DEAL_SIZE = 20000000;
@@ -160,6 +160,73 @@ export const PUBLIC_PROGRAMS = [
       'Review: đánh giá tiến bộ, chỉnh lỗi cá nhân và định hướng band tiếp theo',
     ],
   },
+  {
+    slug: 'metta-summer-2026',
+    courseName: 'Summer Camp · Đa bộ môn',
+    title: 'METTA Summer 2026',
+    seoTitle: 'METTA Summer 2026 | Chương trình hè cho trẻ 4–11 tuổi',
+    seoDescription: 'METTA Summer 2026 là chương trình hè đa bộ môn cho trẻ 4–11 tuổi với Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa, kéo dài 6 tuần và có Showcase cuối khóa.',
+    eyebrow: 'Chương trình hè đa bộ môn',
+    ageRange: '4–11 tuổi',
+    duration: '6 tuần · 24 buổi · 1h30/buổi',
+    dealSize: 1999000,
+    dealCurrency: DEFAULT_DEAL_CURRENCY,
+    image: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop',
+    images: [
+      'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=1200&q=85&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=1200&q=85&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1547153760-18fc86324498?w=1200&q=85&auto=format&fit=crop',
+    ],
+    summary: 'Chương trình hè trải nghiệm đa bộ môn cho trẻ 4–11 tuổi, giúp con khám phá năng khiếu qua Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa.',
+    description:
+      'Một mùa hè để con khám phá năng khiếu, rèn kỹ năng và tự tin tỏa sáng qua 4 bộ môn: Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa.',
+    highlights: [
+      '4 bộ môn trong 6 tuần: Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa',
+      '24 buổi học, mỗi buổi 1h30 với hoạt động phù hợp độ tuổi 4–11',
+      'Lộ trình 3 giai đoạn: Khám phá, Phát triển và Hoàn thiện',
+      'METTA Summer Showcase 2026 cuối khóa cùng phụ huynh',
+    ],
+    highlightCards: [
+      { icon: 'Sparkles', color: '#F45A0A', title: '4 bộ môn', description: 'Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa' },
+      { icon: 'Clock', color: '#16A9D8', title: '6 tuần', description: '24 buổi, mỗi buổi 1h30' },
+      { icon: 'Users', color: '#16A34A', title: '4–11 tuổi', description: 'Chia nhóm mầm non và tiểu học' },
+      { icon: 'Trophy', color: '#F59E0B', title: 'Showcase', description: 'Triển lãm, biểu diễn và chứng nhận cuối khóa' },
+    ],
+    methodology: ['Art-based learning', 'Chess thinking', 'Music & voice', 'Dance movement', 'Showcase project'],
+    outcomes: [
+      'Có tranh cá nhân và sản phẩm thủ công sáng tạo',
+      'Biết luật chơi và chiến thuật cờ vua cơ bản',
+      'Biểu diễn ít nhất một bài hát hoặc tiết mục nhóm',
+      'Tham gia một bài nhảy hoặc múa hoàn chỉnh',
+      'Tự tin hơn khi đứng trước tập thể',
+      'Nhận chứng nhận hoàn thành chương trình',
+      'Tham gia METTA Summer Showcase 2026 cùng phụ huynh',
+    ],
+    outcomeCards: [
+      { icon: 'Sparkles', color: '#F45A0A', title: 'Sản phẩm sáng tạo', description: 'Tranh cá nhân và sản phẩm thủ công' },
+      { icon: 'Brain', color: '#003B7A', title: 'Tư duy chiến thuật', description: 'Luật chơi và chiến thuật cờ vua cơ bản' },
+      { icon: 'Mic', color: '#8B5CF6', title: 'Tự tin biểu diễn', description: 'Hát nhóm, nhảy múa và trình diễn trước tập thể' },
+      { icon: 'Trophy', color: '#16A34A', title: 'Chứng nhận', description: 'Hoàn thành chương trình và tham gia Showcase' },
+    ],
+    roadmap: [
+      'Tuần 1–2: Khám phá chất liệu, bàn cờ, giọng hát và nhịp điệu cơ bản',
+      'Tuần 3–4: Phát triển kỹ thuật, luyện sản phẩm và phối hợp nhóm',
+      'Tuần 5–6: Hoàn thiện tiết mục, sản phẩm và chuẩn bị Showcase cuối khóa',
+    ],
+    roadmapCards: [
+      { label: 'Tuần 1–2', title: 'Khám phá', description: 'Con làm quen chất liệu, luật chơi, giọng hát và chuyển động cơ bản.', color: '#16A9D8' },
+      { label: 'Tuần 3–4', title: 'Phát triển', description: 'Con luyện kỹ thuật, hoàn thiện sản phẩm nhỏ và tăng khả năng phối hợp nhóm.', color: '#F45A0A' },
+      { label: 'Tuần 5–6', title: 'Hoàn thiện', description: 'Con chuẩn bị tiết mục, sản phẩm và tâm thế tham gia METTA Summer Showcase 2026.', color: '#16A34A' },
+    ],
+    skills: [
+      { name: 'Social', label: 'Xã hội', description: 'Hợp tác trong hoạt động nhóm, biết chia sẻ vai trò và cổ vũ bạn bè.', color: '#16A9D8' },
+      { name: 'Physical', label: 'Vận động', description: 'Rèn nhịp điệu, sự phối hợp cơ thể và khả năng trình diễn.', color: '#F45A0A' },
+      { name: 'Intellectual', label: 'Tư duy', description: 'Quan sát, lập kế hoạch và ra quyết định qua cờ vua.', color: '#003B7A' },
+      { name: 'Creative', label: 'Sáng tạo', description: 'Thể hiện ý tưởng qua màu sắc, hình khối, âm nhạc và chuyển động.', color: '#8B5CF6' },
+      { name: 'Emotional', label: 'Cảm xúc', description: 'Tự tin thể hiện bản thân và cảm nhận niềm vui học tập trong mùa hè.', color: '#16A34A' },
+    ],
+  },
 ] as const;
 
 export const DEAL_QUOTED_STATUS = 'Đã báo phí/Chờ chốt';
@@ -171,6 +238,7 @@ export const courseDealSizeDefaults = [
   { courseName: 'METTA on Phonics', dealSize: DEFAULT_COURSE_DEAL_SIZE },
   { courseName: 'METTA Young Learner', dealSize: DEFAULT_COURSE_DEAL_SIZE },
   { courseName: 'IELTS Junior', dealSize: DEFAULT_COURSE_DEAL_SIZE },
+  { courseName: 'METTA Summer 2026', dealSize: 1999000 },
 ] as const;
 
 export const pendingReasonOptions = [

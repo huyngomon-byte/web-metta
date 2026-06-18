@@ -38,6 +38,8 @@ export interface ProgramCms {
   slug: string;
   visible?: boolean;
   title: string;
+  seoTitle?: string;
+  seoDescription?: string;
   eyebrow: string;
   ageRange: string;
   duration: string;
