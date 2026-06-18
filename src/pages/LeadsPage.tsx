@@ -36,6 +36,26 @@ type LeadDraft = Partial<Lead> & {
   appointmentTime?: string;
   appointmentNote?: string;
 };
+type LeadImportPhase = 'idle' | 'parsing' | 'ready' | 'importing' | 'done';
+type LeadImportIssue = {
+  rowNumber: number | string;
+  level: 'error' | 'warning';
+  source: 'parse' | 'import';
+  mode?: 'create' | 'update' | '';
+  leadName?: string;
+  phone?: string;
+  message: string;
+};
+type LeadImportProgress = {
+  phase: LeadImportPhase;
+  total: number;
+  processed: number;
+  created: number;
+  updated: number;
+  failed: number;
+  currentRow?: number;
+  message?: string;
+};
 
 const APPT_CALLBACK = 'Gọi lại' as Appointment['type'];
 const APPT_CONSULTATION = 'Tư vấn' as Appointment['type'];
@@ -78,6 +98,16 @@ const emptyLead: LeadDraft = {
   appointmentKind: '',
   appointmentTime: '',
   appointmentNote: '',
+};
+
+const emptyLeadImportProgress: LeadImportProgress = {
+  phase: 'idle',
+  total: 0,
+  processed: 0,
+  created: 0,
+  updated: 0,
+  failed: 0,
+  message: '',
 };
 
 const statusTone: Record<number, Parameters<typeof Badge>[0]['tone']> = {
@@ -290,6 +320,36 @@ function callLogText(log?: CallLog) {
   return `${direction} ${callLogTime(log)}${disposition}${duration}`;
 }
 
+function rowNumberFromIssue(message: string, fallback: number | string) {
+  const match = message.match(/dòng\s+(\d+)/i);
+  return match ? Number(match[1]) : fallback;
+}
+
+function collectLeadImportIssues(result: ParsedLeadImportResult): LeadImportIssue[] {
+  return [
+    ...result.errors.map((message, index) => ({
+      rowNumber: rowNumberFromIssue(message, index + 1),
+      level: 'error' as const,
+      source: 'parse' as const,
+      mode: '' as const,
+      message,
+    })),
+    ...result.rows.flatMap((row) => row.warnings.map((message) => ({
+      rowNumber: row.rowNumber,
+      level: 'warning' as const,
+      source: 'parse' as const,
+      mode: row.mode,
+      leadName: leadDisplayName(row.lead),
+      phone: row.lead.phone || '',
+      message,
+    }))),
+  ];
+}
+
+function nextUiFrame() {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+}
+
 export default function LeadsPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
@@ -311,6 +371,8 @@ export default function LeadsPage() {
   const [leadImportFileName, setLeadImportFileName] = useState('');
   const [leadImportParsed, setLeadImportParsed] = useState<ParsedLeadImportResult | null>(null);
   const [leadImportBusy, setLeadImportBusy] = useState(false);
+  const [leadImportProgress, setLeadImportProgress] = useState<LeadImportProgress>(emptyLeadImportProgress);
+  const [leadImportIssues, setLeadImportIssues] = useState<LeadImportIssue[]>([]);
   const [quickLeadOpen, setQuickLeadOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showSourceSettings, setShowSourceSettings] = useState(false);
@@ -412,6 +474,9 @@ export default function LeadsPage() {
   const leadImportCreateCount = leadImportParsed?.rows.filter((row) => row.mode === 'create').length || 0;
   const leadImportUpdateCount = leadImportParsed?.rows.filter((row) => row.mode === 'update').length || 0;
   const leadImportWarningCount = leadImportParsed?.rows.reduce((sum, row) => sum + row.warnings.length, 0) || 0;
+  const leadImportTotal = leadImportProgress.total || leadImportParsed?.rows.length || 0;
+  const leadImportPercent = leadImportTotal ? Math.round((leadImportProgress.processed / leadImportTotal) * 100) : 0;
+  const leadImportErrorCount = leadImportIssues.filter((issue) => issue.level === 'error').length;
 
   useEffect(() => {
     setFilters((current) => {
@@ -612,6 +677,8 @@ export default function LeadsPage() {
     setError('');
     setSaveMessage('');
     setLeadImportParsed(null);
+    setLeadImportIssues([]);
+    setLeadImportProgress({ ...emptyLeadImportProgress, phase: 'parsing', message: 'Đang đọc và kiểm tra file import...' });
     setLeadImportFileName(file.name);
     setLeadImportBusy(true);
     setLeadImportOpen(true);
@@ -620,6 +687,16 @@ export default function LeadsPage() {
       const visibleReferenceLeads = await leadService.getLeads();
       const result = await parseLeadWorkbook(file, visibleReferenceLeads);
       setLeadImportParsed(result);
+      const issues = collectLeadImportIssues(result);
+      setLeadImportIssues(issues);
+      setLeadImportProgress({
+        ...emptyLeadImportProgress,
+        phase: 'ready',
+        total: result.rows.length,
+        message: result.errors.length
+          ? `File có ${result.errors.length} lỗi cần sửa trước khi import.`
+          : `Sẵn sàng import ${result.rows.length} dòng hợp lệ.`,
+      });
       if (result.errors.length) {
         setError(`File có ${result.errors.length} lỗi cần xử lý trước khi import.`);
       } else if (!result.rows.length) {
@@ -628,6 +705,14 @@ export default function LeadsPage() {
         setSaveMessage(`Đã đọc ${result.rows.length} dòng hợp lệ từ file.`);
       }
     } catch (err) {
+      setLeadImportProgress({ ...emptyLeadImportProgress, phase: 'done', failed: 1, message: 'Không đọc được file import.' });
+      setLeadImportIssues([{
+        rowNumber: 'File',
+        level: 'error',
+        source: 'parse',
+        mode: '',
+        message: err instanceof Error ? err.message : 'Không đọc được file import.',
+      }]);
       setError(err instanceof Error ? err.message : 'Không đọc được file import.');
     } finally {
       setLeadImportBusy(false);
@@ -639,30 +724,123 @@ export default function LeadsPage() {
     setLeadImportBusy(true);
     setError('');
     setSaveMessage('');
-    const failures: string[] = [];
+    const baseIssues = collectLeadImportIssues(leadImportParsed).filter((issue) => issue.level === 'warning');
+    setLeadImportIssues(baseIssues);
+    setLeadImportProgress({
+      ...emptyLeadImportProgress,
+      phase: 'importing',
+      total: leadImportParsed.rows.length,
+      message: 'Đang import lead...',
+    });
     let created = 0;
     let updated = 0;
+    let failed = 0;
+    let processed = 0;
     try {
       for (const row of leadImportParsed.rows) {
+        setLeadImportProgress((current) => ({
+          ...current,
+          phase: 'importing',
+          currentRow: row.rowNumber,
+          message: `Đang xử lý dòng ${row.rowNumber}...`,
+        }));
         try {
           await leadService.saveLead(row.lead);
           if (row.mode === 'create') created += 1;
           else updated += 1;
         } catch (err) {
-          failures.push(`Dòng ${row.rowNumber}: ${err instanceof Error ? err.message : 'Không import được.'}`);
+          failed += 1;
+          const issue: LeadImportIssue = {
+            rowNumber: row.rowNumber,
+            level: 'error',
+            source: 'import',
+            mode: row.mode,
+            leadName: leadDisplayName(row.lead),
+            phone: row.lead.phone || '',
+            message: err instanceof Error ? err.message : 'Không import được dòng này.',
+          };
+          setLeadImportIssues((current) => [...current, issue]);
         }
+        processed += 1;
+        setLeadImportProgress({
+          phase: 'importing',
+          total: leadImportParsed.rows.length,
+          processed,
+          created,
+          updated,
+          failed,
+          currentRow: row.rowNumber,
+          message: `Đã xử lý ${processed}/${leadImportParsed.rows.length} dòng.`,
+        });
+        await nextUiFrame();
       }
       await refresh();
-      if (failures.length) setError(failures.slice(0, 6).join('\n'));
-      setSaveMessage(`Import xong: tạo mới ${created}, cập nhật ${updated}, lỗi ${failures.length}.`);
-      if (!failures.length) {
-        setLeadImportParsed(null);
-        setLeadImportFileName('');
-        if (leadImportFileInputRef.current) leadImportFileInputRef.current.value = '';
-      }
+      setLeadImportProgress({
+        phase: 'done',
+        total: leadImportParsed.rows.length,
+        processed,
+        created,
+        updated,
+        failed,
+        message: failed
+          ? `Hoàn tất nhưng có ${failed} dòng lỗi.`
+          : 'Hoàn tất import không có lỗi.',
+      });
+      if (failed) setError(`Có ${failed} dòng import lỗi. Xem lý do bên dưới hoặc tải file error log.`);
+      setSaveMessage(`Import xong: tạo mới ${created}, cập nhật ${updated}, lỗi ${failed}.`);
     } finally {
       setLeadImportBusy(false);
     }
+  }
+
+  function downloadLeadImportErrorLog() {
+    if (!leadImportIssues.length) return;
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    exportCsv(`metta-lead-import-error-log-${date}.csv`, leadImportIssues.map((issue) => ({
+      File: leadImportFileName || '',
+      Dòng: issue.rowNumber,
+      Level: issue.level === 'error' ? 'Error' : 'Warning',
+      Nguồn: issue.source === 'import' ? 'Import' : 'Parse',
+      Mode: issue.mode || '',
+      Lead: issue.leadName || '',
+      SĐT: issue.phone || '',
+      'Lý do': issue.message,
+    })));
+  }
+
+  function renderLeadImportIssues() {
+    if (!leadImportIssues.length) return null;
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+        <div className="mb-2 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-sm font-extrabold text-amber-900">Lỗi / cảnh báo import</p>
+            <p className="text-xs font-semibold text-amber-700">
+              {leadImportErrorCount} lỗi, {leadImportIssues.length - leadImportErrorCount} cảnh báo. Có thể tải CSV để xử lý offline.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={downloadLeadImportErrorLog}>
+            <Download /> Xuất error log CSV
+          </Button>
+        </div>
+        <div className="max-h-44 overflow-y-auto rounded-lg border border-amber-100 bg-white">
+          {leadImportIssues.slice(0, 12).map((issue, index) => (
+            <div key={`${issue.rowNumber}-${issue.level}-${index}`} className="grid gap-1 border-b border-amber-50 px-3 py-2 text-xs last:border-0 sm:grid-cols-[80px_90px_1fr]">
+              <span className="font-extrabold text-slate-700">Dòng {issue.rowNumber}</span>
+              <span className={`font-extrabold ${issue.level === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
+                {issue.level === 'error' ? 'Lỗi' : 'Cảnh báo'}
+              </span>
+              <span className="text-slate-700">
+                {issue.leadName ? `${issue.leadName} · ` : ''}{issue.phone ? `${issue.phone} · ` : ''}{issue.message}
+              </span>
+            </div>
+          ))}
+        </div>
+        {leadImportIssues.length > 12 && (
+          <p className="mt-2 text-xs font-semibold text-amber-700">Đang hiển thị 12 dòng đầu, tải CSV để xem đầy đủ {leadImportIssues.length} mục.</p>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -734,8 +912,61 @@ export default function LeadsPage() {
                 <Button onClick={() => void importParsedLeadRows()} disabled={leadImportBusy || !leadImportParsed?.rows.length || Boolean(leadImportParsed.errors.length)}>
                   {leadImportBusy ? 'Đang xử lý' : `Import${leadImportParsed?.rows.length ? ` ${leadImportParsed.rows.length} dòng` : ''}`}
                 </Button>
+                {leadImportIssues.length > 0 && (
+                  <Button variant="outline" onClick={downloadLeadImportErrorLog}>
+                    <Download /> Xuất error log CSV
+                  </Button>
+                )}
               </div>
             </div>
+
+            {leadImportProgress.phase !== 'idle' && (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                  <div>
+                    <p className="text-sm font-extrabold text-slate-900">
+                      {leadImportProgress.phase === 'parsing'
+                        ? 'Đang kiểm tra file'
+                        : leadImportProgress.phase === 'importing'
+                          ? `Đang xử lý dòng ${leadImportProgress.currentRow || '-'}`
+                          : leadImportProgress.phase === 'done'
+                            ? 'Import đã hoàn tất'
+                            : 'Sẵn sàng import'}
+                    </p>
+                    <p className="text-xs font-semibold text-slate-500">{leadImportProgress.message || 'Chưa có file import.'}</p>
+                  </div>
+                  <div className="text-sm font-extrabold text-slate-900">
+                    {leadImportProgress.processed}/{leadImportTotal || 0} dòng
+                  </div>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`h-full rounded-full transition-all ${leadImportErrorCount ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                    style={{ width: `${leadImportProgress.phase === 'ready' ? 0 : leadImportPercent}%` }}
+                  />
+                </div>
+                <div className="mt-3 grid gap-2 text-center sm:grid-cols-4">
+                  <div className="rounded-lg bg-slate-50 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase text-slate-500">Đã xử lý</p>
+                    <p className="text-lg font-extrabold text-slate-900">{leadImportProgress.processed}</p>
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase text-emerald-700">Tạo mới</p>
+                    <p className="text-lg font-extrabold text-emerald-900">{leadImportProgress.created}</p>
+                  </div>
+                  <div className="rounded-lg bg-blue-50 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase text-blue-700">Cập nhật</p>
+                    <p className="text-lg font-extrabold text-blue-900">{leadImportProgress.updated}</p>
+                  </div>
+                  <div className="rounded-lg bg-red-50 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase text-red-700">Lỗi</p>
+                    <p className="text-lg font-extrabold text-red-900">{leadImportErrorCount}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!leadImportParsed && renderLeadImportIssues()}
 
             {leadImportParsed && (
               <div className="grid gap-4">
@@ -759,6 +990,8 @@ export default function LeadsPage() {
                     {leadImportParsed.errors.slice(0, 6).join('\n')}
                   </div>
                 )}
+
+                {renderLeadImportIssues()}
 
                 <div className="overflow-x-auto">
                   <Table>
