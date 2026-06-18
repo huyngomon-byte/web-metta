@@ -258,7 +258,7 @@ export const siteSettings: SiteSettings = {
   hotline: '090 000 0000',
   email: 'hello@mettaacademy.vn',
   address: 'METTA Academy Campus',
-  mapUrl: 'https://share.google/w0414JKEjY3GoBG0F',
+  mapUrl: 'https://www.google.com/maps/place/Metta+Academy/@20.9664565,105.7732044,17z/data=!4m14!1m7!3m6!1s0x3134538655bb7f0f:0xdc927bc6493c2501!2sMetta+Academy!8m2!3d20.9664515!4d105.7757793!16s%2Fg%2F11z810c9f8!3m5!1s0x3134538655bb7f0f:0xdc927bc6493c2501!8m2!3d20.9664515!4d105.7757793!16s%2Fg%2F11z810c9f8?entry=ttu&g_ep=EgoyMDI2MDYxMy4wIKXMDSoASAFQAw%3D%3D',
   socials: {
     facebook: 'https://www.facebook.com/anhngumetta',
     messenger: 'https://www.facebook.com/messages/t/anhngumetta',

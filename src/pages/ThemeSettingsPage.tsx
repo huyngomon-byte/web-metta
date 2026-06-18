@@ -104,7 +104,7 @@ export default function ThemeSettingsPage() {
             <Input
               value={current.mapUrl || ''}
               onChange={(e) => update({ mapUrl: e.target.value })}
-              placeholder="https://share.google/w0414JKEjY3GoBG0F"
+              placeholder="https://www.google.com/maps/place/Metta+Academy/@20.9664565,105.7732044,17z/..."
             />
           </Field>
         </CardContent>
