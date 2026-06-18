@@ -96,6 +96,16 @@ function toCellValue(value: unknown) {
   return String(value).trim();
 }
 
+function normalizeImportedPhone(value: unknown) {
+  const raw = toCellValue(value);
+  if (!raw) return '';
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return raw;
+  if (digits.length === 9 && /^[1-9]/.test(digits)) return `0${digits}`;
+  if (digits.startsWith('84') && digits.length >= 11 && digits.length <= 12) return `0${digits.slice(2)}`;
+  return digits.startsWith('0') ? digits : raw;
+}
+
 function toNumber(value: unknown) {
   const raw = toCellValue(value).replace(/[^\d.-]/g, '');
   if (!raw) return undefined;
@@ -229,7 +239,9 @@ export async function parseLeadWorkbook(file: File, existingLeads: Lead[]): Prom
 
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
   const existingById = new Map(existingLeads.map((lead) => [lead.id, lead]));
-  const existingByPhone = new Map(existingLeads.filter((lead) => lead.phone).map((lead) => [lead.phone, lead]));
+  const existingByPhone = new Map(existingLeads
+    .map((lead) => [normalizeImportedPhone(lead.phone), lead] as const)
+    .filter(([phone]) => phone));
   const parsed: ParsedLeadImportRow[] = [];
   const errors: string[] = [];
 
@@ -246,11 +258,12 @@ export async function parseLeadWorkbook(file: File, existingLeads: Lead[]): Prom
         const num = toNumber(value);
         if (num !== undefined) (lead as Record<string, unknown>)[column.key] = num;
       } else if (column.key === 'status') lead.status = cleanedStatus(value) as Lead['status'];
+      else if (column.key === 'phone' || column.key === 'referralPhone') (lead as Record<string, unknown>)[column.key] = normalizeImportedPhone(value);
       else (lead as Record<string, unknown>)[column.key] = toCellValue(value);
     });
 
     const displayName = String(lead.studentName || lead.parentName || lead.fullName || '').trim();
-    const phone = String(lead.phone || '').trim();
+    const phone = normalizeImportedPhone(lead.phone);
     if (!displayName && !phone) return;
     if (!displayName || !phone) {
       errors.push(`Dòng ${rowNumber}: cần có tên học sinh/phụ huynh và số điện thoại.`);
