@@ -51,9 +51,7 @@ Open Admin > Settings > Call Center Stringee and copy the Queue `get_list_agents
 
 1. Project `Metta` has PCC enabled.
 2. Hotline `842471058267` belongs to the same project.
-3. Add Agents with Stringee user IDs:
-   - `u2` for Linh
-   - `u3` for Chi
+3. Add Agents with the real Stringee user IDs for each active CRM sales account.
 4. Add agents into a Sales group.
 5. Create a Queue, enable recording, and assign the Sales group.
 6. Set Queue `get_list_agents_url` to the CRM URL from Settings.
@@ -63,12 +61,11 @@ Open Admin > Settings > Call Center Stringee and copy the Queue `get_list_agents
 
 Open Admin > Settings > Call Center Stringee.
 
-Default MVP mapping:
+Live mapping checklist:
 
 | CRM user | Stringee userId | Routing |
 | --- | --- | --- |
-| Linh | u2 | App/SIP |
-| Chi | u3 | App/SIP |
+| Active sales account | Real Stringee userId | App/SIP or Phone bridge |
 
 For routing to the agent's personal phone, set Routing to `SÄT agent` and fill `SÄT agent` with country code.
 
@@ -93,4 +90,3 @@ For routing to the agent's personal phone, set Routing to `SÄT agent` and fil
 - Inbound from a known lead routes to PIC if online.
 - Inbound from a known lead routes to fallback if PIC is offline.
 - Inbound from an unknown number routes to fallback.
-

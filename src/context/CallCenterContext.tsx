@@ -187,14 +187,17 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
 
   const finishSession = useCallback(async (session: CallSession, status: 'ended' | 'failed' = 'ended') => {
     const endedAt = new Date().toISOString();
-    const saved = await callCenterService.saveLog({
+    const log: CallLog = {
       ...(session.log || {}),
       id: session.log?.id || session.providerCallId,
+      provider: 'stringee',
       providerCallId: session.providerCallId,
       leadId: session.leadId,
       leadName: session.leadName,
       direction: session.direction,
       status,
+      agentId: session.log?.agentId || user?.id,
+      agentName: session.log?.agentName || user?.fullName,
       customerNumber: session.phone,
       fromNumber: session.direction === 'outbound' ? user?.id || '' : session.phone,
       toNumber: session.direction === 'outbound' ? session.phone : user?.id || '',
@@ -202,11 +205,21 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
       answeredAt: session.answeredAt,
       endedAt,
       durationSec: durationSec(session.answeredAt || session.startedAt, endedAt),
-    });
-    setPendingWrapUp(saved);
+      createdAt: session.log?.createdAt || session.startedAt || endedAt,
+      updatedAt: endedAt,
+    };
+    activeCallRef.current = null;
     setActiveCall(null);
     setIncomingCall(null);
-  }, [user?.id]);
+    try {
+      const saved = await callCenterService.saveLog(log);
+      setPendingWrapUp(saved);
+    } catch (err) {
+      console.warn('[CallCenter] Cannot persist finished call log:', err);
+      setPendingWrapUp(log);
+      setError(`Đã kết thúc cuộc gọi, nhưng chưa lưu được call log: ${err instanceof Error ? err.message : 'Firestore từ chối ghi log.'}`);
+    }
+  }, [user?.fullName, user?.id]);
 
   const attachCallEvents = useCallback((call: StringeeCallLike, session: CallSession) => {
     let trackedSession = session;
@@ -555,7 +568,11 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
 
   const hangup = useCallback(async () => {
     if (!activeCall) return;
-    activeCall.sdkCall?.hangup?.();
+    try {
+      activeCall.sdkCall?.hangup?.();
+    } catch (err) {
+      console.warn('[CallCenter] SDK hangup failed:', err);
+    }
     await finishSession(activeCall, activeCall.status === 'answered' ? 'ended' : 'failed');
   }, [activeCall, finishSession]);
 
@@ -568,8 +585,13 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
 
   const saveWrapUp = useCallback(async (disposition: string, note: string) => {
     if (!pendingWrapUp) return;
-    await callCenterService.wrapUp(pendingWrapUp, disposition, note);
-    setPendingWrapUp(null);
+    try {
+      await callCenterService.wrapUp(pendingWrapUp, disposition, note);
+      setPendingWrapUp(null);
+    } catch (err) {
+      console.warn('[CallCenter] Cannot save call wrap-up:', err);
+      setError(`Không lưu được call log: ${err instanceof Error ? err.message : 'Firestore từ chối ghi log.'}`);
+    }
   }, [pendingWrapUp]);
 
   const value = useMemo<CallCenterContextValue>(() => ({

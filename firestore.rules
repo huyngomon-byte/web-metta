@@ -115,6 +115,37 @@ service cloud.firestore {
       return canManageLeads() || salesCanReadLead(data);
     }
 
+    function hasCallLead(data) {
+      return data.leadId is string && data.leadId != "";
+    }
+
+    function salesCanReadCallLog(data) {
+      return isSales()
+        && (
+          data.agentId == request.auth.uid
+          || (hasCallLead(data)
+            && exists(/databases/$(database)/documents/leads/$(data.leadId))
+            && canReadLeadDoc(get(/databases/$(database)/documents/leads/$(data.leadId)).data))
+        );
+    }
+
+    function salesCanWriteCallLog(data) {
+      return isSales()
+        && (
+          data.agentId == request.auth.uid
+          || (hasCallLead(data)
+            && exists(/databases/$(database)/documents/leads/$(data.leadId))
+            && salesCanReadLead(get(/databases/$(database)/documents/leads/$(data.leadId)).data))
+        );
+    }
+
+    function callLogLeadUnchanged() {
+      return (!hasCallLead(resource.data) && !hasCallLead(request.resource.data))
+        || (hasCallLead(resource.data)
+          && hasCallLead(request.resource.data)
+          && request.resource.data.leadId == resource.data.leadId);
+    }
+
     function publicLeadCreate() {
       return request.auth == null
         && request.resource.data.fullName is string
@@ -211,14 +242,13 @@ service cloud.firestore {
     }
 
     match /callLogs/{id} {
-      allow read: if canManageLeads()
-        || (isSales() && resource.data.agentId == request.auth.uid);
+      allow read: if canManageLeads() || salesCanReadCallLog(resource.data);
       allow create: if canManageLeads()
-        || (isSales() && request.resource.data.agentId == request.auth.uid);
+        || salesCanWriteCallLog(request.resource.data);
       allow update: if canManageLeads()
-        || (isSales()
-          && resource.data.agentId == request.auth.uid
-          && request.resource.data.agentId == resource.data.agentId);
+        || (salesCanWriteCallLog(resource.data)
+          && salesCanWriteCallLog(request.resource.data)
+          && callLogLeadUnchanged());
       allow delete: if canManageLeads();
     }
 

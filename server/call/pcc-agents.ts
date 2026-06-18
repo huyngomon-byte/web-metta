@@ -126,33 +126,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const db = adminDb();
   const config = await settings(db);
-  const fallbackCrmId = process.env.CALL_FALLBACK_AGENT_ID || config.fallbackAgentId || 'u2';
-  const fallbackMapping = mappingForCrm(fallbackCrmId, config) || {
-    crmUserId: fallbackCrmId,
-    crmName: config.fallbackAgentName || fallbackCrmId,
-    stringeeUserId: fallbackCrmId,
-    active: true,
-  };
+  const fallbackCrmId = process.env.CALL_FALLBACK_AGENT_ID || config.fallbackAgentId || '';
+  const fallbackMapping = fallbackCrmId
+    ? mappingForCrm(fallbackCrmId, config) || {
+      crmUserId: fallbackCrmId,
+      crmName: config.fallbackAgentName || fallbackCrmId,
+      stringeeUserId: fallbackCrmId,
+      active: true,
+    }
+    : undefined;
 
   const responseCalls = await Promise.all(callsFromRequest(req).map(async (call) => {
     const customerNumber = normalizePhone(call.from || '');
     const lead = await findLeadByPhone(db, customerNumber);
     const assignedCrmId = lead?.assignedTo || '';
     const assignedOnline = await agentOnline(db, assignedCrmId);
-    const targetCrmId = assignedCrmId && assignedOnline ? assignedCrmId : fallbackCrmId;
-    const targetMapping = mappingForCrm(targetCrmId, config) || fallbackMapping;
-    const fallbackAgent = await pccAgent(fallbackMapping);
-    const primaryAgent = await pccAgent(targetMapping);
-    const agents = primaryAgent.stringee_user_id === fallbackAgent.stringee_user_id
-      ? [primaryAgent]
-      : [primaryAgent, fallbackAgent];
+    const assignedMapping = assignedCrmId && assignedOnline ? mappingForCrm(assignedCrmId, config) : undefined;
+    const targetCrmId = assignedMapping?.crmUserId || fallbackMapping?.crmUserId || '';
+    const targetMapping = assignedMapping || fallbackMapping;
+    const agentEntries = await Promise.all(
+      [targetMapping, fallbackMapping]
+        .filter((mapping, index, items): mapping is NonNullable<typeof targetMapping> =>
+          Boolean(mapping?.stringeeUserId && items.findIndex((item) => item?.stringeeUserId === mapping.stringeeUserId) === index),
+        )
+        .map((mapping) => pccAgent(mapping)),
+    );
 
     await writeInboundLog(db, {
       providerCallId: call.callId || `pcc-in-${Date.now()}`,
       leadId: lead?.id || '',
       leadName: leadName(lead),
       agentId: targetCrmId,
-      agentName: targetCrmId === assignedCrmId ? lead?.assignedToName || targetMapping.crmName || targetCrmId : config.fallbackAgentName || fallbackMapping.crmName || fallbackCrmId,
+      agentName: targetCrmId === assignedCrmId ? lead?.assignedToName || targetMapping?.crmName || targetCrmId : fallbackMapping?.crmName || config.fallbackAgentName || fallbackCrmId,
       fromNumber: customerNumber,
       toNumber: normalizePhone(call.to || process.env.STRINGEE_FROM_NUMBER || ''),
       customerNumber,
@@ -169,7 +174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return {
       callId: call.callId,
-      agents,
+      agents: agentEntries,
     };
   }));
 

@@ -54,6 +54,14 @@ function writeLocalLogs(logs: CallLog[]) {
   window.dispatchEvent(new Event('metta-call-logs-updated'));
 }
 
+function mergeLogs(incoming: CallLog[], existing: CallLog[] = readLocalLogs()) {
+  const byId = new Map<string, CallLog>();
+  existing.forEach((log) => byId.set(log.id || log.providerCallId, log));
+  incoming.forEach((log) => byId.set(log.id || log.providerCallId, log));
+  return Array.from(byId.values())
+    .sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || ''));
+}
+
 function readLocalSettings(): CallCenterSettings | null {
   return cachedSettings;
 }
@@ -228,21 +236,30 @@ export const callCenterService = {
   },
 
   getLogs: async () => {
+    const user = currentUser();
     let logs = USE_FIREBASE ? [] : readLocalLogs();
     if (USE_FIREBASE) {
-      const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), orderBy('startedAt', 'desc')));
+      const logsQuery = user?.role === 'sales'
+        ? query(collection(db!, COL_CALL_LOGS), where('agentId', '==', user.id))
+        : query(collection(db!, COL_CALL_LOGS), orderBy('startedAt', 'desc'));
+      const snap = await getDocs(logsQuery);
       logs = snap.docs.map((item) => item.data() as CallLog);
-      writeLocalLogs(logs);
+      writeLocalLogs(user?.role === 'sales' ? mergeLogs(logs) : logs);
     }
     return delay(logs.sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')));
   },
 
   getLogsForLead: async (leadId: string) => {
+    const user = currentUser();
     let logs = USE_FIREBASE ? [] : readLocalLogs().filter((log) => log.leadId === leadId);
     if (USE_FIREBASE) {
-      const snap = await getDocs(query(collection(db!, COL_CALL_LOGS), where('leadId', '==', leadId), orderBy('startedAt', 'desc')));
+      const logsQuery = user?.role === 'sales'
+        ? query(collection(db!, COL_CALL_LOGS), where('agentId', '==', user.id))
+        : query(collection(db!, COL_CALL_LOGS), where('leadId', '==', leadId), orderBy('startedAt', 'desc'));
+      const snap = await getDocs(logsQuery);
       logs = snap.docs.map((item) => item.data() as CallLog);
-      writeLocalLogs([...logs, ...readLocalLogs().filter((log) => log.leadId !== leadId)]);
+      if (user?.role === 'sales') logs = logs.filter((log) => log.leadId === leadId);
+      writeLocalLogs(mergeLogs(logs));
     }
     return delay(logs.sort((a, b) => (b.startedAt || '').localeCompare(a.startedAt || '')));
   },

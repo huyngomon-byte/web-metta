@@ -100,20 +100,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = adminDb();
   const config = await settings(db);
   const fromNumber = normalizePhone(String(config.fromNumber || process.env.STRINGEE_FROM_NUMBER || '842471058267'));
-  const fallbackCrmId = process.env.CALL_FALLBACK_AGENT_ID || config.fallbackAgentId || 'u2';
+  const fallbackCrmId = process.env.CALL_FALLBACK_AGENT_ID || config.fallbackAgentId || '';
   const requestedMapping = mappingForCrm(crmUserId, config);
-  const fallbackMapping = mappingForCrm(fallbackCrmId, config);
-  const targetCrmId = requestedMapping?.crmUserId || fallbackMapping?.crmUserId || fallbackCrmId;
-  const stringeeUserId = requestedMapping?.stringeeUserId || fallbackMapping?.stringeeUserId || fallbackCrmId;
+  const fallbackMapping = fallbackCrmId ? mappingForCrm(fallbackCrmId, config) : undefined;
+  const routedCrmId = requestedMapping?.crmUserId || fallbackMapping?.crmUserId || crmUserId;
+  const stringeeUserId = requestedMapping?.stringeeUserId || fallbackMapping?.stringeeUserId || crmUserId;
   if (!stringeeUserId) return res.status(400).json({ error: 'Missing Stringee user mapping for this CRM user' });
 
   const requestedCallId = String(req.body?.providerCallId || '').trim();
   const providerCallId = requestedCallId || `pcc-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const leadName = String(req.body?.leadName || '').trim();
   const agentName = String(
-    requestedMapping
-      ? req.body?.agentName || mappedCrmName(crmUserId, config) || crmUserId
-      : fallbackMapping?.crmName || config.fallbackAgentName || fallbackCrmId,
+    req.body?.agentName || mappedCrmName(crmUserId, config) || crmUserId,
+  ).trim();
+  const routedAgentName = String(
+    requestedMapping?.crmName || fallbackMapping?.crmName || (fallbackMapping ? config.fallbackAgentName : '') || routedCrmId,
   ).trim();
 
   try {
@@ -142,9 +143,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stringeeCallId,
       leadId: req.body?.leadId || '',
       leadName,
-      agentId: targetCrmId,
+      agentId: crmUserId,
       agentName,
       stringeeAgentId: stringeeUserId,
+      routedAgentId: routedCrmId,
+      routedAgentName,
       agentPhoneNumber,
       fromNumber,
       toNumber: customerNumber,
@@ -153,6 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       rawEvent: {
         type: agentPhoneNumber ? 'phone_bridge_callout_requested' : 'pcc_callout_requested',
         calloutMode,
+        fallbackUsed: !requestedMapping && Boolean(fallbackMapping),
         stringeeResponse: result.payload,
         request: result.request,
       },
@@ -173,9 +177,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status: 'failed',
       leadId: req.body?.leadId || '',
       leadName,
-      agentId: targetCrmId,
+      agentId: crmUserId,
       agentName,
       stringeeAgentId: stringeeUserId,
+      routedAgentId: routedCrmId,
+      routedAgentName,
       fromNumber,
       toNumber: customerNumber,
       customerNumber,
@@ -183,6 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       endedAt: new Date().toISOString(),
       rawEvent: {
         type: 'pcc_callout_failed',
+        fallbackUsed: !requestedMapping && Boolean(fallbackMapping),
         error: error instanceof Error ? error.message : String(error),
       },
     });
