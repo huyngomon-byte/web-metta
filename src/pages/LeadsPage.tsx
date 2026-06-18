@@ -12,10 +12,10 @@ import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useCallCenter } from '@/context/CallCenterContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useCourseOptions } from '@/hooks/useCms';
+import { useCourseCatalog } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, leadSources, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
-import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
+import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount, type CourseDealSizeRule, type FinanceDefaultOptions } from '@/lib/leadFinance';
 import type { ParsedLeadImportResult } from '@/lib/leadExcel';
 import { buildLeadTimeline } from '@/lib/leadTimeline';
 import { canAssignLead, canCreateLead } from '@/lib/permissions';
@@ -221,17 +221,21 @@ function warmthTone(percent: number) {
   return 'bg-red-50 text-red-700 border-red-200';
 }
 
-function quoteValue(lead: Partial<Lead>) {
-  return expectedRevenueAmount(lead);
+function quoteValue(lead: Partial<Lead>, courseDealSizes?: readonly CourseDealSizeRule[]) {
+  return expectedRevenueAmount(lead, courseDealSizes);
 }
 
-function wonValue(lead: Partial<Lead>) {
-  return revenueAmount(lead);
+function wonValue(lead: Partial<Lead>, courseDealSizes?: readonly CourseDealSizeRule[]) {
+  return revenueAmount(lead, courseDealSizes);
 }
 
-function applyFinanceDefaults<T extends Partial<Lead>>(lead: T): T {
+function applyFinanceDefaults<T extends Partial<Lead>>(
+  lead: T,
+  courseDealSizes?: readonly CourseDealSizeRule[],
+  options?: FinanceDefaultOptions,
+): T {
   if (lead.status !== DEAL_QUOTED_STATUS && lead.status !== WON_LEAD_STATUS) return lead;
-  const finance = financeDefaultsForLead(lead);
+  const finance = financeDefaultsForLead(lead, courseDealSizes, options);
   return {
     ...lead,
     ...finance,
@@ -355,7 +359,7 @@ export default function LeadsPage() {
   const { user } = useAuth();
   const { leads, refresh, loadMore, hasMore, loadingMore } = useLeads({ pageSize: 500 });
   const { startOutboundCall } = useCallCenter();
-  const courseOptions = useCourseOptions();
+  const { courseOptions, courseDealSizes } = useCourseCatalog();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [sourceConfigs, setSourceConfigs] = useState<LeadSourceConfig[]>([]);
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
@@ -415,6 +419,10 @@ export default function LeadsPage() {
       window.removeEventListener('focus', onUpdate);
     };
   }, [refreshCallLogs]);
+
+  useEffect(() => {
+    if (courseDealSizes.length > 0) void refresh();
+  }, [courseDealSizes, refresh]);
 
   useEffect(() => {
     if (!detailLead) return;
@@ -565,7 +573,7 @@ export default function LeadsPage() {
       followUpDate: editing.appointmentKind === APPT_CALLBACK ? editing.appointmentTime : '',
       consultationDate: editing.appointmentKind === APPT_CONSULTATION || editing.appointmentKind === APPT_TEST ? editing.appointmentTime : '',
     };
-    payload = applyFinanceDefaults(payload);
+    payload = applyFinanceDefaults(payload, courseDealSizes);
     const { appointmentKind, appointmentTime, appointmentNote, ...leadPayload } = payload;
     void appointmentKind;
     void appointmentTime;
@@ -1158,6 +1166,7 @@ export default function LeadsPage() {
           salesOptions={leadOwnerOptions}
           canAssign={canAssign}
           courseOptions={courseOptions}
+          courseDealSizes={courseDealSizes}
           sourceOptions={sourceOptions}
           centerOptions={centerOptions}
           priorityForSource={priorityForSource}
@@ -1165,9 +1174,9 @@ export default function LeadsPage() {
       )}
 
       {view === 'table' ? (
-        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={(lead) => setEditing(toDraft(lead))} onDetail={setDetailLead} onDelete={removeLead} onCall={callLead} callLogs={callLogs} sourceConfigs={sourceConfigs} />
+        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={(lead) => setEditing(toDraft(lead))} onDetail={setDetailLead} onDelete={removeLead} onCall={callLead} callLogs={callLogs} sourceConfigs={sourceConfigs} courseDealSizes={courseDealSizes} />
       ) : (
-        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
+        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} courseOptions={courseOptions} courseDealSizes={courseDealSizes} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
       )}
 
       {detailLead && (
@@ -1178,6 +1187,7 @@ export default function LeadsPage() {
           salesOptions={leadOwnerOptions}
           canAssign={canAssign}
           courseOptions={courseOptions}
+          courseDealSizes={courseDealSizes}
           sourceOptions={sourceOptions}
           centerOptions={centerOptions}
           sourceConfigs={sourceConfigs}
@@ -1199,6 +1209,7 @@ function LeadForm({
   salesOptions,
   canAssign,
   courseOptions,
+  courseDealSizes,
   sourceOptions,
   centerOptions,
   priorityForSource,
@@ -1211,6 +1222,7 @@ function LeadForm({
   salesOptions: AdminUser[];
   canAssign: boolean;
   courseOptions: string[];
+  courseDealSizes: CourseDealSizeRule[];
   sourceOptions: string[];
   centerOptions: string[];
   priorityForSource: (source?: string, fallback?: number) => LeadPriorityLevel;
@@ -1222,11 +1234,11 @@ function LeadForm({
   const showFinance = isQuoted || isWon;
 
   function setCourse(course: string) {
-    setValue(applyFinanceDefaults({ ...value, interestedCourse: course }));
+    setValue(applyFinanceDefaults({ ...value, interestedCourse: course }, courseDealSizes, { preferExistingDealSize: false }));
   }
 
   function setStatus(status: Lead['status']) {
-    const next = applyFinanceDefaults({ ...value, status });
+    const next = applyFinanceDefaults({ ...value, status }, courseDealSizes);
     if (isConsultationStatus(status)) {
       const appointmentTime = value.consultationDate || value.appointmentTime || defaultAppointmentInput();
       setValue({
@@ -1242,7 +1254,7 @@ function LeadForm({
   }
 
   function setDiscount(discountPercent: number) {
-    setValue(applyFinanceDefaults({ ...value, discountPercent }));
+    setValue(applyFinanceDefaults({ ...value, discountPercent }, courseDealSizes));
   }
 
   return (
@@ -1361,19 +1373,19 @@ function LeadForm({
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Deal size</label>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
-                    {formatCurrency(value.dealSize || financeDefaultsForLead(value).dealSize, value.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                    {formatCurrency(value.dealSize || financeDefaultsForLead(value, courseDealSizes).dealSize, value.dealCurrency || DEFAULT_DEAL_CURRENCY)}
                   </div>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase text-slate-500">% discount</label>
-                  <Select value={String(value.discountPercent || financeDefaultsForLead(value).discountPercent)} onChange={(event) => setDiscount(Number(event.target.value))}>
+                  <Select value={String(value.discountPercent || financeDefaultsForLead(value, courseDealSizes).discountPercent)} onChange={(event) => setDiscount(Number(event.target.value))}>
                     {discountPercentOptions.map((percent) => <option key={percent} value={percent}>{percent}%</option>)}
                   </Select>
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Expected revenue</label>
                   <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
-                    {formatCurrency(quoteValue(value), value.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                    {formatCurrency(quoteValue(value, courseDealSizes), value.dealCurrency || DEFAULT_DEAL_CURRENCY)}
                   </div>
                 </div>
               </>
@@ -1382,7 +1394,7 @@ function LeadForm({
               <div className="md:col-span-3">
                 <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Revenue</label>
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700">
-                  {formatCurrency(wonValue(value), value.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                  {formatCurrency(wonValue(value, courseDealSizes), value.dealCurrency || DEFAULT_DEAL_CURRENCY)}
                 </div>
               </div>
             )}
@@ -1416,7 +1428,7 @@ function LeadForm({
                     const reason = event.target.value;
                     const option = pendingOption(reason);
                     setValue({
-                      ...applyFinanceDefaults(value),
+                      ...applyFinanceDefaults(value, courseDealSizes),
                       pendingReason: reason,
                       pendingWarmthPercent: option?.warmthPercent || 0,
                       pendingReasonNote: value.pendingReasonNote || option?.defaultNote || '',
@@ -1457,6 +1469,7 @@ function LeadDetailModal({
   salesOptions,
   canAssign,
   courseOptions,
+  courseDealSizes,
   sourceOptions,
   centerOptions,
   sourceConfigs,
@@ -1470,6 +1483,7 @@ function LeadDetailModal({
   salesOptions: AdminUser[];
   canAssign: boolean;
   courseOptions: string[];
+  courseDealSizes: CourseDealSizeRule[];
   sourceOptions: string[];
   centerOptions: string[];
   sourceConfigs: LeadSourceConfig[];
@@ -1544,7 +1558,7 @@ function LeadDetailModal({
       followUpDate: draft.appointmentKind === APPT_CALLBACK ? draft.appointmentTime : '',
       consultationDate: draft.appointmentKind === APPT_CONSULTATION || draft.appointmentKind === APPT_TEST ? draft.appointmentTime : '',
     };
-    payload = applyFinanceDefaults(payload);
+    payload = applyFinanceDefaults(payload, courseDealSizes);
     const { appointmentKind, appointmentTime, appointmentNote, ...leadPayload } = payload;
     void appointmentKind;
     void appointmentTime;
@@ -1600,7 +1614,7 @@ function LeadDetailModal({
     await loadRelated();
   }
 
-  const timeline = buildLeadTimeline(draft as Lead, activities, appointments);
+  const timeline = buildLeadTimeline(draft as Lead, activities, appointments, courseDealSizes);
   const leadCallLogs = useMemo(() => callLogs.filter((log) => log.leadId === lead.id), [callLogs, lead.id]);
   const toneClass: Record<string, string> = {
     blue: 'border-blue-300 bg-blue-50 text-blue-700',
@@ -1653,6 +1667,7 @@ function LeadDetailModal({
               salesOptions={salesOptions}
               canAssign={canAssign}
               courseOptions={courseOptions}
+              courseDealSizes={courseDealSizes}
               sourceOptions={sourceOptions}
               centerOptions={centerOptions}
               priorityForSource={priorityForSource}
@@ -1907,6 +1922,7 @@ function LeadsTable({
   onCall,
   callLogs,
   sourceConfigs,
+  courseDealSizes,
 }: {
   leads: Lead[];
   canAssign: boolean;
@@ -1916,6 +1932,7 @@ function LeadsTable({
   onCall: (lead: Lead) => void | Promise<void>;
   callLogs: CallLog[];
   sourceConfigs: LeadSourceConfig[];
+  courseDealSizes: CourseDealSizeRule[];
 }) {
   return (
     <Card>
@@ -1954,9 +1971,9 @@ function LeadsTable({
                 <TD><Badge tone={statusTone[statusIndex(lead.status)]}>{statusLabel(lead.status)}</Badge></TD>
                 <TD className="font-semibold text-slate-800">
                   {lead.status === WON_LEAD_STATUS
-                    ? formatCurrency(wonValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
+                    ? formatCurrency(wonValue(lead, courseDealSizes), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
                     : lead.status === DEAL_QUOTED_STATUS
-                      ? formatCurrency(quoteValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
+                      ? formatCurrency(quoteValue(lead, courseDealSizes), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
                       : '-'}
                 </TD>
                 <TD>
@@ -2018,6 +2035,8 @@ function Kanban({
   sourceConfigs,
   sourceOptions,
   centerOptions,
+  courseOptions,
+  courseDealSizes,
   focusLeadId,
   onOpenDetail,
   onCall,
@@ -2030,6 +2049,8 @@ function Kanban({
   sourceConfigs: LeadSourceConfig[];
   sourceOptions: string[];
   centerOptions: string[];
+  courseOptions: string[];
+  courseDealSizes: CourseDealSizeRule[];
   focusLeadId: string;
   onOpenDetail: (lead: Lead) => void;
   onCall: (lead: Lead) => void | Promise<void>;
@@ -2081,8 +2102,20 @@ function Kanban({
   }
 
   async function applyLeadPatch(lead: Lead, patch: Partial<Lead>) {
-    const confirmedPatch = buildLostReasonPatch(lead, patch);
+    let confirmedPatch = buildLostReasonPatch(lead, patch);
     if (!confirmedPatch) return;
+    const nextStatus = confirmedPatch.status || lead.status;
+    if (nextStatus === DEAL_QUOTED_STATUS || nextStatus === WON_LEAD_STATUS) {
+      const financed = applyFinanceDefaults({ ...lead, ...confirmedPatch, status: nextStatus }, courseDealSizes);
+      confirmedPatch = {
+        ...confirmedPatch,
+        dealSize: financed.dealSize,
+        discountPercent: financed.discountPercent,
+        expectedRevenue: financed.expectedRevenue,
+        dealCurrency: financed.dealCurrency,
+        ...(nextStatus === WON_LEAD_STATUS ? { revenue: financed.revenue || financed.expectedRevenue } : {}),
+      };
+    }
     const savedLeads = await leadService.saveLead({ ...lead, ...confirmedPatch });
     const savedLead = savedLeads.find((item) => item.id === lead.id) || { ...lead, ...confirmedPatch };
     if (isConsultationStatus(confirmedPatch.status || savedLead.status) && confirmedPatch.consultationDate) {
@@ -2185,6 +2218,8 @@ function Kanban({
                   sourceConfigs={sourceConfigs}
                   sourceOptions={sourceOptions}
                   centerOptions={centerOptions}
+                  courseOptions={courseOptions}
+                  courseDealSizes={courseDealSizes}
                   focused={focusLeadId === lead.id}
                   onOpenDetail={onOpenDetail}
                   onCall={onCall}
@@ -2251,7 +2286,7 @@ function Kanban({
           void refresh();
         }}
         onConfirm={async (patch) => {
-          const financed = applyFinanceDefaults({ ...pendingQuote.lead, ...pendingQuote.patch, ...patch, status: DEAL_QUOTED_STATUS });
+          const financed = applyFinanceDefaults({ ...pendingQuote.lead, ...pendingQuote.patch, ...patch, status: DEAL_QUOTED_STATUS }, courseDealSizes);
           const nextPatch: Partial<Lead> = {
             ...pendingQuote.patch,
             ...patch,
@@ -2487,6 +2522,8 @@ function LeadKanbanCard({
   sourceConfigs,
   sourceOptions,
   centerOptions,
+  courseOptions,
+  courseDealSizes,
   focused = false,
   onOpenDetail,
   onCall,
@@ -2501,12 +2538,13 @@ function LeadKanbanCard({
   sourceConfigs: LeadSourceConfig[];
   sourceOptions: string[];
   centerOptions: string[];
+  courseOptions: string[];
+  courseDealSizes: CourseDealSizeRule[];
   focused?: boolean;
   onOpenDetail: (lead: Lead) => void;
   onCall: (lead: Lead) => void | Promise<void>;
   callLogs?: CallLog[];
 }) {
-  const courseOptions = useCourseOptions();
   const [draft, setDraft] = useState(lead);
   const cardRef = useRef<HTMLDivElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -2598,7 +2636,11 @@ function LeadKanbanCard({
   }
 
   function financePatch(next: Partial<Lead>) {
-    const financed = applyFinanceDefaults({ ...draft, ...next });
+    const financed = applyFinanceDefaults(
+      { ...draft, ...next },
+      courseDealSizes,
+      { preferExistingDealSize: next.interestedCourse ? false : undefined },
+    );
     if (financed.status !== DEAL_QUOTED_STATUS && financed.status !== WON_LEAD_STATUS) return next;
     return {
       ...next,
@@ -2706,12 +2748,12 @@ function LeadKanbanCard({
           {isReferralLead(draft) && draft.referralPhone && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Ref: {draft.referralPhone}</span>}
           {draft.status === DEAL_QUOTED_STATUS && (
             <span className="rounded bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">
-              Expected: {formatCurrency(quoteValue(draft), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+              Expected: {formatCurrency(quoteValue(draft, courseDealSizes), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
             </span>
           )}
           {draft.status === WON_LEAD_STATUS && (
             <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-              Revenue: {formatCurrency(wonValue(draft), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+              Revenue: {formatCurrency(wonValue(draft, courseDealSizes), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
             </span>
           )}
         </div>
@@ -2752,19 +2794,19 @@ function LeadKanbanCard({
           {draft.status === DEAL_QUOTED_STATUS && (
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-700">
-                Deal: {formatCurrency(draft.dealSize || financeDefaultsForLead(draft).dealSize, draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                Deal: {formatCurrency(draft.dealSize || financeDefaultsForLead(draft, courseDealSizes).dealSize, draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
               </div>
-              <Select value={String(draft.discountPercent || financeDefaultsForLead(draft).discountPercent)} onChange={(event) => commit(financePatch({ discountPercent: Number(event.target.value) }))}>
+              <Select value={String(draft.discountPercent || financeDefaultsForLead(draft, courseDealSizes).discountPercent)} onChange={(event) => commit(financePatch({ discountPercent: Number(event.target.value) }))}>
                 {discountPercentOptions.map((percent) => <option key={percent} value={percent}>Discount {percent}%</option>)}
               </Select>
               <div className="col-span-2 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700">
-                Expected: {formatCurrency(quoteValue(draft), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                Expected: {formatCurrency(quoteValue(draft, courseDealSizes), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
               </div>
             </div>
           )}
           {draft.status === WON_LEAD_STATUS && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-bold text-emerald-700">
-              Revenue: {formatCurrency(wonValue(draft), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+              Revenue: {formatCurrency(wonValue(draft, courseDealSizes), draft.dealCurrency || DEFAULT_DEAL_CURRENCY)}
             </div>
           )}
           {(draft.status === DEAL_QUOTED_STATUS || draft.status === WON_LEAD_STATUS) && (

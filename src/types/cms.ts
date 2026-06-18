@@ -42,6 +42,8 @@ export interface ProgramCms {
   ageRange: string;
   duration: string;
   courseName: string;
+  dealSize?: number;
+  dealCurrency?: string;
   image: string;
   images?: string[]; // multiple hero images for slider
   summary: string;

@@ -1,5 +1,5 @@
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS } from '@/lib/constants';
-import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
+import { expectedRevenueAmount, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import type { Appointment, Lead, LeadActivity } from '@/types/crm';
 
@@ -35,7 +35,12 @@ function appointmentStatus(status: Appointment['status']) {
   return 'Sắp diễn ra';
 }
 
-export function buildLeadTimeline(lead: Lead, activities: LeadActivity[] = [], appointments: Appointment[] = []) {
+export function buildLeadTimeline(
+  lead: Lead,
+  activities: LeadActivity[] = [],
+  appointments: Appointment[] = [],
+  courseDealSizes?: readonly CourseDealSizeRule[],
+) {
   const events: LeadTimelineEvent[] = [];
   const name = displayName(lead);
 
@@ -98,7 +103,7 @@ export function buildLeadTimeline(lead: Lead, activities: LeadActivity[] = [], a
     at: lead.updatedAt || lead.createdAt,
     tone: 'orange',
     label: 'Báo phí',
-    title: `Expected revenue ${formatCurrency(expectedRevenueAmount(lead), lead.dealCurrency || 'VND')}`,
+    title: `Expected revenue ${formatCurrency(expectedRevenueAmount(lead, courseDealSizes), lead.dealCurrency || 'VND')}`,
     description: `${lead.pendingReason || 'Đã báo phí / chờ chốt'}${lead.pendingWarmthPercent ? ` · Warmth ${lead.pendingWarmthPercent}%` : ''}`,
     meta: lead.dealNote,
   });
@@ -108,7 +113,7 @@ export function buildLeadTimeline(lead: Lead, activities: LeadActivity[] = [], a
     at: lead.wonAt || lead.revenueAt || lead.updatedAt,
     tone: 'green',
     label: 'Revenue',
-    title: `Đã đăng ký học · ${formatCurrency(revenueAmount(lead), lead.dealCurrency || 'VND')}`,
+    title: `Đã đăng ký học · ${formatCurrency(revenueAmount(lead, courseDealSizes), lead.dealCurrency || 'VND')}`,
     description: lead.dealPackage || 'Expected revenue đã chuyển thành revenue.',
     meta: lead.dealNote,
   });

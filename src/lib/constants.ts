@@ -17,6 +17,8 @@ export const BRAND = {
 
 export const COURSE_OPTIONS = ['METTA Kiddies', 'METTA on Phonics', 'METTA Young Learner', 'IELTS Junior'] as const;
 export const STAFF_OPTIONS = ['METTA Admin'] as const;
+export const DEFAULT_DEAL_CURRENCY = 'VND';
+export const DEFAULT_COURSE_DEAL_SIZE = 20000000;
 
 export const COURSES = [
   { name: 'METTA Kiddies', code: 'KIDDIES', ageRange: '3-6 tuổi', level: 'Preschool' },
@@ -33,6 +35,8 @@ export const PUBLIC_PROGRAMS = [
     eyebrow: 'Giai đoạn vàng ngôn ngữ',
     ageRange: '3-6 tuổi',
     duration: '90 phút/buổi · 2 buổi/tuần · 96 buổi/level',
+    dealSize: DEFAULT_COURSE_DEAL_SIZE,
+    dealCurrency: DEFAULT_DEAL_CURRENCY,
     image: '/brand/workshop-kids.jpg',
     summary: 'Không dạy tiếng Anh theo kiểu học thuộc, mà tạo môi trường để trẻ thẩm thấu ngôn ngữ tự nhiên như tiếng mẹ đẻ.',
     description:
@@ -64,6 +68,8 @@ export const PUBLIC_PROGRAMS = [
     eyebrow: 'Đánh vần chuẩn bản xứ',
     ageRange: '5-7 tuổi',
     duration: '90 phút/buổi · 2 buổi/tuần · 5 cấp độ',
+    dealSize: DEFAULT_COURSE_DEAL_SIZE,
+    dealCurrency: DEFAULT_DEAL_CURRENCY,
     image: '/brand/workshop-pattern.jpg',
     summary: 'Giải mã ngôn ngữ thay vì học vẹt, giúp trẻ tự đọc truyện tiếng Anh độc lập từ cấp 1.',
     description:
@@ -95,6 +101,8 @@ export const PUBLIC_PROGRAMS = [
     eyebrow: 'Tiếng Anh thế hệ mới',
     ageRange: '6-12 tuổi',
     duration: '108 giờ/cấp · 72 buổi/level · 10-13 học viên/lớp',
+    dealSize: DEFAULT_COURSE_DEAL_SIZE,
+    dealCurrency: DEFAULT_DEAL_CURRENCY,
     image: '/brand/brand-banner.jpg',
     summary: 'Không chỉ giỏi tiếng Anh, học sinh phát triển tư duy, kỹ năng thế kỷ 21 và bản lĩnh toàn cầu.',
     description:
@@ -126,6 +134,8 @@ export const PUBLIC_PROGRAMS = [
     eyebrow: 'Khởi đầu vững chắc từ cấp 2',
     ageRange: '11-15 tuổi',
     duration: 'IELTS 1.5 -> 3.0+ · 10-12 học viên/lớp · cam kết đầu ra',
+    dealSize: DEFAULT_COURSE_DEAL_SIZE,
+    dealCurrency: DEFAULT_DEAL_CURRENCY,
     image: '/brand/hero-classroom.png',
     summary: 'IELTS đang là tiêu chuẩn mới; bắt đầu từ cấp 2 giúp học sinh có lợi thế cạnh tranh thực sự.',
     description:
@@ -155,8 +165,6 @@ export const PUBLIC_PROGRAMS = [
 export const DEAL_QUOTED_STATUS = 'Đã báo phí/Chờ chốt';
 export const WON_LEAD_STATUS = 'Đã đăng ký học';
 export const LOST_LEAD_STATUS = 'Mất lead';
-export const DEFAULT_DEAL_CURRENCY = 'VND';
-export const DEFAULT_COURSE_DEAL_SIZE = 20000000;
 export const discountPercentOptions = [5, 10, 15, 20, 25, 30] as const;
 export const courseDealSizeDefaults = [
   { courseName: 'METTA Kiddies', dealSize: DEFAULT_COURSE_DEAL_SIZE },

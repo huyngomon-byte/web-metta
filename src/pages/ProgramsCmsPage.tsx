@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { PUBLIC_PROGRAMS } from '@/lib/constants';
+import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS } from '@/lib/constants';
 import { useThemeSettings } from '@/hooks/useCms';
+import { formatCurrency } from '@/lib/utils';
 import { cmsService } from '@/services/cmsService';
 import type { HighlightCard, ProgramCms, RoadmapCard, SkillPetal } from '@/types/cms';
 
@@ -712,6 +713,23 @@ function ProgramCard({
               <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Nhóm khóa</label>
               <Input value={program.courseName} onChange={(e) => set('courseName', e.target.value)} />
             </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Deal size mặc định (VND)</label>
+              <Input
+                type="number"
+                min={0}
+                step={100000}
+                value={program.dealSize ?? DEFAULT_COURSE_DEAL_SIZE}
+                onChange={(e) => {
+                  const parsed = Number(e.target.value);
+                  set('dealSize', Number.isFinite(parsed) && parsed > 0 ? parsed : undefined);
+                  set('dealCurrency', DEFAULT_DEAL_CURRENCY);
+                }}
+              />
+              <p className="text-[11px] font-semibold text-slate-400">
+                Lead sẽ lấy: {formatCurrency(program.dealSize ?? DEFAULT_COURSE_DEAL_SIZE, program.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+              </p>
+            </div>
           </div>
 
           <EditorSection
@@ -884,6 +902,8 @@ export default function ProgramsCmsPage() {
       ageRange: '',
       duration: '',
       courseName: '',
+      dealSize: DEFAULT_COURSE_DEAL_SIZE,
+      dealCurrency: DEFAULT_DEAL_CURRENCY,
       image: '',
       summary: '',
       description: '',

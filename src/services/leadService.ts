@@ -16,9 +16,9 @@ import {
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { captureLeadTracking, type PublicLeadTracking } from '@/lib/capiTracking';
-import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
+import { DEAL_QUOTED_STATUS, DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions } from '@/lib/constants';
 import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
-import { financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
+import { financeDefaultsForLead, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
 import { chooseAutoAssignedSalesAsync } from '@/services/assignmentRuleService';
@@ -256,6 +256,15 @@ function normalizeDealFields<T extends Partial<Lead>>(input: T): T {
   return lead as T;
 }
 
+function currentCourseDealSizes(): CourseDealSizeRule[] {
+  const programs = store.siteSettings?.programs?.filter((program) => program.visible !== false) || [];
+  return programs.map((program) => ({
+    courseName: program.title?.trim() || program.courseName?.trim() || program.slug,
+    dealSize: Number(program.dealSize) > 0 ? Number(program.dealSize) : DEFAULT_COURSE_DEAL_SIZE,
+    aliases: [program.courseName, program.slug].map((item) => item?.trim()).filter((item): item is string => Boolean(item)),
+  })).filter((item) => Boolean(item.courseName));
+}
+
 function normalizeLead(raw: Lead): Lead {
   const lead = { ...raw, interestedCourse: normalizeCourse(raw.interestedCourse) as InterestedCourse | '' };
   normalizeLeadSales(lead);
@@ -267,10 +276,10 @@ function normalizeLead(raw: Lead): Lead {
   if (!lead.priorityLevel) lead.priorityLevel = 1;
   if (lead.pendingReason && !lead.pendingWarmthPercent) lead.pendingWarmthPercent = pendingWarmth(lead.pendingReason) || 0;
   if (lead.status === DEAL_QUOTED_STATUS || lead.status === WON_LEAD_STATUS) {
-    Object.assign(lead, financeDefaultsForLead(lead));
+    Object.assign(lead, financeDefaultsForLead(lead, currentCourseDealSizes()));
   }
   if (lead.status === WON_LEAD_STATUS && !lead.revenue) {
-    lead.revenue = revenueAmount(lead);
+    lead.revenue = revenueAmount(lead, currentCourseDealSizes());
   }
   if (!lead.dealCurrency && (lead.dealSize !== undefined || lead.expectedRevenue !== undefined)) lead.dealCurrency = DEFAULT_DEAL_CURRENCY;
   if (lead.dealSize !== undefined && lead.expectedRevenue === undefined) lead.expectedRevenue = lead.dealSize;
@@ -790,7 +799,7 @@ export const leadService = {
         activityQueue.push({
           leadId: prev.id,
           type: 'update',
-          content: `Lead đã đăng ký học. Revenue: ${revenueAmount({ ...prev, ...lead } as Lead).toLocaleString('vi-VN')} VND.`,
+          content: `Lead đã đăng ký học. Revenue: ${revenueAmount({ ...prev, ...lead } as Lead, currentCourseDealSizes()).toLocaleString('vi-VN')} VND.`,
         });
       }
       const patch: Partial<Lead> = {
@@ -808,13 +817,13 @@ export const leadService = {
       validateLostReason(mergedForValidation);
       validatePendingReason(mergedForValidation);
       if (mergedForValidation.status === DEAL_QUOTED_STATUS) {
-        Object.assign(patch, financeDefaultsForLead(mergedForValidation), { revenue: undefined, revenueAt: undefined });
+        Object.assign(patch, financeDefaultsForLead(mergedForValidation, currentCourseDealSizes()), { revenue: undefined, revenueAt: undefined });
       }
       if (mergedForValidation.status === WON_LEAD_STATUS) {
         if (statusChanged || !prev?.revenueAt) shouldSyncLms = true;
         patch.wonAt = lead.wonAt || prev?.wonAt || timestamp;
-        Object.assign(patch, financeDefaultsForLead(mergedForValidation), {
-          revenue: revenueAmount(mergedForValidation),
+        Object.assign(patch, financeDefaultsForLead(mergedForValidation, currentCourseDealSizes()), {
+          revenue: revenueAmount(mergedForValidation, currentCourseDealSizes()),
           revenueAt: mergedForValidation.revenueAt || timestamp,
         });
       } else if (statusChanged && prev?.status === WON_LEAD_STATUS) {

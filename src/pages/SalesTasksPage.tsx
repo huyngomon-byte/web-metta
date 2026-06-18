@@ -26,9 +26,10 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useCallCenter } from '@/context/CallCenterContext';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } from '@/lib/constants';
-import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
+import { expectedRevenueAmount, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useCourseCatalog } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import { appointmentService } from '@/services/appointmentService';
 import { callCenterService } from '@/services/callCenterService';
@@ -175,7 +176,13 @@ function inferPriority(input: { type: TaskType; dueAt: string; lead?: Lead; warm
   return 'low';
 }
 
-function buildTasks(leads: Lead[], appointments: Appointment[], callLogs: CallLog[], manualTasks: ManualTask[]): SalesTask[] {
+function buildTasks(
+  leads: Lead[],
+  appointments: Appointment[],
+  callLogs: CallLog[],
+  manualTasks: ManualTask[],
+  courseDealSizes?: readonly CourseDealSizeRule[],
+): SalesTask[] {
   const tasks: SalesTask[] = [];
   const leadMap = new Map(leads.map((lead) => [lead.id, lead]));
 
@@ -229,7 +236,7 @@ function buildTasks(leads: Lead[], appointments: Appointment[], callLogs: CallLo
         id: `quote-${lead.id}`,
         type: 'quote',
         title: `Follow báo phí / chờ chốt`,
-        detail: `${lead.pendingReason || 'Chưa có lý do pending'} · Expected ${formatCurrency(expectedRevenueAmount(lead), lead.dealCurrency)}`,
+        detail: `${lead.pendingReason || 'Chưa có lý do pending'} · Expected ${formatCurrency(expectedRevenueAmount(lead, courseDealSizes), lead.dealCurrency)}`,
         dueAt,
         leadId: lead.id,
         leadName: displayName,
@@ -325,6 +332,7 @@ export default function SalesTasksPage() {
   const { user } = useAuth();
   const { startOutboundCall } = useCallCenter();
   const { leads, refresh: refreshLeads, loadMore, hasMore, loadingMore } = useLeads({ pageSize: 500 });
+  const { courseDealSizes } = useCourseCatalog();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -400,7 +408,7 @@ export default function SalesTasksPage() {
     centers: centerConfigs.filter((center) => center.active).map((center) => center.name).filter(Boolean),
     courses: Array.from(new Set(leads.map((lead) => lead.interestedCourse || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
   }), [centerConfigs, leads]);
-  const allTasks = useMemo(() => buildTasks(leads, appointments, callLogs, manualTasks), [appointments, callLogs, leads, manualTasks]);
+  const allTasks = useMemo(() => buildTasks(leads, appointments, callLogs, manualTasks, courseDealSizes), [appointments, callLogs, courseDealSizes, leads, manualTasks]);
   const filteredTasks = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return allTasks.filter((task) => {
@@ -642,6 +650,7 @@ export default function SalesTasksPage() {
           sourceOptions={leadOptions.sources}
           centerOptions={leadOptions.centers}
           courseOptions={leadOptions.courses}
+          courseDealSizes={courseDealSizes}
           busy={false}
           onClose={() => setActiveLeadId('')}
           onSave={saveLeadFromModal}
@@ -953,6 +962,7 @@ function TaskLeadModal({
   sourceOptions,
   centerOptions,
   courseOptions,
+  courseDealSizes,
   busy,
   onClose,
   onSave,
@@ -964,6 +974,7 @@ function TaskLeadModal({
   sourceOptions: string[];
   centerOptions: string[];
   courseOptions: string[];
+  courseDealSizes: readonly CourseDealSizeRule[];
   busy: boolean;
   onClose: () => void;
   onSave: (lead: Lead) => Promise<void>;
@@ -1027,12 +1038,12 @@ function TaskLeadModal({
               <p className="mt-3 line-clamp-4 text-xs text-slate-500">{draft.initialNote || 'Chưa có ghi chú ban đầu.'}</p>
               {draft.status === DEAL_QUOTED_STATUS && (
                 <div className="mt-3 rounded-md bg-orange-50 p-2 text-xs font-bold text-orange-700">
-                  Expected: {formatCurrency(expectedRevenueAmount(draft), draft.dealCurrency)}
+                  Expected: {formatCurrency(expectedRevenueAmount(draft, courseDealSizes), draft.dealCurrency)}
                 </div>
               )}
               {draft.status === WON_LEAD_STATUS && (
                 <div className="mt-3 rounded-md bg-emerald-50 p-2 text-xs font-bold text-emerald-700">
-                  Revenue: {formatCurrency(revenueAmount(draft), draft.dealCurrency)}
+                  Revenue: {formatCurrency(revenueAmount(draft, courseDealSizes), draft.dealCurrency)}
                 </div>
               )}
             </div>

@@ -9,7 +9,7 @@ import {
   where,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '@/lib/firebase';
-import { PUBLIC_PROGRAMS } from '@/lib/constants';
+import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS } from '@/lib/constants';
 import { delay, persistCMS, store } from '@/services/store';
 import {
   pages as seedPages,
@@ -216,6 +216,17 @@ function currentProgramSettings() {
   }));
 }
 
+function normalizeProgramSettings(programs: NonNullable<SiteSettings['programs']>) {
+  return programs.map((program) => {
+    const parsedDealSize = Number(program.dealSize);
+    return {
+      ...program,
+      dealSize: Number.isFinite(parsedDealSize) && parsedDealSize > 0 ? parsedDealSize : DEFAULT_COURSE_DEAL_SIZE,
+      dealCurrency: program.dealCurrency || DEFAULT_DEAL_CURRENCY,
+    };
+  });
+}
+
 function normalizeFooterColumns(columns: SiteSettings['footerColumns']) {
   return (columns || []).map((column, index) => ({
     ...column,
@@ -263,9 +274,9 @@ function normalizeCourseSettings(settings: SiteSettings): SiteSettings {
   const hasCurrentPrograms = CURRENT_PROGRAM_SLUGS.every((slug) =>
     normalizedSettings.programs?.some((program) => program.slug === slug),
   );
-  const programs = normalizeCmsValue(
+  const programs = normalizeProgramSettings(normalizeCmsValue(
     hasCurrentPrograms && normalizedSettings.programs?.length ? normalizedSettings.programs : currentProgramSettings(),
-  ) as NonNullable<SiteSettings['programs']>;
+  ) as NonNullable<SiteSettings['programs']>);
   const rawHeaderLinks = normalizedSettings.headerLinks?.length
     ? normalizedSettings.headerLinks
     : normalizeCmsValue(seedSettings.headerLinks || []);

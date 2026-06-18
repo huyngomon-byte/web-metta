@@ -34,9 +34,9 @@ import { Select } from '@/components/ui/select';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadSources, leadStatuses, STAFF_OPTIONS } from '@/lib/constants';
 import { describeFriendlyDataError } from '@/lib/friendlyErrors';
 import { buildReasonShareData, buildStageCohortData, formatDurationHours } from '@/lib/leadAnalytics';
-import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
+import { expectedRevenueAmount, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
 import { formatCurrency } from '@/lib/utils';
-import { useCourseOptions } from '@/hooks/useCms';
+import { useCourseCatalog } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import { appointmentService } from '@/services/appointmentService';
 import { centerConfigService } from '@/services/centerConfigService';
@@ -80,8 +80,8 @@ function formatVN(dateStr: string) {
 
 function isConverted(l: Lead) { return Boolean(l.convertedToStudentId || l.status === WON_LEAD_STATUS); }
 
-function expectedAmount(l: Lead) { return expectedRevenueAmount(l); }
-function closedRevenueAmount(l: Lead) { return revenueAmount(l); }
+function expectedAmount(l: Lead, courseDealSizes?: readonly CourseDealSizeRule[]) { return expectedRevenueAmount(l, courseDealSizes); }
+function closedRevenueAmount(l: Lead, courseDealSizes?: readonly CourseDealSizeRule[]) { return revenueAmount(l, courseDealSizes); }
 
 function inRange(dateStr: string, from: string, to: string) {
   if (!dateStr) return false;
@@ -146,7 +146,7 @@ function trendPercent(current: number, previous: number) {
   return Math.round(((current - previous) / previous) * 100);
 }
 
-function leadMetricSummary(items: Lead[]) {
+function leadMetricSummary(items: Lead[], courseDealSizes?: readonly CourseDealSizeRule[]) {
   const total = items.length;
   const contacted = items.filter((l) => !UNCONTACTED_STATUSES.includes(l.status)).length;
   const ttStatuses = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
@@ -155,10 +155,10 @@ function leadMetricSummary(items: Lead[]) {
   const lost = items.filter((l) => l.status === LOST_LEAD_STATUS).length;
   const expectedRevenue = items
     .filter((l) => l.status === DEAL_QUOTED_STATUS)
-    .reduce((sum, lead) => sum + expectedAmount(lead), 0);
+    .reduce((sum, lead) => sum + expectedAmount(lead, courseDealSizes), 0);
   const revenue = items
     .filter((l) => isConverted(l))
-    .reduce((sum, lead) => sum + closedRevenueAmount(lead), 0);
+    .reduce((sum, lead) => sum + closedRevenueAmount(lead, courseDealSizes), 0);
 
   return {
     total,
@@ -177,7 +177,7 @@ function leadMetricSummary(items: Lead[]) {
 
 export default function DashboardPage() {
   const { leads, error: leadsError } = useLeads({ realtime: false, pollMs: 60000 });
-  const COURSE_OPTIONS = useCourseOptions();
+  const { courseOptions: COURSE_OPTIONS, courseDealSizes } = useCourseCatalog();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
@@ -271,8 +271,8 @@ export default function DashboardPage() {
 
   /* ── KPI ── */
   const kpi = useMemo(() => {
-    const current = leadMetricSummary(rangeLeads);
-    const previous = leadMetricSummary(previousRangeLeads);
+    const current = leadMetricSummary(rangeLeads, courseDealSizes);
+    const previous = leadMetricSummary(previousRangeLeads, courseDealSizes);
     const newToday = pipelineLeads.filter((l) => l.createdAt?.startsWith(today)).length;
     const untouched = pipelineLeads.filter((l) => l.status === leadStatuses[0]).length;
     const overdueFollowUp = pipelineLeads.filter((l) => {
@@ -294,7 +294,7 @@ export default function DashboardPage() {
       expectedTrend: trendPercent(current.expectedRevenue, previous.expectedRevenue),
       revenueTrend: trendPercent(current.revenue, previous.revenue),
     };
-  }, [rangeLeads, previousRangeLeads, pipelineLeads, today]);
+  }, [courseDealSizes, rangeLeads, previousRangeLeads, pipelineLeads, today]);
 
   /* ── PIC table ── */
   const picData = useMemo(() => {
@@ -315,11 +315,11 @@ export default function DashboardPage() {
       const t = pl.length, c = pl.filter((l) => cStatuses.includes(l.status)).length;
       const tt = pl.filter((l) => tStatuses.includes(l.status)).length;
       const cv = pl.filter(isConverted).length, lo = pl.filter((l) => l.status === LOST_LEAD_STATUS).length;
-      const expectedRevenue = pl.filter((l) => l.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedAmount(lead), 0);
-      const revenue = pl.filter(isConverted).reduce((sum, lead) => sum + closedRevenueAmount(lead), 0);
+      const expectedRevenue = pl.filter((l) => l.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedAmount(lead, courseDealSizes), 0);
+      const revenue = pl.filter(isConverted).reduce((sum, lead) => sum + closedRevenueAmount(lead, courseDealSizes), 0);
       return { id: pic, name: salesLabel(pic), total: t, contacted: c, cRate: t ? Math.round((c / t) * 100) : 0, testTrial: tt, converted: cv, cvRate: t ? Math.round((cv / t) * 100) : 0, expectedRevenue, revenue, lost: lo, returned, pending: t - cv - lo };
     }).filter((d) => d.total > 0 || d.returned > 0).sort((a, b) => (b.total + b.returned) - (a.total + a.returned));
-  }, [canonicalSalesKey, rangeLeads, salesLabel, users]);
+  }, [canonicalSalesKey, courseDealSizes, rangeLeads, salesLabel, users]);
 
   const salesContributionData = useMemo(() => {
     const totalExpected = picData.reduce((sum, item) => sum + item.expectedRevenue, 0);

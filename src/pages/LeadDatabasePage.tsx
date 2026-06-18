@@ -24,6 +24,7 @@ import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
 import { normalizeParentPhone, parentProfileService, type ParentProfile } from '@/services/parentProfileService';
 import { userService } from '@/services/userService';
+import { useCourseCatalog } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import type { Lead, LeadCenterConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
@@ -88,6 +89,7 @@ type ParentRow = ParentProfile & {
 
 export default function LeadDatabasePage() {
   const { leads, refresh } = useLeads({ realtime: false });
+  const { courseDealSizes } = useCourseCatalog();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
@@ -204,8 +206,8 @@ export default function LeadDatabasePage() {
       const stats = referralStats.get(lead.id);
       const leadIsReferral = isReferralLead(lead);
       const missingReferralPhone = leadIsReferral && !String(lead.referralPhone || '').trim();
-      const hasExpected = lead.status === DEAL_QUOTED_STATUS && expectedRevenueAmount(lead) > 0;
-      const hasRevenue = lead.status === WON_LEAD_STATUS && revenueAmount(lead) > 0;
+      const hasExpected = lead.status === DEAL_QUOTED_STATUS && expectedRevenueAmount(lead, courseDealSizes) > 0;
+      const hasRevenue = lead.status === WON_LEAD_STATUS && revenueAmount(lead, courseDealSizes) > 0;
 
       if (keyword && !haystack.includes(keyword)) return false;
       if (status && lead.status !== status) return false;
@@ -225,7 +227,7 @@ export default function LeadDatabasePage() {
       if (referralFilter === 'no-referred' && (stats?.total || 0) > 0) return false;
       return true;
     });
-  }, [center, course, createdFrom, createdTo, financeFilter, leads, priority, query, referralFilter, referralStats, sales, source, status]);
+  }, [center, course, courseDealSizes, createdFrom, createdTo, financeFilter, leads, priority, query, referralFilter, referralStats, sales, source, status]);
 
   const filteredParents = useMemo(() => {
     const keyword = parentQuery.trim().toLowerCase();
@@ -240,11 +242,11 @@ export default function LeadDatabasePage() {
 
   const metrics = useMemo(() => {
     const withPhone = leads.filter((lead) => lead.phone).length;
-    const expected = leads.reduce((sum, lead) => sum + (lead.status === DEAL_QUOTED_STATUS ? expectedRevenueAmount(lead) : 0), 0);
-    const revenue = leads.reduce((sum, lead) => sum + (lead.status === WON_LEAD_STATUS ? revenueAmount(lead) : 0), 0);
+    const expected = leads.reduce((sum, lead) => sum + (lead.status === DEAL_QUOTED_STATUS ? expectedRevenueAmount(lead, courseDealSizes) : 0), 0);
+    const revenue = leads.reduce((sum, lead) => sum + (lead.status === WON_LEAD_STATUS ? revenueAmount(lead, courseDealSizes) : 0), 0);
     const updated = leads.map((lead) => lead.updatedAt).filter(Boolean).sort().pop();
     return { total: leads.length, withPhone, expected, revenue, updated };
-  }, [leads]);
+  }, [courseDealSizes, leads]);
 
   const referralTotals = useMemo(() => {
     const referredLeads = leads.filter((lead) => String(lead.source || '').toLowerCase() === 'referral');
@@ -668,9 +670,9 @@ export default function LeadDatabasePage() {
                   <TD>{lead.assignedToName || lead.assignedTo || '-'}</TD>
                   <TD className="font-semibold text-slate-800">
                     {lead.status === WON_LEAD_STATUS
-                      ? formatCurrency(revenueAmount(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
+                      ? formatCurrency(revenueAmount(lead, courseDealSizes), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
                       : lead.status === DEAL_QUOTED_STATUS
-                        ? formatCurrency(expectedRevenueAmount(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
+                        ? formatCurrency(expectedRevenueAmount(lead, courseDealSizes), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
                         : '-'}
                   </TD>
                   <TD>{formatDate(lead.updatedAt, true)}</TD>

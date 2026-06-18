@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { useAuth } from '@/hooks/useAuth';
+import { useCourseCatalog } from '@/hooks/useCms';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } from '@/lib/constants';
 import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead } from '@/lib/permissions';
@@ -113,6 +114,7 @@ function compareBadge(value: number, previous: number) {
 
 export default function LeadAssignmentPage() {
   const { user } = useAuth();
+  const { courseDealSizes } = useCourseCatalog();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [assignmentRules, setAssignmentRules] = useState<SalesAssignmentRule[]>([]);
@@ -185,8 +187,8 @@ export default function LeadAssignmentPage() {
       const testTrial = assigned.filter((lead) => TEST_STATUSES.includes(lead.status)).length;
       const converted = assigned.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).length;
       const lost = assigned.filter((lead) => lead.status === LOST_LEAD_STATUS).length;
-      const expectedRevenue = assigned.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead), 0);
-      const revenue = assigned.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead), 0);
+      const expectedRevenue = assigned.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead, courseDealSizes), 0);
+      const revenue = assigned.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead, courseDealSizes), 0);
       return {
         id: sales.id,
         name: sales.fullName,
@@ -206,16 +208,16 @@ export default function LeadAssignmentPage() {
         revenue,
       };
     }).filter((item) => item.assigned || item.returned);
-  }, [rangeLeads, salesUsers]);
+  }, [courseDealSizes, rangeLeads, salesUsers]);
 
   const ranking = useMemo(() => {
     return salesUsers.map((sales) => {
       const current = rangeLeads.filter((lead) => leadBelongsToSales(lead, sales));
       const previous = previousLeads.filter((lead) => leadBelongsToSales(lead, sales));
-      const revenue = current.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead), 0);
-      const previousRevenue = previous.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead), 0);
-      const expectedRevenue = current.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead), 0);
-      const previousExpectedRevenue = previous.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead), 0);
+      const revenue = current.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead, courseDealSizes), 0);
+      const previousRevenue = previous.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).reduce((sum, lead) => sum + revenueAmount(lead, courseDealSizes), 0);
+      const expectedRevenue = current.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead, courseDealSizes), 0);
+      const previousExpectedRevenue = previous.filter((lead) => lead.status === DEAL_QUOTED_STATUS).reduce((sum, lead) => sum + expectedRevenueAmount(lead, courseDealSizes), 0);
       const converted = current.filter((lead) => lead.status === WON_LEAD_STATUS || lead.convertedToStudentId).length;
       return {
         id: sales.id,
@@ -229,7 +231,7 @@ export default function LeadAssignmentPage() {
       };
     }).filter((item) => item.assigned || item.revenue || item.expectedRevenue || item.previousRevenue || item.previousExpectedRevenue)
       .sort((a, b) => b.revenue - a.revenue || b.expectedRevenue - a.expectedRevenue || b.converted - a.converted);
-  }, [previousLeads, rangeLeads, salesUsers]);
+  }, [courseDealSizes, previousLeads, rangeLeads, salesUsers]);
 
   const refresh = async () => {
     setLoading(true);

@@ -10,9 +10,9 @@ import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useCallCenter } from '@/context/CallCenterContext';
 import { useAuth } from '@/hooks/useAuth';
-import { useCourseOptions } from '@/hooks/useCms';
+import { useCourseCatalog } from '@/hooks/useCms';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
-import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
+import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount, type CourseDealSizeRule, type FinanceDefaultOptions } from '@/lib/leadFinance';
 import { buildLeadTimeline } from '@/lib/leadTimeline';
 import { canAssignLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -68,17 +68,21 @@ function warmthTone(percent: number) {
   return 'border-red-200 bg-red-50 text-red-700';
 }
 
-function quoteValue(lead: Partial<Lead>) {
-  return expectedRevenueAmount(lead);
+function quoteValue(lead: Partial<Lead>, courseDealSizes?: readonly CourseDealSizeRule[]) {
+  return expectedRevenueAmount(lead, courseDealSizes);
 }
 
-function wonValue(lead: Partial<Lead>) {
-  return revenueAmount(lead);
+function wonValue(lead: Partial<Lead>, courseDealSizes?: readonly CourseDealSizeRule[]) {
+  return revenueAmount(lead, courseDealSizes);
 }
 
-function applyFinanceDefaults<T extends Partial<Lead>>(lead: T): T {
+function applyFinanceDefaults<T extends Partial<Lead>>(
+  lead: T,
+  courseDealSizes?: readonly CourseDealSizeRule[],
+  options?: FinanceDefaultOptions,
+): T {
   if (lead.status !== DEAL_QUOTED_STATUS && lead.status !== WON_LEAD_STATUS) return lead;
-  const finance = financeDefaultsForLead(lead);
+  const finance = financeDefaultsForLead(lead, courseDealSizes, options);
   return {
     ...lead,
     ...finance,
@@ -124,7 +128,7 @@ export default function LeadDetailPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { startOutboundCall } = useCallCenter();
-  const courseOptions = useCourseOptions();
+  const { courseOptions, courseDealSizes } = useCourseCatalog();
   const [lead, setLead] = useState<LeadDetailDraft | undefined>();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [sourceConfigs, setSourceConfigs] = useState<LeadSourceConfig[]>([]);
@@ -167,6 +171,10 @@ export default function LeadDetailPage() {
   }, [id]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    if (courseDealSizes.length > 0) refresh();
+  }, [courseDealSizes, refresh]);
 
   if (!lead || !id) return <p>Đang tải...</p>;
 
@@ -216,7 +224,7 @@ export default function LeadDetailPage() {
       followUpDate: currentLead.appointmentKind === APPT_CALLBACK ? currentLead.appointmentTime : '',
       consultationDate: currentLead.appointmentKind === APPT_CONSULTATION || currentLead.appointmentKind === APPT_TEST ? currentLead.appointmentTime : '',
     } as LeadDetailDraft;
-    normalizedLead = applyFinanceDefaults(normalizedLead);
+    normalizedLead = applyFinanceDefaults(normalizedLead, courseDealSizes);
     const { appointmentKind, appointmentTime, appointmentNote, ...leadPayload } = normalizedLead;
     void appointmentKind;
     void appointmentTime;
@@ -265,7 +273,7 @@ export default function LeadDetailPage() {
     cancelled: 'red',
     overdue: 'orange',
   };
-  const timeline = buildLeadTimeline(lead, activities, appointments);
+  const timeline = buildLeadTimeline(lead, activities, appointments, courseDealSizes);
   const timelineToneClass: Record<string, string> = {
     blue: 'border-blue-300 bg-blue-50 text-blue-700',
     cyan: 'border-cyan-300 bg-cyan-50 text-cyan-700',
@@ -327,7 +335,7 @@ export default function LeadDetailPage() {
 
             <FormSection title="Nhu cầu học">
               <Field label="Khóa học quan tâm">
-                <Select value={lead.interestedCourse} onChange={(event) => setLead(applyFinanceDefaults({ ...lead, interestedCourse: event.target.value as InterestedCourse }))}>
+                <Select value={lead.interestedCourse} onChange={(event) => setLead(applyFinanceDefaults({ ...lead, interestedCourse: event.target.value as InterestedCourse }, courseDealSizes, { preferExistingDealSize: false }))}>
                   <option value="">Chưa chọn khóa</option>
                   {courseOptions.map((course) => <option key={course}>{course}</option>)}
                 </Select>
@@ -363,7 +371,7 @@ export default function LeadDetailPage() {
               <Field label="Trạng thái">
                 <Select value={lead.status} onChange={(event) => {
                   const status = event.target.value as Lead['status'];
-                  const next = applyFinanceDefaults({ ...lead, status });
+                  const next = applyFinanceDefaults({ ...lead, status }, courseDealSizes);
                   if (status === leadStatuses[3]) {
                     const appointmentTime = lead.consultationDate || lead.appointmentTime || defaultAppointmentInput();
                     setLead({
@@ -439,20 +447,20 @@ export default function LeadDetailPage() {
                   <>
                     <Field label="Deal size">
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800">
-                        {formatCurrency(lead.dealSize || financeDefaultsForLead(lead).dealSize, lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                        {formatCurrency(lead.dealSize || financeDefaultsForLead(lead, courseDealSizes).dealSize, lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
                       </div>
                     </Field>
                     <Field label="% discount">
                       <Select
-                        value={String(lead.discountPercent || financeDefaultsForLead(lead).discountPercent)}
-                        onChange={(event) => setLead(applyFinanceDefaults({ ...lead, discountPercent: Number(event.target.value) }))}
+                        value={String(lead.discountPercent || financeDefaultsForLead(lead, courseDealSizes).discountPercent)}
+                        onChange={(event) => setLead(applyFinanceDefaults({ ...lead, discountPercent: Number(event.target.value) }, courseDealSizes))}
                       >
                         {discountPercentOptions.map((percent) => <option key={percent} value={percent}>{percent}%</option>)}
                       </Select>
                     </Field>
                     <Field label="Expected revenue">
                       <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
-                        {formatCurrency(quoteValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                        {formatCurrency(quoteValue(lead, courseDealSizes), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
                       </div>
                     </Field>
                   </>
@@ -460,7 +468,7 @@ export default function LeadDetailPage() {
                 {lead.status === WON_LEAD_STATUS && (
                   <Field label="Revenue">
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700">
-                      {formatCurrency(wonValue(lead), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
+                      {formatCurrency(wonValue(lead, courseDealSizes), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)}
                     </div>
                   </Field>
                 )}
@@ -483,7 +491,7 @@ export default function LeadDetailPage() {
                           const reason = event.target.value;
                           const option = pendingOption(reason);
                           setLead({
-                            ...applyFinanceDefaults(lead),
+                            ...applyFinanceDefaults(lead, courseDealSizes),
                             pendingReason: reason,
                             pendingWarmthPercent: option?.warmthPercent || 0,
                             pendingReasonNote: lead.pendingReasonNote || option?.defaultNote || '',
