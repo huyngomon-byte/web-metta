@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, GripVertical, LayoutGrid, List, PhoneCall, Plus, RefreshCcw, Save, Trash2, X } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, Download, FileSpreadsheet, GripVertical, LayoutGrid, List, PhoneCall, Plus, RefreshCcw, Save, Trash2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import { useCourseOptions } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, leadSources, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
 import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount } from '@/lib/leadFinance';
+import type { ParsedLeadImportResult } from '@/lib/leadExcel';
 import { buildLeadTimeline } from '@/lib/leadTimeline';
 import { canAssignLead, canCreateLead } from '@/lib/permissions';
 import { exportCsv, formatCurrency, formatDate } from '@/lib/utils';
@@ -305,6 +306,11 @@ export default function LeadsPage() {
   const [editing, setEditing] = useState<LeadDraft | null>(null);
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
+  const leadImportFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [leadImportOpen, setLeadImportOpen] = useState(false);
+  const [leadImportFileName, setLeadImportFileName] = useState('');
+  const [leadImportParsed, setLeadImportParsed] = useState<ParsedLeadImportResult | null>(null);
+  const [leadImportBusy, setLeadImportBusy] = useState(false);
   const [quickLeadOpen, setQuickLeadOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [showSourceSettings, setShowSourceSettings] = useState(false);
@@ -403,6 +409,9 @@ export default function LeadsPage() {
     ]);
     return Array.from(names);
   }, [centerConfigs, leads]);
+  const leadImportCreateCount = leadImportParsed?.rows.filter((row) => row.mode === 'create').length || 0;
+  const leadImportUpdateCount = leadImportParsed?.rows.filter((row) => row.mode === 'update').length || 0;
+  const leadImportWarningCount = leadImportParsed?.rows.reduce((sum, row) => sum + row.warnings.length, 0) || 0;
 
   useEffect(() => {
     setFilters((current) => {
@@ -583,6 +592,79 @@ export default function LeadsPage() {
     }
   }
 
+  async function downloadLeadImportTemplate() {
+    setError('');
+    setSaveMessage('');
+    setLeadImportBusy(true);
+    try {
+      const { downloadWorkbook, makeLeadTemplateWorkbook } = await import('@/lib/leadExcel');
+      downloadWorkbook(makeLeadTemplateWorkbook(), 'metta-lead-import-template.xlsx');
+      setSaveMessage('Đã tải file mẫu import leads.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không tải được file mẫu import.');
+    } finally {
+      setLeadImportBusy(false);
+    }
+  }
+
+  async function parseLeadImportFile(file?: File) {
+    if (!file) return;
+    setError('');
+    setSaveMessage('');
+    setLeadImportParsed(null);
+    setLeadImportFileName(file.name);
+    setLeadImportBusy(true);
+    setLeadImportOpen(true);
+    try {
+      const { parseLeadWorkbook } = await import('@/lib/leadExcel');
+      const visibleReferenceLeads = await leadService.getLeads();
+      const result = await parseLeadWorkbook(file, visibleReferenceLeads);
+      setLeadImportParsed(result);
+      if (result.errors.length) {
+        setError(`File có ${result.errors.length} lỗi cần xử lý trước khi import.`);
+      } else if (!result.rows.length) {
+        setError('File không có dòng lead hợp lệ để import.');
+      } else {
+        setSaveMessage(`Đã đọc ${result.rows.length} dòng hợp lệ từ file.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không đọc được file import.');
+    } finally {
+      setLeadImportBusy(false);
+    }
+  }
+
+  async function importParsedLeadRows() {
+    if (!leadImportParsed?.rows.length || leadImportParsed.errors.length) return;
+    setLeadImportBusy(true);
+    setError('');
+    setSaveMessage('');
+    const failures: string[] = [];
+    let created = 0;
+    let updated = 0;
+    try {
+      for (const row of leadImportParsed.rows) {
+        try {
+          await leadService.saveLead(row.lead);
+          if (row.mode === 'create') created += 1;
+          else updated += 1;
+        } catch (err) {
+          failures.push(`Dòng ${row.rowNumber}: ${err instanceof Error ? err.message : 'Không import được.'}`);
+        }
+      }
+      await refresh();
+      if (failures.length) setError(failures.slice(0, 6).join('\n'));
+      setSaveMessage(`Import xong: tạo mới ${created}, cập nhật ${updated}, lỗi ${failures.length}.`);
+      if (!failures.length) {
+        setLeadImportParsed(null);
+        setLeadImportFileName('');
+        if (leadImportFileInputRef.current) leadImportFileInputRef.current.value = '';
+      }
+    } finally {
+      setLeadImportBusy(false);
+    }
+  }
+
   return (
     <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
@@ -602,6 +684,9 @@ export default function LeadsPage() {
           <Button variant="outline" className="w-full sm:w-auto" onClick={() => exportCsv('metta-leads.csv', filtered as unknown as Record<string, unknown>[])}>
             <Download /> Export CSV
           </Button>
+          {canCreate && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setLeadImportOpen((open) => !open)}>
+            <Upload /> Import Excel
+          </Button>}
           {hasMore && <Button variant="outline" className="w-full sm:w-auto" onClick={() => void loadMore()} disabled={loadingMore}>
             <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải' : 'Tải thêm lead'}
           </Button>}
@@ -614,6 +699,93 @@ export default function LeadsPage() {
           {canCreate && <Button className="w-full sm:w-auto" onClick={() => setEditing(newLeadDraft())}><Plus /> Thêm lead</Button>}
         </div>
       </div>
+
+      {canCreate && leadImportOpen && (
+        <Card>
+          <CardHeader className="flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2"><Upload size={18} /> Import lead hàng loạt</CardTitle>
+              <p className="text-sm text-slate-500">Hỗ trợ Excel/CSV. Lead ID hoặc SĐT sẽ được dùng để cập nhật lead cũ; dòng mới sẽ tạo lead mới.</p>
+            </div>
+            <Button variant="ghost" size="icon" onClick={() => setLeadImportOpen(false)} aria-label="Đóng import">
+              <X size={18} />
+            </Button>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <input
+              ref={leadImportFileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              className="hidden"
+              onChange={(event) => void parseLeadImportFile(event.target.files?.[0])}
+            />
+            <div className="grid gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div className="min-w-0">
+                <p className="truncate font-bold text-slate-950">{leadImportFileName || 'Chọn file import leads'}</p>
+                <p className="mt-1 text-sm text-slate-500">Dùng file mẫu để đúng header. Sales import lead mới sẽ tự nhận lead vào tài khoản của mình.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => void downloadLeadImportTemplate()} disabled={leadImportBusy}>
+                  <FileSpreadsheet /> Tải file mẫu
+                </Button>
+                <Button variant="outline" onClick={() => leadImportFileInputRef.current?.click()} disabled={leadImportBusy}>
+                  <Upload /> Chọn file
+                </Button>
+                <Button onClick={() => void importParsedLeadRows()} disabled={leadImportBusy || !leadImportParsed?.rows.length || Boolean(leadImportParsed.errors.length)}>
+                  {leadImportBusy ? 'Đang xử lý' : `Import${leadImportParsed?.rows.length ? ` ${leadImportParsed.rows.length} dòng` : ''}`}
+                </Button>
+              </div>
+            </div>
+
+            {leadImportParsed && (
+              <div className="grid gap-4">
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                    <p className="text-xs font-bold uppercase text-emerald-700">Tạo mới</p>
+                    <p className="text-xl font-extrabold text-emerald-900">{leadImportCreateCount}</p>
+                  </div>
+                  <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                    <p className="text-xs font-bold uppercase text-blue-700">Cập nhật</p>
+                    <p className="text-xl font-extrabold text-blue-900">{leadImportUpdateCount}</p>
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs font-bold uppercase text-amber-700">Cảnh báo</p>
+                    <p className="text-xl font-extrabold text-amber-900">{leadImportWarningCount}</p>
+                  </div>
+                </div>
+
+                {leadImportParsed.errors.length > 0 && (
+                  <div className="whitespace-pre-line rounded-lg bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                    {leadImportParsed.errors.slice(0, 6).join('\n')}
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <Table>
+                    <THead>
+                      <TR><TH>Dòng</TH><TH>Mode</TH><TH>Lead</TH><TH>SĐT</TH><TH>Status</TH><TH>Cảnh báo</TH></TR>
+                    </THead>
+                    <TBody>
+                      {leadImportParsed.rows.slice(0, 8).map((row) => (
+                        <TR key={`${row.rowNumber}-${row.lead.phone || row.lead.id || row.mode}`}>
+                          <TD>{row.rowNumber}</TD>
+                          <TD><Badge tone={row.mode === 'create' ? 'green' : 'blue'}>{row.mode === 'create' ? 'Create' : 'Update'}</Badge></TD>
+                          <TD className="font-semibold text-slate-900">{leadDisplayName(row.lead)}</TD>
+                          <TD>{row.lead.phone || '-'}</TD>
+                          <TD>{row.lead.status || '-'}</TD>
+                          <TD className="max-w-md text-xs text-amber-700">{row.warnings.join(' ') || '-'}</TD>
+                        </TR>
+                      ))}
+                      {!leadImportParsed.rows.length && <TR><TD colSpan={6} className="py-8 text-center text-slate-400">Không có dòng import hợp lệ.</TD></TR>}
+                    </TBody>
+                  </Table>
+                </div>
+                {leadImportParsed.rows.length > 8 && <p className="text-xs font-semibold text-slate-400">Đang preview 8 dòng đầu tiên trong {leadImportParsed.rows.length} dòng hợp lệ.</p>}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="grid gap-3 p-3 sm:p-4 md:grid-cols-6">

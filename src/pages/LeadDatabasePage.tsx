@@ -23,8 +23,10 @@ import { appointmentService } from '@/services/appointmentService';
 import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
 import { normalizeParentPhone, parentProfileService, type ParentProfile } from '@/services/parentProfileService';
+import { userService } from '@/services/userService';
 import { useLeads } from '@/hooks/useLeads';
 import type { Lead, LeadCenterConfig } from '@/types/crm';
+import type { AdminUser } from '@/types/user';
 
 function timestampFileName(prefix: string) {
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -48,6 +50,23 @@ function pct(value: number, total: number) {
 
 function uniqueLeadValues(leads: Lead[], getter: (lead: Lead) => string | undefined) {
   return Array.from(new Set(leads.map((lead) => String(getter(lead) || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi'));
+}
+
+function normalizedSalesKey(value?: string) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function findSalesUser(salesUsers: AdminUser[], assignedTo?: string, assignedToName?: string) {
+  const assignedId = String(assignedTo || '').trim();
+  const assignedKey = normalizedSalesKey(assignedTo);
+  const nameKey = normalizedSalesKey(assignedToName);
+  return salesUsers.find((sales) => sales.id === assignedId)
+    || salesUsers.find((sales) => normalizedSalesKey(sales.fullName) === assignedKey || normalizedSalesKey(sales.fullName) === nameKey);
+}
+
+function normalizeLeadSalesDraft(lead: Lead, salesUsers: AdminUser[]) {
+  const sales = findSalesUser(salesUsers, lead.assignedTo, lead.assignedToName);
+  return sales ? { ...lead, assignedTo: sales.id, assignedToName: sales.fullName } : lead;
 }
 
 function dateKey(value?: string) {
@@ -95,6 +114,7 @@ export default function LeadDatabasePage() {
   const [selectedParentIds, setSelectedParentIds] = useState<string[]>([]);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [editingParent, setEditingParent] = useState<ParentProfile | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
 
   const refreshParents = useCallback(async () => {
     setParentProfiles(await parentProfileService.seedFromLeads(leads));
@@ -109,16 +129,22 @@ export default function LeadDatabasePage() {
 
   useEffect(() => {
     centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([]));
+    userService.getUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
+
+  const salesUsers = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
 
   const referralStats = useMemo(() => buildReferralStats(leads), [leads]);
   const filterOptions = useMemo(() => ({
     sources: uniqueLeadValues(leads, (lead) => lead.source),
     centers: centerConfigs.filter((item) => item.active).map((item) => item.name).filter(Boolean),
-    sales: uniqueLeadValues(leads, (lead) => lead.assignedToName || lead.assignedTo),
+    sales: Array.from(new Set([
+      ...salesUsers.map((item) => item.fullName),
+      ...uniqueLeadValues(leads, (lead) => lead.assignedToName || lead.assignedTo),
+    ].filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
     courses: uniqueLeadValues(leads, (lead) => lead.interestedCourse),
     priorities: Array.from(new Set(leads.map((lead) => Number(lead.priorityLevel || 0)).filter(Boolean))).sort((a, b) => b - a),
-  }), [centerConfigs, leads]);
+  }), [centerConfigs, leads, salesUsers]);
   const parentRows = useMemo<ParentRow[]>(() => {
     const map = new Map<string, ParentRow>();
     parentProfiles.forEach((profile) => {
@@ -331,7 +357,7 @@ export default function LeadDatabasePage() {
     setError('');
     setMessage('');
     try {
-      await leadService.saveLead(editingLead);
+      await leadService.saveLead(normalizeLeadSalesDraft(editingLead, salesUsers));
       setEditingLead(null);
       await refresh();
       setMessage('Đã cập nhật lead.');
@@ -686,7 +712,7 @@ export default function LeadDatabasePage() {
           lead={editingLead}
           sources={filterOptions.sources}
           centers={filterOptions.centers}
-          sales={filterOptions.sales}
+          salesUsers={salesUsers}
           courses={filterOptions.courses}
           busy={busy}
           onChange={setEditingLead}
@@ -812,7 +838,7 @@ function LeadEditModal({
   lead,
   sources,
   centers,
-  sales,
+  salesUsers,
   courses,
   busy,
   onChange,
@@ -822,7 +848,7 @@ function LeadEditModal({
   lead: Lead;
   sources: string[];
   centers: string[];
-  sales: string[];
+  salesUsers: AdminUser[];
   courses: string[];
   busy: boolean;
   onChange: (lead: Lead) => void;
@@ -893,12 +919,16 @@ function LeadEditModal({
         </div>
         <div className="space-y-1.5">
           <FormLabel>Sales phụ trách</FormLabel>
-          <Select value={lead.assignedToName || lead.assignedTo || ''} onChange={(event) => {
-            set('assignedToName', event.target.value);
-            set('assignedTo', event.target.value);
+          <Select value={findSalesUser(salesUsers, lead.assignedTo, lead.assignedToName)?.id || ''} onChange={(event) => {
+            const sales = salesUsers.find((item) => item.id === event.target.value);
+            onChange({
+              ...lead,
+              assignedTo: sales?.id || '',
+              assignedToName: sales?.fullName || '',
+            });
           }}>
             <option value="">Chưa chọn</option>
-            {sales.map((item) => <option key={item} value={item}>{item}</option>)}
+            {salesUsers.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
           </Select>
         </div>
         <div className="space-y-1.5">

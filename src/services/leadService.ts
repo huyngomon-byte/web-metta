@@ -29,6 +29,7 @@ import { notificationService } from '@/services/notificationService';
 import { purgeDemoDataOnServerOnce } from '@/services/demoDataPurgeService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { delay, store } from '@/services/store';
+import { userService } from '@/services/userService';
 import type { Appointment, InterestedCourse, Lead, LeadActivity } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
@@ -158,18 +159,66 @@ function shouldRepointSales(idOrName: string | undefined, displayName: string | 
     || Boolean(displayName && displayName === sales.fullName && idOrName !== sales.id);
 }
 
-function normalizeLeadSales(lead: Lead) {
-  const assigned = legacySalesUser(lead.assignedTo, lead.assignedToName);
-  if (assigned && shouldRepointSales(lead.assignedTo, lead.assignedToName, assigned)) {
+function normalizedSalesKey(value?: string) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function salesUserFromAssignment(idOrName?: string, displayName?: string) {
+  const idKey = String(idOrName || '').trim();
+  const nameKey = normalizedSalesKey(displayName);
+  const assignedKey = normalizedSalesKey(idOrName);
+  const salesUsers = activeSalesUsers();
+  return salesUsers.find((sales) => sales.id === idKey)
+    || salesUsers.find((sales) => normalizedSalesKey(sales.fullName) === nameKey || normalizedSalesKey(sales.fullName) === assignedKey)
+    || legacySalesUser(idOrName, displayName);
+}
+
+function shouldNormalizeSales(idOrName: string | undefined, displayName: string | undefined, sales: AdminUser) {
+  return idOrName !== sales.id || displayName !== sales.fullName || shouldRepointSales(idOrName, displayName, sales);
+}
+
+function normalizeSalesAssignmentFields<T extends Partial<Lead>>(input: T): T {
+  const lead = { ...input } as T & Partial<Lead>;
+  const assigned = salesUserFromAssignment(lead.assignedTo, lead.assignedToName);
+  if (assigned && shouldNormalizeSales(lead.assignedTo, lead.assignedToName, assigned)) {
     lead.assignedTo = assigned.id;
     lead.assignedToName = assigned.fullName;
   }
 
-  const failedAssigned = legacySalesUser(lead.failedAssignedTo, lead.failedAssignedToName);
-  if (failedAssigned && shouldRepointSales(lead.failedAssignedTo, lead.failedAssignedToName, failedAssigned)) {
+  const failedAssigned = salesUserFromAssignment(lead.failedAssignedTo, lead.failedAssignedToName);
+  if (failedAssigned && shouldNormalizeSales(lead.failedAssignedTo, lead.failedAssignedToName, failedAssigned)) {
     lead.failedAssignedTo = failedAssigned.id;
     lead.failedAssignedToName = failedAssigned.fullName;
   }
+  return lead as T;
+}
+
+function normalizeLeadSales(lead: Lead) {
+  const normalized = normalizeSalesAssignmentFields(lead);
+  Object.assign(lead, normalized);
+}
+
+function assignmentFieldsChanged(before: Partial<Lead>, after: Partial<Lead>) {
+  return before.assignedTo !== after.assignedTo
+    || before.assignedToName !== after.assignedToName
+    || before.failedAssignedTo !== after.failedAssignedTo
+    || before.failedAssignedToName !== after.failedAssignedToName;
+}
+
+async function refreshUsersForAssignmentRepair(user: AdminUser | null) {
+  if (!USE_FIREBASE || !canViewAllLeads(user)) return;
+  await userService.getUsers().catch((error) => {
+    console.warn('[Leads] Cannot load users for assignment repair:', error);
+  });
+}
+
+async function repairNormalizedAssignments(leads: Lead[], originals: Lead[], user: AdminUser | null) {
+  if (!USE_FIREBASE || !canViewAllLeads(user)) return;
+  const repairs = leads.filter((lead, index) => assignmentFieldsChanged(originals[index] || {}, lead));
+  if (!repairs.length) return;
+  await Promise.all(repairs.map((lead) => writeFirestoreLead(lead).catch((error) => {
+    console.warn('[Leads] Assignment repair failed:', lead.id, error);
+  })));
 }
 
 function demoPhoneFromIndex(globalIndex: number) {
@@ -566,6 +615,7 @@ export const leadService = {
   getLeads: async () => {
     const user = currentUser();
     if (USE_FIREBASE) {
+      await refreshUsersForAssignmentRepair(user);
       if (canViewAllLeads(user)) await purgeDemoDataOnServerOnce();
       if (user?.role === 'sales') {
         const nowMs = Date.now();
@@ -584,7 +634,9 @@ export const leadService = {
         store.leads = mergeDemoSeeds(remoteLeads);
       } else {
         const snap = await getDocs(query(collection(db!, COL_LEADS), orderBy('createdAt', 'desc')));
-        let remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+        const rawLeads = snap.docs.map((item) => ({ ...(item.data() as Lead), id: (item.data() as Lead).id || item.id }));
+        let remoteLeads = rawLeads.map((lead) => normalizeLead(lead));
+        await repairNormalizedAssignments(remoteLeads, rawLeads, user);
         remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
         store.leads = mergeDemoSeeds(remoteLeads);
         await syncMissingStageDemoLeadsToFirestore(remoteLeads);
@@ -615,6 +667,8 @@ export const leadService = {
       });
     }
 
+    await refreshUsersForAssignmentRepair(user);
+
     if (user?.role === 'sales') {
       const leads = await leadService.getLeads();
       return delay({ leads, hasMore: false, nextCursor: null });
@@ -624,7 +678,9 @@ export const leadService = {
       ? [orderBy('updatedAt', 'desc'), startAfter(cursor.snapshot), limit(safePageSize)]
       : [orderBy('updatedAt', 'desc'), limit(safePageSize)];
     const snap = await getDocs(query(collection(db!, COL_LEADS), ...constraints));
-    const remoteLeads = snap.docs.map((item) => normalizeLead(item.data() as Lead));
+    const rawLeads = snap.docs.map((item) => ({ ...(item.data() as Lead), id: (item.data() as Lead).id || item.id }));
+    const remoteLeads = rawLeads.map((lead) => normalizeLead(lead));
+    await repairNormalizedAssignments(remoteLeads, rawLeads, user);
     setStoreLeads(remoteLeads, !cursor);
     persistLeads();
     const loadedLeads = visibleLeads(user);
@@ -743,7 +799,9 @@ export const leadService = {
     const user = currentUser();
     const timestamp = now();
     const nowMs = Date.now();
+    await refreshUsersForAssignmentRepair(user);
     const sourceConfigs = await sourceConfigService.getConfigs();
+    lead = normalizeSalesAssignmentFields(lead);
     if (lead.interestedCourse) lead = { ...lead, interestedCourse: normalizeCourse(lead.interestedCourse) as InterestedCourse | '' };
     lead = normalizeDealFields(lead);
     const displayName = leadDisplayName(lead);
