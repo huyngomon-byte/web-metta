@@ -9,6 +9,9 @@ type UseLeadsOptions = {
   pollMs?: number;
   pageSize?: number;
   mode?: 'paged' | 'all';
+  sinceDays?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 function mergeLeads(incoming: Lead[], existing: Lead[]) {
@@ -18,7 +21,15 @@ function mergeLeads(incoming: Lead[], existing: Lead[]) {
   return Array.from(byId.values()).sort((a, b) => (b.updatedAt || b.createdAt || '').localeCompare(a.updatedAt || a.createdAt || ''));
 }
 
-export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realtime ? 'paged' : 'all' }: UseLeadsOptions = {}) {
+export function useLeads({
+  realtime = true,
+  pollMs,
+  pageSize = 100,
+  mode = 'paged',
+  sinceDays = 30,
+  dateFrom,
+  dateTo,
+}: UseLeadsOptions = {}) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -28,7 +39,7 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
     setError('');
     try {
       if (mode === 'paged') {
-        const page = await leadService.getLeadsPage({ pageSize });
+        const page = await leadService.getLeadsPage({ pageSize, sinceDays, dateFrom, dateTo });
         setLeads(page.leads);
         setNextCursor(page.nextCursor);
         setHasMore(page.hasMore);
@@ -46,15 +57,15 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
       setNextCursor(null);
       setHasMore(false);
     }
-  }, [mode, pageSize]);
+  }, [dateFrom, dateTo, mode, pageSize, sinceDays]);
 
   const loadMore = useCallback(async () => {
     if (!hasMore || !nextCursor || loadingMore) return;
     setLoadingMore(true);
     setError('');
     try {
-      const page = await leadService.getLeadsPage({ pageSize, cursor: nextCursor });
-      setLeads(page.leads);
+      const page = await leadService.getLeadsPage({ pageSize, cursor: nextCursor, sinceDays, dateFrom, dateTo });
+      setLeads((current) => mergeLeads(page.leads, current));
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
     } catch (err) {
@@ -63,10 +74,9 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore, nextCursor, pageSize]);
+  }, [dateFrom, dateTo, hasMore, loadingMore, nextCursor, pageSize, sinceDays]);
 
   useEffect(() => {
-    void refresh();
     if (realtime) {
       return leadService.subscribeLeads((items, meta) => {
         setLeads((current) => {
@@ -79,6 +89,7 @@ export function useLeads({ realtime = true, pollMs, pageSize = 300, mode = realt
       });
     }
 
+    void refresh();
     if (!pollMs) return undefined;
     const timer = window.setInterval(() => void refresh(), pollMs);
     return () => window.clearInterval(timer);

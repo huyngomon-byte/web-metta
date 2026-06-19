@@ -1,17 +1,33 @@
 import { ArrowLeft } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { siteSettings as seedSettings } from '@/data/seed';
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { publicBlogService } from '@/services/publicBlogService';
-import type { BlogPost } from '@/types/cms';
+import type { PublicBlogPage } from '@/services/publicBlogService';
+
+const PUBLIC_NEWS_PAGE_LIMIT = 9;
 
 export default function PublicNewsPage() {
   const { settings } = usePublicThemeSettings();
   const current = settings || seedSettings;
-  const [posts, setPosts] = useState<BlogPost[] | null>(null);
+  const [searchParams] = useSearchParams();
+  const currentPage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
+  const [pageData, setPageData] = useState<PublicBlogPage | null>(null);
 
-  useEffect(() => { publicBlogService.getPublished().then(setPosts); }, []);
+  useEffect(() => {
+    setPageData(null);
+    publicBlogService.getPage(currentPage, PUBLIC_NEWS_PAGE_LIMIT).then(setPageData);
+  }, [currentPage]);
+
+  const pageNumbers = useMemo(() => {
+    const numbers = new Set<number>([1, currentPage]);
+    if (currentPage > 1) numbers.add(currentPage - 1);
+    if (pageData?.hasNext) numbers.add(currentPage + 1);
+    return Array.from(numbers).filter((page) => page > 0).sort((a, b) => a - b);
+  }, [currentPage, pageData?.hasNext]);
+
+  const posts = pageData?.posts || null;
 
   return (
     <>
@@ -33,6 +49,7 @@ export default function PublicNewsPage() {
               <p className="mt-3 text-sm font-semibold">Đang tải bài viết...</p>
             </div>
           ) : posts.length > 0 ? (
+            <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {posts.map((post) => (
                 <Link
@@ -70,6 +87,30 @@ export default function PublicNewsPage() {
                 </Link>
               ))}
             </div>
+            {(currentPage > 1 || pageData?.hasNext) && (
+              <nav className="mt-10 flex flex-wrap items-center justify-center gap-2" aria-label="Phan trang tin tuc">
+                {currentPage > 1 && (
+                  <Link to={currentPage === 2 ? '/tin-tuc' : `/tin-tuc?page=${currentPage - 1}`} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-[#003B7A] hover:border-[#003B7A]">
+                    Trước
+                  </Link>
+                )}
+                {pageNumbers.map((page) => (
+                  <Link
+                    key={page}
+                    to={page === 1 ? '/tin-tuc' : `/tin-tuc?page=${page}`}
+                    className={`rounded-lg border px-4 py-2 text-sm font-bold ${page === currentPage ? 'border-[#003B7A] bg-[#003B7A] text-white' : 'border-slate-200 bg-white text-[#003B7A] hover:border-[#003B7A]'}`}
+                  >
+                    {page}
+                  </Link>
+                ))}
+                {pageData?.hasNext && (
+                  <Link to={`/tin-tuc?page=${currentPage + 1}`} className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-[#003B7A] hover:border-[#003B7A]">
+                    Sau
+                  </Link>
+                )}
+              </nav>
+            )}
+            </>
           ) : (
             <div className="text-center py-16 text-slate-400">
               <p className="text-lg font-semibold">Chưa có bài viết nào</p>

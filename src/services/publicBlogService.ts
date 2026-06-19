@@ -1,12 +1,16 @@
-import {
-  collection,
-  getDocs,
-} from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
 import { publicCmsService } from '@/services/publicCmsService';
 import type { BlogPost } from '@/types/cms';
 
-const USE_FIREBASE = isFirebaseConfigured && !!db;
+const DEFAULT_PUBLIC_NEWS_LIMIT = 12;
+const publishedPagePromises = new Map<string, Promise<PublicBlogPage>>();
+const postBySlugPromises = new Map<string, Promise<BlogPost | undefined>>();
+
+export type PublicBlogPage = {
+  posts: BlogPost[];
+  page: number;
+  pageSize: number;
+  hasNext: boolean;
+};
 
 type SeedNewsItem = {
   title: string;
@@ -64,28 +68,84 @@ async function seedPosts(): Promise<BlogPost[]> {
   }));
 }
 
-async function firestorePosts(): Promise<BlogPost[]> {
-  if (!USE_FIREBASE || !db) return [];
+async function fetchPublicPage(page: number, pageSize: number): Promise<PublicBlogPage> {
   try {
-    const snap = await getDocs(collection(db, 'blogPosts'));
-    return snap.docs
-      .map((doc) => ({ id: doc.id, ...doc.data() } as BlogPost))
-      .filter((post) => post.status === 'published')
-      .sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
+    const params = new URLSearchParams({
+      id: 'publicBlogPosts',
+      limit: String(pageSize),
+      page: String(page),
+    });
+    const response = await fetch(`/api/app-config?${params.toString()}`);
+    if (!response.ok) return { posts: [], page, pageSize, hasNext: false };
+    const payload = await response.json() as Partial<PublicBlogPage> & { limit?: number; posts?: BlogPost[] };
+    return {
+      posts: Array.isArray(payload.posts) ? payload.posts : [],
+      page: Number(payload.page || page),
+      pageSize: Number(payload.pageSize || payload.limit || pageSize),
+      hasNext: Boolean(payload.hasNext),
+    };
   } catch (error) {
-    console.warn('[PublicBlog] Cannot read Firestore blog posts, using CMS news fallback:', error);
-    return [];
+    console.warn('[PublicBlog] Cannot read public blog API, using CMS news fallback:', error);
+    return { posts: [], page, pageSize, hasNext: false };
   }
 }
 
+async function fetchPublicPostBySlug(slug: string): Promise<BlogPost | undefined> {
+  try {
+    const params = new URLSearchParams({
+      id: 'publicBlogPost',
+      slug,
+    });
+    const response = await fetch(`/api/app-config?${params.toString()}`);
+    if (!response.ok) return undefined;
+    const payload = await response.json() as { post?: BlogPost };
+    return payload.post;
+  } catch (error) {
+    console.warn('[PublicBlog] Cannot read public blog post API, using CMS news fallback:', error);
+    return undefined;
+  }
+}
+
+async function publishedPage(page = 1, pageSize = DEFAULT_PUBLIC_NEWS_LIMIT): Promise<PublicBlogPage> {
+  const safePage = Math.max(1, Math.round(page));
+  const safePageSize = Math.max(1, Math.min(50, Math.round(pageSize)));
+  const cacheKey = `${safePage}:${safePageSize}`;
+  if (!publishedPagePromises.has(cacheKey)) {
+    publishedPagePromises.set(cacheKey, (async () => {
+      const remote = await fetchPublicPage(safePage, safePageSize);
+      if (remote.posts.length) return remote;
+      const seeds = await seedPosts();
+      const startIndex = (safePage - 1) * safePageSize;
+      const endIndex = startIndex + safePageSize;
+      return {
+        posts: seeds.slice(startIndex, endIndex),
+        page: safePage,
+        pageSize: safePageSize,
+        hasNext: seeds.length > endIndex,
+      };
+    })());
+  }
+  return publishedPagePromises.get(cacheKey) as Promise<PublicBlogPage>;
+}
+
+async function publishedPosts(limit = DEFAULT_PUBLIC_NEWS_LIMIT): Promise<BlogPost[]> {
+  return (await publishedPage(1, limit)).posts;
+}
+
 export const publicBlogService = {
-  getPublished: async () => {
-    const remote = await firestorePosts();
-    return remote.length ? remote : seedPosts();
-  },
+  getPublished: publishedPosts,
+  getPage: publishedPage,
   getBySlug: async (slug: string) => {
-    const remote = await firestorePosts();
-    const posts = remote.length ? remote : await seedPosts();
-    return posts.find((post) => post.slug === slug);
+    const normalizedSlug = slug.trim();
+    if (!normalizedSlug) return undefined;
+    if (!postBySlugPromises.has(normalizedSlug)) {
+      postBySlugPromises.set(normalizedSlug, (async () => {
+        const remote = await fetchPublicPostBySlug(normalizedSlug);
+        if (remote) return remote;
+        const posts = await seedPosts();
+        return posts.find((post) => post.slug === normalizedSlug);
+      })());
+    }
+    return postBySlugPromises.get(normalizedSlug);
   },
 };

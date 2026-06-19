@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Phone,
   PhoneOff,
+  RefreshCcw,
   UserCheck,
   UserPlus,
   Users,
@@ -29,6 +30,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadSources, leadStatuses, STAFF_OPTIONS } from '@/lib/constants';
@@ -70,6 +72,11 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 
 function daysAgo(n: number) {
   const d = new Date(); d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysFromToday(n: number) {
+  const d = new Date(); d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 }
 
@@ -142,7 +149,7 @@ function previousPeriod(from: string, to: string): [string, string] {
 }
 
 function trendPercent(current: number, previous: number) {
-  if (!previous) return current ? 100 : 0;
+  if (!previous) return undefined;
   return Math.round(((current - previous) / previous) * 100);
 }
 
@@ -176,12 +183,14 @@ function leadMetricSummary(items: Lead[], courseDealSizes?: readonly CourseDealS
 }
 
 export default function DashboardPage() {
-  const { leads, error: leadsError } = useLeads({ realtime: false, pollMs: 60000 });
   const { courseOptions: COURSE_OPTIONS, courseDealSizes } = useCourseCatalog();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [dashboardError, setDashboardError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const today = todayStr();
+  const upcomingAppointmentsTo = daysFromToday(30);
 
   // ── Filters ──
   const [preset, setPreset] = useState<Preset>('30d');
@@ -191,10 +200,22 @@ export default function DashboardPage() {
   const [fSource, setFSource] = useState('');
   const [fCourse, setFCourse] = useState('');
   const [fCenter, setFCenter] = useState('');
+  const { leads, error: leadsError, refresh: refreshLeads } = useLeads({
+    realtime: false,
+    mode: 'paged',
+    pageSize: 500,
+    dateFrom,
+    dateTo,
+  });
 
   useEffect(() => { if (preset !== 'custom') { const [f, t] = presetRange(preset); setDateFrom(f); setDateTo(t); } }, [preset]);
   useEffect(() => {
-    appointmentService.getAppointments()
+    appointmentService.getAppointments({
+      dateFrom: today,
+      dateTo: upcomingAppointmentsTo,
+      limit: 200,
+      order: 'asc',
+    })
       .then((items) => {
         setAppointments(items);
         setDashboardError('');
@@ -204,11 +225,36 @@ export default function DashboardPage() {
         setAppointments([]);
         setDashboardError(describeFriendlyDataError(error, 'dữ liệu lịch hẹn'));
       });
-  }, []);
+  }, [today, upcomingAppointmentsTo]);
   useEffect(() => { userService.getUsers().then(setUsers).catch(() => setUsers([])); }, []);
   useEffect(() => { centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([])); }, []);
-
-  const today = todayStr();
+  const refreshDashboard = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refreshLeads(),
+        appointmentService.getAppointments({
+          dateFrom: today,
+          dateTo: upcomingAppointmentsTo,
+          limit: 200,
+          order: 'asc',
+        })
+          .then((items) => {
+            setAppointments(items);
+            setDashboardError('');
+          })
+          .catch((error) => {
+            console.warn('[Dashboard] Cannot load appointments:', error);
+            setAppointments([]);
+            setDashboardError(describeFriendlyDataError(error, 'du lieu lich hen'));
+          }),
+        userService.getUsers().then(setUsers).catch(() => setUsers([])),
+        centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([])),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshLeads, today, upcomingAppointmentsTo]);
 
   const salesNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -455,9 +501,16 @@ export default function DashboardPage() {
     <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
 
       {/* ── Header ── */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900">Dashboard</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900">Dashboard</h1>
         <p className="text-sm text-slate-500 mt-0.5">Tổng quan CRM tuyển sinh METTA Academy</p>
+      </div>
+
+        <Button variant="outline" onClick={() => void refreshDashboard()} disabled={refreshing} className="w-fit">
+          <RefreshCcw className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'Đang làm mới' : 'Làm mới'}
+        </Button>
       </div>
 
       {dataError && (

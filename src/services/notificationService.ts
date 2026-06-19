@@ -2,7 +2,9 @@ import {
   collection,
   doc,
   getDocs,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   setDoc,
   updateDoc,
@@ -91,14 +93,18 @@ export const notificationService = {
       return () => {};
     }
 
-    const notificationQuery = query(collection(db!, COL_NOTIFICATIONS), where('userId', '==', userId));
+    const notificationQuery = query(
+      collection(db!, COL_NOTIFICATIONS),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(20),
+    );
 
     return onSnapshot(notificationQuery, (snap) => {
       dispatchRealtimeOk();
       const items = snap.docs
         .map((item) => normalizeNotification({ id: item.id, ...item.data() }))
-        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
-        .slice(0, 30);
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
       mergeCachedForUser(userId, items);
       callback(items);
     }, (error) => {

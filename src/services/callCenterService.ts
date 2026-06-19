@@ -7,6 +7,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   orderBy,
   query,
   setDoc,
@@ -26,11 +27,24 @@ const COL_CALL_LOGS = 'callLogs';
 const COL_CALL_SETTINGS = 'callCenterSettings';
 const COL_AGENT_PRESENCE = 'agentPresence';
 const SETTINGS_DOC_ID = 'stringee';
+const DEFAULT_CALL_LOG_PAGE_SIZE = 100;
+const DEFAULT_CALL_LOG_SINCE_DAYS = 30;
 let cachedLogs: CallLog[] = [];
 let cachedSettings: CallCenterSettings | null = null;
 
+type CallLogListOptions = {
+  pageSize?: number;
+  sinceDays?: number;
+};
+
 function now() {
   return new Date().toISOString();
+}
+
+function daysAgoIso(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString();
 }
 
 function stripUndefined<T>(value: T): T {
@@ -235,13 +249,19 @@ export const callCenterService = {
     return payload;
   },
 
-  getLogs: async () => {
+  getLogs: async ({ pageSize = DEFAULT_CALL_LOG_PAGE_SIZE, sinceDays = DEFAULT_CALL_LOG_SINCE_DAYS }: CallLogListOptions = {}) => {
     const user = currentUser();
-    let logs = USE_FIREBASE ? [] : readLocalLogs();
+    const safePageSize = Math.max(1, Math.min(500, Math.round(pageSize)));
+    const cutoff = daysAgoIso(sinceDays);
+    let logs = USE_FIREBASE
+      ? []
+      : readLocalLogs()
+        .filter((log) => !log.startedAt || log.startedAt >= cutoff)
+        .slice(0, safePageSize);
     if (USE_FIREBASE) {
       const logsQuery = user?.role === 'sales'
-        ? query(collection(db!, COL_CALL_LOGS), where('agentId', '==', user.id))
-        : query(collection(db!, COL_CALL_LOGS), orderBy('startedAt', 'desc'));
+        ? query(collection(db!, COL_CALL_LOGS), where('agentId', '==', user.id), where('startedAt', '>=', cutoff), orderBy('startedAt', 'desc'), limit(safePageSize))
+        : query(collection(db!, COL_CALL_LOGS), where('startedAt', '>=', cutoff), orderBy('startedAt', 'desc'), limit(safePageSize));
       const snap = await getDocs(logsQuery);
       logs = snap.docs.map((item) => item.data() as CallLog);
       writeLocalLogs(user?.role === 'sales' ? mergeLogs(logs) : logs);

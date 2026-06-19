@@ -551,7 +551,7 @@ function NewsBlock({ section }: { section: PageSection }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    publicBlogService.getPublished().then((posts) => {
+    publicBlogService.getPublished(HOME_NEWS_LIMIT).then((posts) => {
       if (posts.length > 0) {
         setBlogPosts(posts.slice(0, HOME_NEWS_LIMIT).map((p) => ({
           title: p.title,

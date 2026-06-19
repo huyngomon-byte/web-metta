@@ -38,6 +38,7 @@ type ManualTask = {
 };
 
 const COL = 'salesManualTasks';
+const TASK_PAGE_SIZE = 50;
 const priorities = ['low', 'normal', 'high'];
 const statuses = ['open', 'done'];
 
@@ -120,7 +121,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = adminDb();
 
     if (req.method === 'GET') {
-      const snap = await db.collection(COL).orderBy('updatedAt', 'desc').limit(1000).get();
+      const taskQuery = canManageAll(user)
+        ? db.collection(COL).orderBy('updatedAt', 'desc').limit(TASK_PAGE_SIZE)
+        : db.collection(COL).where('assignedTo', '==', user.id).orderBy('updatedAt', 'desc').limit(TASK_PAGE_SIZE);
+      const snap = await taskQuery.get();
       const tasks = snap.docs
         .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }) as ManualTask)
         .filter((task) => visibleForUser(task, user));

@@ -7,7 +7,7 @@ import {
   type PublicCmsDocument,
   type PublicCmsSnapshot,
 } from './_publicCmsSnapshot.js';
-import { sendBlogPage, sendSitemap } from './_publicSeoServer.js';
+import { sendBlogPage, sendPublicBlogPost, sendPublicBlogPosts, sendSitemap } from './_publicSeoServer.js';
 
 type VercelRequest = {
   method?: string;
@@ -202,6 +202,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'GET' && id === 'blogPage') {
       return sendBlogPage(req as Parameters<typeof sendBlogPage>[0], res);
+    }
+
+    if (req.method === 'GET' && id === 'publicBlogPosts') {
+      return sendPublicBlogPosts(req as Parameters<typeof sendPublicBlogPosts>[0], res);
+    }
+
+    if (req.method === 'GET' && id === 'publicBlogPost') {
+      return sendPublicBlogPost(req as Parameters<typeof sendPublicBlogPost>[0], res);
     }
 
     const field = configFields[id];

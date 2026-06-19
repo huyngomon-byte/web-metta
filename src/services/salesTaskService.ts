@@ -1,9 +1,11 @@
 import {
   collection,
+  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
+  startAfter,
   where,
   type Unsubscribe,
 } from 'firebase/firestore';
@@ -29,9 +31,15 @@ export type ManualTask = {
   createdByName?: string;
 };
 
+type TaskPageOptions = {
+  pageSize?: number;
+  cursorUpdatedAt?: string;
+};
+
 let cachedTasks: ManualTask[] = [];
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const COL_MANUAL_TASKS = 'salesManualTasks';
+const TASK_PAGE_SIZE = 50;
 
 function now() {
   return new Date().toISOString();
@@ -112,6 +120,35 @@ export const salesTaskService = {
     return tasks;
   },
 
+  getTasksPage: async ({ pageSize = TASK_PAGE_SIZE, cursorUpdatedAt }: TaskPageOptions = {}) => {
+    const user = currentUser();
+    const safePageSize = Math.max(1, Math.min(200, Math.round(pageSize)));
+    if (!USE_FIREBASE) {
+      const tasks = await salesTaskService.getTasks();
+      return cursorUpdatedAt ? tasks.filter((task) => task.updatedAt < cursorUpdatedAt).slice(0, safePageSize) : tasks.slice(0, safePageSize);
+    }
+
+    const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
+    const taskQuery = canViewAll
+      ? query(
+        collection(db!, COL_MANUAL_TASKS),
+        orderBy('updatedAt', 'desc'),
+        ...(cursorUpdatedAt ? [startAfter(cursorUpdatedAt)] : []),
+        limit(safePageSize),
+      )
+      : query(
+        collection(db!, COL_MANUAL_TASKS),
+        where('assignedTo', '==', user?.id || ''),
+        orderBy('updatedAt', 'desc'),
+        ...(cursorUpdatedAt ? [startAfter(cursorUpdatedAt)] : []),
+        limit(safePageSize),
+      );
+    const snap = await getDocs(taskQuery);
+    const page = mergeTasks(snap.docs.map((item) => ({ id: item.id, ...item.data() } as ManualTask)));
+    writeLocalTasks(cursorUpdatedAt ? [...cachedTasks, ...page] : page, false);
+    return page;
+  },
+
   subscribeTasks: (callback: (tasks: ManualTask[]) => void, onError?: (error: unknown) => void): Unsubscribe => {
     const user = currentUser();
     if (!USE_FIREBASE) {
@@ -121,8 +158,8 @@ export const salesTaskService = {
 
     const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
     const taskQuery = canViewAll
-      ? query(collection(db!, COL_MANUAL_TASKS), orderBy('updatedAt', 'desc'), limit(1000))
-      : query(collection(db!, COL_MANUAL_TASKS), where('assignedTo', '==', user?.id || ''), limit(1000));
+      ? query(collection(db!, COL_MANUAL_TASKS), orderBy('updatedAt', 'desc'), limit(TASK_PAGE_SIZE))
+      : query(collection(db!, COL_MANUAL_TASKS), where('assignedTo', '==', user?.id || ''), orderBy('updatedAt', 'desc'), limit(TASK_PAGE_SIZE));
 
     return onSnapshot(taskQuery, (snap) => {
       dispatchRealtimeOk();

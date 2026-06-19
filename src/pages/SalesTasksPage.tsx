@@ -46,6 +46,7 @@ type TaskStatus = 'open' | 'done';
 type ViewMode = 'list' | 'kanban';
 type SortField = 'due' | 'priority';
 type SortDirection = 'asc' | 'desc';
+const MANUAL_TASK_PAGE_SIZE = 50;
 
 type SalesTask = {
   id: string;
@@ -331,13 +332,20 @@ function dueBucket(task: SalesTask) {
 export default function SalesTasksPage() {
   const { user } = useAuth();
   const { startOutboundCall } = useCallCenter();
-  const { leads, refresh: refreshLeads, loadMore, hasMore, loadingMore } = useLeads({ pageSize: 500 });
+  const { leads, refresh: refreshLeads, loadMore, hasMore, loadingMore } = useLeads({
+    realtime: false,
+    mode: 'paged',
+    pageSize: 100,
+    sinceDays: 30,
+  });
   const { courseDealSizes } = useCourseCatalog();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [manualTasks, setManualTasks] = useState<ManualTask[]>([]);
+  const [manualTaskHasMore, setManualTaskHasMore] = useState(false);
+  const [manualTaskLoadingMore, setManualTaskLoadingMore] = useState(false);
   const [quickTaskBusy, setQuickTaskBusy] = useState(false);
   const [quickTaskError, setQuickTaskError] = useState('');
   const [query, setQuery] = useState('');
@@ -375,11 +383,15 @@ export default function SalesTasksPage() {
   useEffect(() => {
     void refresh();
     centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([]));
+    const applyManualTasks = (tasks: ManualTask[]) => {
+      setManualTasks(tasks);
+      setManualTaskHasMore(tasks.length >= MANUAL_TASK_PAGE_SIZE);
+    };
     const unsubAppointments = appointmentService.subscribeAppointments(setAppointments, () => {
       void appointmentService.getAppointments().then(setAppointments).catch(() => {});
     });
-    const unsubTasks = salesTaskService.subscribeTasks(setManualTasks, () => {
-      void salesTaskService.getTasks().then(setManualTasks).catch(() => {});
+    const unsubTasks = salesTaskService.subscribeTasks(applyManualTasks, () => {
+      void salesTaskService.getTasks().then(applyManualTasks).catch(() => {});
     });
     const onUpdate = () => void refresh();
     window.addEventListener('metta-call-logs-updated', onUpdate);
@@ -449,6 +461,24 @@ export default function SalesTasksPage() {
     else {
       setSortField(field);
       setSortDirection(field === 'priority' ? 'desc' : 'asc');
+    }
+  }
+
+  async function loadMoreManualTasks() {
+    if (manualTaskLoadingMore || !manualTaskHasMore) return;
+    const cursorUpdatedAt = manualTasks[manualTasks.length - 1]?.updatedAt;
+    if (!cursorUpdatedAt) return;
+    setManualTaskLoadingMore(true);
+    try {
+      const page = await salesTaskService.getTasksPage({ pageSize: MANUAL_TASK_PAGE_SIZE, cursorUpdatedAt });
+      setManualTasks((current) => {
+        const byId = new Map(current.map((task) => [task.id, task]));
+        page.forEach((task) => byId.set(task.id, task));
+        return Array.from(byId.values()).sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      });
+      setManualTaskHasMore(page.length >= MANUAL_TASK_PAGE_SIZE);
+    } finally {
+      setManualTaskLoadingMore(false);
     }
   }
 
@@ -610,6 +640,13 @@ export default function SalesTasksPage() {
             <div className="lg:col-span-6">
               <Button type="button" variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
                 <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải thêm lead' : 'Tải thêm lead cho task'}
+              </Button>
+            </div>
+          )}
+          {manualTaskHasMore && (
+            <div className="lg:col-span-6">
+              <Button type="button" variant="outline" onClick={() => void loadMoreManualTasks()} disabled={manualTaskLoadingMore}>
+                <RefreshCcw className={manualTaskLoadingMore ? 'animate-spin' : ''} /> {manualTaskLoadingMore ? 'Đang tải thêm task' : 'Tải thêm manual task'}
               </Button>
             </div>
           )}

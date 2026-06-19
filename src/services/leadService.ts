@@ -42,11 +42,13 @@ const STAGE_DEMO_ID_PREFIX = 'lead-demo-stage-';
 const FINANCE_DEMO_ID_PREFIX = 'lead-demo-priority-';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const REALTIME_LEADS_LIMIT = 1000;
-const DEFAULT_LEADS_PAGE_SIZE = 300;
+const DEFAULT_LEADS_PAGE_SIZE = 100;
+const DEFAULT_LEADS_SINCE_DAYS = 30;
 const CAPI_STATUS_TIMEOUT_MS = 8000;
 
 export type LeadPageCursor = {
   id: string;
+  createdAt?: string;
   updatedAt?: string;
   snapshot?: QueryDocumentSnapshot;
 };
@@ -54,6 +56,9 @@ export type LeadPageCursor = {
 type LeadPageOptions = {
   pageSize?: number;
   cursor?: LeadPageCursor | null;
+  sinceDays?: number;
+  dateFrom?: string;
+  dateTo?: string;
 };
 
 type PublicLeadSubmitInput = Partial<Lead> & {
@@ -543,6 +548,37 @@ function visibleLeads(user: AdminUser | null) {
   return store.leads.map(normalizeLead).filter((lead) => canViewLead(user, lead));
 }
 
+function daysAgoIso(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString();
+}
+
+function normalizeDateStart(value?: string) {
+  if (!value) return '';
+  return value.length === 10 ? `${value}T00:00:00.000Z` : value;
+}
+
+function normalizeDateEnd(value?: string) {
+  if (!value) return '';
+  return value.length === 10 ? `${value}T23:59:59.999Z` : value;
+}
+
+function leadPageDateRange(options: LeadPageOptions) {
+  return {
+    dateFrom: normalizeDateStart(options.dateFrom) || daysAgoIso(options.sinceDays ?? DEFAULT_LEADS_SINCE_DAYS),
+    dateTo: normalizeDateEnd(options.dateTo),
+  };
+}
+
+function inLeadPageDateRange(lead: Lead, dateFrom: string, dateTo: string) {
+  const createdAt = lead.createdAt || lead.updatedAt || '';
+  if (!createdAt) return false;
+  if (dateFrom && createdAt < dateFrom) return false;
+  if (dateTo && createdAt > dateTo) return false;
+  return true;
+}
+
 async function syncEnrollmentToLms(lead: Lead) {
   try {
     const [activities, appointments] = await Promise.all([
@@ -606,37 +642,43 @@ export const leadService = {
     return delay(visibleLeads(user));
   },
 
-  getLeadsPage: async ({ pageSize = DEFAULT_LEADS_PAGE_SIZE, cursor }: LeadPageOptions = {}) => {
+  getLeadsPage: async (options: LeadPageOptions = {}) => {
+    const { pageSize = DEFAULT_LEADS_PAGE_SIZE, cursor } = options;
     const user = currentUser();
-    const safePageSize = Math.max(50, Math.min(1000, Math.round(pageSize)));
+    const safePageSize = Math.max(1, Math.min(1000, Math.round(pageSize)));
+    const { dateFrom, dateTo } = leadPageDateRange(options);
 
     if (!USE_FIREBASE) {
       loadLeads();
-      const allLeads = visibleLeads(user);
+      const allLeads = visibleLeads(user)
+        .filter((lead) => inLeadPageDateRange(lead, dateFrom, dateTo))
+        .sort((a, b) => (b.createdAt || b.updatedAt || '').localeCompare(a.createdAt || a.updatedAt || ''));
       const startIndex = cursor?.id ? Math.max(0, allLeads.findIndex((lead) => lead.id === cursor.id) + 1) : 0;
       const page = allLeads.slice(startIndex, startIndex + safePageSize);
+      const loaded = allLeads.slice(0, startIndex + page.length);
       const last = page[page.length - 1];
       return delay({
-        leads: page,
+        leads: loaded,
         hasMore: allLeads.length > startIndex + page.length,
-        nextCursor: last ? { updatedAt: last.updatedAt || last.createdAt || '', id: last.id } : null,
+        nextCursor: last ? { createdAt: last.createdAt || last.updatedAt || '', id: last.id } : null,
       });
     }
 
     await refreshUsersForAssignmentRepair(user);
 
-    if (user?.role === 'sales') {
-      const leads = await leadService.getLeads();
-      return delay({ leads, hasMore: false, nextCursor: null });
-    }
-
-    const constraints = cursor?.snapshot
-      ? [orderBy('updatedAt', 'desc'), startAfter(cursor.snapshot), limit(safePageSize)]
-      : [orderBy('updatedAt', 'desc'), limit(safePageSize)];
+    const constraints = [
+      ...(user?.role === 'sales' ? [where('assignedTo', '==', user.id)] : []),
+      where('createdAt', '>=', dateFrom),
+      ...(dateTo ? [where('createdAt', '<=', dateTo)] : []),
+      orderBy('createdAt', 'desc'),
+      ...(cursor?.snapshot ? [startAfter(cursor.snapshot)] : []),
+      limit(safePageSize),
+    ];
     const snap = await getDocs(query(collection(db!, COL_LEADS), ...constraints));
     const rawLeads = snap.docs.map((item) => ({ ...(item.data() as Lead), id: (item.data() as Lead).id || item.id }));
-    const remoteLeads = rawLeads.map((lead) => normalizeLead(lead));
+    let remoteLeads = rawLeads.map((lead) => normalizeLead(lead));
     await repairNormalizedAssignments(remoteLeads, rawLeads, user);
+    if (canViewAllLeads(user)) remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
     setStoreLeads(remoteLeads, !cursor);
     persistLeads();
     const loadedLeads = visibleLeads(user);
@@ -645,7 +687,7 @@ export const leadService = {
     return delay({
       leads: loadedLeads,
       hasMore: remoteLeads.length === safePageSize,
-      nextCursor: lastLead && lastDoc ? { updatedAt: lastLead.updatedAt || lastLead.createdAt || '', id: lastDoc.id, snapshot: lastDoc } : null,
+      nextCursor: lastLead && lastDoc ? { createdAt: lastLead.createdAt || lastLead.updatedAt || '', id: lastDoc.id, snapshot: lastDoc } : null,
     });
   },
 
@@ -1023,7 +1065,19 @@ export const leadService = {
   assignLeads: async (leadIds: string[], sales: AdminUser, assignedBy: AdminUser) => {
     if (!canViewAllLeads(assignedBy)) throw new Error('Bạn không có quyền phân lead.');
     if (sales.role !== 'sales' || !sales.active) throw new Error('Chỉ được phân cho user sales đang active.');
-    await leadService.getLeads();
+    const requestedIds = Array.from(new Set(leadIds.filter(Boolean)));
+    const existingIds = new Set(store.leads.map((lead) => lead.id));
+    const missingIds = requestedIds.filter((id) => !existingIds.has(id));
+    if (USE_FIREBASE && missingIds.length) {
+      const snaps = await Promise.all(missingIds.map((id) => getDoc(doc(db!, COL_LEADS, id))));
+      const fetchedLeads = snaps
+        .filter((snap) => snap.exists())
+        .map((snap) => normalizeLead({ ...(snap.data() as Lead), id: (snap.data() as Lead).id || snap.id }));
+      setStoreLeads(fetchedLeads, false);
+    }
+    const availableIds = new Set(store.leads.map((lead) => lead.id));
+    const notFoundIds = requestedIds.filter((id) => !availableIds.has(id));
+    if (notFoundIds.length) throw new Error(`Khong tim thay ${notFoundIds.length} lead can phan.`);
     const timestamp = now();
     const assignedAtMs = Date.now();
     const assignedExpiresAtMs = assignedAtMs + DAY_MS;
@@ -1031,7 +1085,7 @@ export const leadService = {
     const reassignedLeadIds = new Set<string>();
 
     store.leads = store.leads.map((lead) => {
-      if (!leadIds.includes(lead.id)) return lead;
+      if (!requestedIds.includes(lead.id)) return lead;
       const wasAssigned = Boolean(lead.assignedTo || lead.assignedToName);
       if (wasAssigned) reassignedLeadIds.add(lead.id);
       const next: Lead = {

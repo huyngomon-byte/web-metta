@@ -74,6 +74,22 @@ function dateKey(value?: string) {
   return String(value || '').slice(0, 10);
 }
 
+const LEAD_DATABASE_PAGE_SIZE = 100;
+
+function dateOnlyOffset(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultDateFrom() {
+  return dateOnlyOffset(-29);
+}
+
+function defaultDateTo() {
+  return dateOnlyOffset(0);
+}
+
 function isReferralLead(lead: Lead) {
   return String(lead.source || '').trim().toLowerCase() === 'referral';
 }
@@ -88,7 +104,6 @@ type ParentRow = ParentProfile & {
 };
 
 export default function LeadDatabasePage() {
-  const { leads, refresh } = useLeads({ realtime: false });
   const { courseDealSizes } = useCourseCatalog();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState('');
@@ -100,8 +115,8 @@ export default function LeadDatabasePage() {
   const [priority, setPriority] = useState('');
   const [referralFilter, setReferralFilter] = useState('');
   const [financeFilter, setFinanceFilter] = useState('');
-  const [createdFrom, setCreatedFrom] = useState('');
-  const [createdTo, setCreatedTo] = useState('');
+  const [createdFrom, setCreatedFrom] = useState(defaultDateFrom);
+  const [createdTo, setCreatedTo] = useState(defaultDateTo);
   const [importFileName, setImportFileName] = useState('');
   const [parsed, setParsed] = useState<ParsedLeadImportResult | null>(null);
   const [message, setMessage] = useState('');
@@ -117,6 +132,13 @@ export default function LeadDatabasePage() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [editingParent, setEditingParent] = useState<ParentProfile | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const { leads, refresh, loadMore, hasMore, loadingMore } = useLeads({
+    realtime: false,
+    mode: 'paged',
+    pageSize: LEAD_DATABASE_PAGE_SIZE,
+    dateFrom: createdFrom,
+    dateTo: createdTo,
+  });
 
   const refreshParents = useCallback(async () => {
     setParentProfiles(await parentProfileService.seedFromLeads(leads));
@@ -195,7 +217,10 @@ export default function LeadDatabasePage() {
     incomeRanges: Array.from(new Set(parentRows.map((item) => item.incomeRange || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
     knownFrom: Array.from(new Set(parentRows.map((item) => item.knownFrom || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
   }), [parentRows]);
-  const hasAdvancedFilters = Boolean(source || center || sales || course || priority || referralFilter || financeFilter || createdFrom || createdTo);
+  const hasAdvancedFilters = Boolean(
+    source || center || sales || course || priority || referralFilter || financeFilter ||
+    createdFrom !== defaultDateFrom() || createdTo !== defaultDateTo()
+  );
 
   const filtered = useMemo(() => {
     const keyword = query.trim().toLowerCase();
@@ -409,6 +434,7 @@ export default function LeadDatabasePage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => void refresh()} disabled={busy}><RefreshCcw /> Làm mới</Button>
+          {hasMore && <Button variant="outline" onClick={() => void loadMore()} disabled={busy || loadingMore}><RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải' : 'Tải thêm lead'}</Button>}
           <Button variant="outline" onClick={downloadTemplate} disabled={busy}><FileSpreadsheet /> Tải file mẫu</Button>
           <Button onClick={() => void exportDatabase()} disabled={busy}><Download /> Export database</Button>
         </div>
@@ -641,8 +667,8 @@ export default function LeadDatabasePage() {
                     setPriority('');
                     setReferralFilter('');
                     setFinanceFilter('');
-                    setCreatedFrom('');
-                    setCreatedTo('');
+                    setCreatedFrom(defaultDateFrom());
+                    setCreatedTo(defaultDateTo());
                   }}
                 >
                   Xóa filter

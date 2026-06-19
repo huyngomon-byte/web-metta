@@ -30,6 +30,10 @@ type AppointmentSubscribeOptions = {
   limit?: number;
 };
 
+type AppointmentListOptions = AppointmentSubscribeOptions & {
+  order?: 'asc' | 'desc';
+};
+
 function persist() {
   // Appointment data is shared state. Firestore is the only persistent store.
 }
@@ -85,6 +89,16 @@ function appointmentTypeKey(type: string) {
   return type;
 }
 
+function normalizeDateStart(value?: string) {
+  if (!value) return '';
+  return value.length === 10 ? `${value}T00:00:00.000Z` : value;
+}
+
+function normalizeDateEnd(value?: string) {
+  if (!value) return '';
+  return value.length === 10 ? `${value}T23:59:59.999Z` : value;
+}
+
 async function writeFirestore(appointment: Appointment) {
   if (!USE_FIREBASE) return;
   const cleanAppointment = Object.fromEntries(
@@ -126,13 +140,22 @@ async function markOverdueAppointments() {
 }
 
 export const appointmentService = {
-  getAppointments: async () => {
+  getAppointments: async (options: AppointmentListOptions = {}) => {
     const user = currentUser();
 
     if (USE_FIREBASE) {
-      const appointmentQuery = user?.role === 'sales'
-        ? query(collection(db!, COL), where('assignedTo', '==', user.id))
-        : query(collection(db!, COL), orderBy('startTime', 'desc'));
+      const dateFrom = normalizeDateStart(options.dateFrom);
+      const dateTo = normalizeDateEnd(options.dateTo);
+      const safeLimit = options.limit ? Math.max(1, Math.min(1000, Math.round(options.limit))) : 0;
+      const hasRange = Boolean(dateFrom || dateTo);
+      const appointmentQuery = query(
+        collection(db!, COL),
+        ...(user?.role === 'sales' ? [where('assignedTo', '==', user.id)] : []),
+        ...(dateFrom ? [where('startTime', '>=', dateFrom)] : []),
+        ...(dateTo ? [where('startTime', '<=', dateTo)] : []),
+        ...(user?.role !== 'sales' || hasRange ? [orderBy('startTime', options.order || 'desc')] : []),
+        ...(safeLimit ? [limit(safeLimit)] : []),
+      );
       const snap = await getDocs(appointmentQuery);
       let firestoreItems = snap.docs.map((item) => item.data() as Appointment);
       if (canViewAllLeads(user)) firestoreItems = await replaceFirestoreDemoAppointments(firestoreItems);
@@ -157,15 +180,17 @@ export const appointmentService = {
       return () => {};
     }
 
+    const dateFrom = normalizeDateStart(options.dateFrom);
+    const dateTo = normalizeDateEnd(options.dateTo);
     const safeLimit = Math.max(50, Math.min(1000, Math.round(options.limit || REALTIME_APPOINTMENTS_LIMIT)));
-    const canUseDateRange = canViewAllLeads(user) && Boolean(options.dateFrom || options.dateTo);
+    const canUseDateRange = canViewAllLeads(user) && Boolean(dateFrom || dateTo);
     const appointmentQuery = user?.role === 'sales'
       ? query(collection(db!, COL), where('assignedTo', '==', user.id), limit(safeLimit))
       : canUseDateRange
         ? query(
           collection(db!, COL),
-          ...(options.dateFrom ? [where('startTime', '>=', options.dateFrom)] : []),
-          ...(options.dateTo ? [where('startTime', '<=', options.dateTo)] : []),
+          ...(dateFrom ? [where('startTime', '>=', dateFrom)] : []),
+          ...(dateTo ? [where('startTime', '<=', dateTo)] : []),
           orderBy('startTime', 'desc'),
           limit(safeLimit),
         )

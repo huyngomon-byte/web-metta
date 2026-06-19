@@ -1,5 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, RefreshCcw, Save, Search, Settings2, Trash2, UserCheck } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { canDeleteLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { assignmentRuleService, assignmentRulesTotal } from '@/services/assignmentRuleService';
 import { leadService } from '@/services/leadService';
+import type { LeadPageCursor } from '@/services/leadService';
 import { userService } from '@/services/userService';
 import type { SalesAssignmentRule } from '@/types/assignment';
 import type { Lead } from '@/types/crm';
@@ -32,6 +33,7 @@ const groupTabs: { key: GroupKey; title: string }[] = [
 const FILTER_UNASSIGNED = '__unassigned__';
 const FILTER_STALE = '__stale__';
 const FILTER_LEGACY_PREFIX = 'legacy:';
+const LEAD_ASSIGNMENT_PAGE_SIZE = 100;
 
 const CONTACTED_STATUSES: readonly string[] = [leadStatuses[1], leadStatuses[3], leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS, LOST_LEAD_STATUS];
 const TEST_STATUSES: readonly string[] = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
@@ -128,6 +130,9 @@ export default function LeadAssignmentPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const salesUsers = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
   const salesNameById = useMemo(() => new Map(salesUsers.map((sales) => [sales.id, sales.fullName])), [salesUsers]);
@@ -233,24 +238,44 @@ export default function LeadAssignmentPage() {
       .sort((a, b) => b.revenue - a.revenue || b.expectedRevenue - a.expectedRevenue || b.converted - a.converted);
   }, [courseDealSizes, previousLeads, rangeLeads, salesUsers]);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [leadItems, userItems] = await Promise.all([leadService.getLeads(), userService.getUsers()]);
-      setLeads(leadItems);
+      const [leadPage, userItems] = await Promise.all([
+        leadService.getLeadsPage({ pageSize: LEAD_ASSIGNMENT_PAGE_SIZE, dateFrom, dateTo }),
+        userService.getUsers(),
+      ]);
+      setLeads(leadPage.leads);
+      setNextCursor(leadPage.nextCursor);
+      setHasMore(leadPage.hasMore);
       setUsers(userItems);
       setAssignmentRules(await assignmentRuleService.getRules(userItems));
     } finally {
       setLoading(false);
     }
-  };
+  }, [dateFrom, dateTo]);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || !nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const leadPage = await leadService.getLeadsPage({
+        pageSize: LEAD_ASSIGNMENT_PAGE_SIZE,
+        cursor: nextCursor,
+        dateFrom,
+        dateTo,
+      });
+      setLeads(leadPage.leads);
+      setNextCursor(leadPage.nextCursor);
+      setHasMore(leadPage.hasMore);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [dateFrom, dateTo, hasMore, loadingMore, nextCursor]);
 
   useEffect(() => {
     void refresh();
-    return leadService.subscribeLeads(setLeads, () => {
-      void leadService.getLeads().then(setLeads).catch(() => {});
-    });
-  }, []);
+  }, [refresh]);
 
   function toggle(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -338,9 +363,16 @@ export default function LeadAssignmentPage() {
           <h1 className="text-3xl font-extrabold text-slate-950">Phân lead</h1>
           <p className="mt-1 text-slate-500">Tự động chia lead theo tỷ lệ leader setup, theo dõi lead bị trả về và ranking sales.</p>
         </div>
-        <Button variant="outline" onClick={() => refresh()} disabled={loading}>
-          <RefreshCcw className={loading ? 'animate-spin' : ''} /> Làm mới
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {hasMore && (
+            <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
+              <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải' : 'Tải thêm lead'}
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
+            <RefreshCcw className={loading ? 'animate-spin' : ''} /> Làm mới
+          </Button>
+        </div>
       </div>
 
       <Card>

@@ -110,6 +110,18 @@ const emptyLeadImportProgress: LeadImportProgress = {
   message: '',
 };
 
+const LEADS_PAGE_SIZE = 100;
+
+function dateOnlyOffset(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultLeadFilters() {
+  return { search: '', status: '', source: '', centerName: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: dateOnlyOffset(-29), dateTo: dateOnlyOffset(0) };
+}
+
 const statusTone: Record<number, Parameters<typeof Badge>[0]['tone']> = {
   0: 'blue',
   1: 'cyan',
@@ -357,14 +369,20 @@ function nextUiFrame() {
 export default function LeadsPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
-  const { leads, refresh, loadMore, hasMore, loadingMore } = useLeads({ pageSize: 500 });
   const { startOutboundCall } = useCallCenter();
   const { courseOptions, courseDealSizes } = useCourseCatalog();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [sourceConfigs, setSourceConfigs] = useState<LeadSourceConfig[]>([]);
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
-  const [filters, setFilters] = useState({ search: '', status: '', source: '', centerName: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
+  const [filters, setFilters] = useState(defaultLeadFilters);
+  const { leads, refresh, loadMore, hasMore, loadingMore } = useLeads({
+    realtime: false,
+    mode: 'paged',
+    pageSize: LEADS_PAGE_SIZE,
+    dateFrom: filters.dateFrom,
+    dateTo: filters.dateTo,
+  });
   const [view, setView] = useState<'table' | 'kanban'>(searchParams.get('view') === 'table' ? 'table' : 'kanban');
   const focusLeadId = searchParams.get('leadId') || '';
   const [editing, setEditing] = useState<LeadDraft | null>(null);
@@ -397,7 +415,7 @@ export default function LeadsPage() {
       filters.assignedTo,
     ].filter(Boolean).length + (dateRangeActive ? 1 : 0);
   }, [filters]);
-  const resetFilters = () => setFilters({ search: '', status: '', source: '', centerName: '', priorityLevel: '', course: '', assignedTo: '', dateFrom: '', dateTo: '' });
+  const resetFilters = () => setFilters(defaultLeadFilters());
 
   const refreshCallLogs = useCallback(async () => {
     setCallLogs(await callCenterService.getLogs());
