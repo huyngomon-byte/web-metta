@@ -1,5 +1,6 @@
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import { PUBLIC_PROGRAMS } from '@/lib/constants';
+import { normalizeHomepageContentSection } from '@/lib/publicCmsTextRepair';
 import type { CmsPage, PageSection, SiteSettings } from '@/types/cms';
 
 type PublicCmsSnapshot = {
@@ -185,7 +186,11 @@ function normalizeHomepageBenefitsSection(section: PageSection): PageSection {
 }
 
 function normalizeSections(items: PageSection[]) {
-  return sortSections(normalizeCmsValue(items).map(normalizeHomepageBenefitsSection));
+  return sortSections(
+    normalizeCmsValue(items)
+      .map(normalizeHomepageBenefitsSection)
+      .map(normalizeHomepageContentSection),
+  );
 }
 
 function sortSections(items: PageSection[]) {

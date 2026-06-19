@@ -10,6 +10,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, resolveCourseDealSizeForProgram } from '@/lib/constants';
+import { normalizeHomepageContentSection } from '@/lib/publicCmsTextRepair';
 import { delay, persistCMS, store } from '@/services/store';
 import {
   pages as seedPages,
@@ -212,7 +213,11 @@ function normalizeHomepageHeroSection(section: PageSection): PageSection {
 }
 
 function normalizeCmsSections(items: PageSection[]) {
-  return sortSections(normalizeCmsValue(items).map(normalizeHomepageHeroSection));
+  return sortSections(
+    normalizeCmsValue(items)
+      .map(normalizeHomepageHeroSection)
+      .map(normalizeHomepageContentSection),
+  );
 }
 
 function currentProgramSettings() {
