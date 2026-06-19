@@ -8,7 +8,7 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { delay, persistCMS, store } from '@/services/store';
 import {
@@ -43,6 +43,16 @@ const FIRESTORE_TIMEOUT_MS = 2500;
 const CURRENT_PROGRAM_SLUGS = PUBLIC_PROGRAMS.map((program) => program.slug);
 
 let lastWriteError: string | null = null;
+let lastPublishError: string | null = null;
+let publishTimer: number | null = null;
+
+type PublicCmsSnapshotPayload = {
+  pages: CmsPage[];
+  sections: PageSection[];
+  settings: SiteSettings;
+  generatedAt: string;
+  schemaVersion: number;
+};
 
 const CP1252_EXTENSIONS: Record<number, number> = {
   0x20ac: 0x80,
@@ -413,6 +423,59 @@ function ensureLocalSeed() {
   persistCMS();
 }
 
+function publicSnapshotFromStore(): PublicCmsSnapshotPayload {
+  ensureLocalSeed();
+  const pages = mergeSeedPages(store.pages.length ? store.pages : normalizeCmsValue([...seedPages]))
+    .filter((page) => page.status === 'published');
+  const publishedPageIds = new Set(pages.map((page) => page.id));
+  const sections = normalizeCmsSections(store.sections.length ? store.sections : [...seedSections])
+    .filter((section) => section.visible && publishedPageIds.has(section.pageId));
+  const settings = normalizeCourseSettings(store.siteSettings ?? seedSettings);
+
+  return {
+    pages,
+    sections,
+    settings,
+    generatedAt: now(),
+    schemaVersion: 1,
+  };
+}
+
+async function publishPublicSnapshotNow() {
+  lastPublishError = null;
+  const user = auth?.currentUser;
+  if (!user) {
+    lastPublishError = 'Chua dang nhap Firebase nen chua publish duoc public CMS snapshot.';
+    return null;
+  }
+
+  const token = await user.getIdToken();
+  const response = await fetch('/api/app-config?id=publicCms', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ snapshot: publicSnapshotFromStore() }),
+  });
+  const payload = await response.json().catch(() => ({})) as { error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error || 'Khong publish duoc public CMS snapshot.');
+  }
+  return payload;
+}
+
+function schedulePublicSnapshotPublish() {
+  if (typeof window === 'undefined') return;
+  if (publishTimer) window.clearTimeout(publishTimer);
+  publishTimer = window.setTimeout(() => {
+    publishPublicSnapshotNow().catch((error) => {
+      lastPublishError = error instanceof Error ? error.message : 'Khong publish duoc public CMS snapshot.';
+      console.warn('[CMS] Cannot publish public snapshot:', error);
+    });
+  }, 700);
+}
+
 async function tryWriteSeedData() {
   if (!USE_FIREBASE) return;
   try {
@@ -545,6 +608,8 @@ async function writeRemoteSettings(settings: SiteSettings) {
 
 export const cmsService = {
   getLastWriteError: () => lastWriteError,
+  getLastPublishError: () => lastPublishError,
+  publishPublicSnapshot: publishPublicSnapshotNow,
 
   getPages: async () => {
     ensureLocalSeed();
@@ -592,6 +657,7 @@ export const cmsService = {
       ? store.pages.map((item) => (item.id === saved.id ? saved : item))
       : [saved, ...store.pages];
     persistCMS();
+    schedulePublicSnapshotPublish();
     return delay(store.pages);
   },
 
@@ -647,6 +713,7 @@ export const cmsService = {
     if (USE_FIREBASE && (!pageOk || sectionResults.some((ok) => !ok))) {
       throw new Error(lastWriteError || 'Không ghi được Firestore khi sao chép trang.');
     }
+    schedulePublicSnapshotPublish();
     return delay(newPage);
   },
 
@@ -665,6 +732,7 @@ export const cmsService = {
     store.pages = store.pages.filter((page) => page.id !== id);
     store.sections = store.sections.filter((section) => section.pageId !== id);
     persistCMS();
+    schedulePublicSnapshotPublish();
     return true;
   },
 
@@ -738,6 +806,7 @@ export const cmsService = {
       : [...store.sections, saved];
     markLocalSectionEdited();
     persistCMS();
+    schedulePublicSnapshotPublish();
     return delay(sortSections(store.sections.filter((item) => item.pageId === saved.pageId)));
   },
 
@@ -752,6 +821,7 @@ export const cmsService = {
     store.sections = store.sections.filter((section) => section.id !== id);
     markLocalSectionEdited();
     persistCMS();
+    schedulePublicSnapshotPublish();
     return true;
   },
 
@@ -772,6 +842,7 @@ export const cmsService = {
     if (USE_FIREBASE && (!sectionOk || !swapOk)) throw new Error(lastWriteError || 'Không ghi được thứ tự section vào Firestore.');
     markLocalSectionEdited();
     persistCMS();
+    schedulePublicSnapshotPublish();
     return delay(sortSections(store.sections.filter((item) => item.pageId === section.pageId)));
   },
 
@@ -792,6 +863,7 @@ export const cmsService = {
     if (USE_FIREBASE && !settingsOk) throw new Error(lastWriteError || 'Không ghi được site settings vào Firestore.');
     store.siteSettings = saved;
     persistCMS();
+    schedulePublicSnapshotPublish();
     return delay(saved);
   },
 
@@ -801,6 +873,10 @@ export const cmsService = {
     store.siteSettings = normalizeCourseSettings({ ...seedSettings });
     persistCMS();
     await tryWriteSeedData();
+    await publishPublicSnapshotNow().catch((error) => {
+      lastPublishError = error instanceof Error ? error.message : 'Khong publish duoc public CMS snapshot.';
+      console.warn('[CMS] Cannot publish public snapshot after reset:', error);
+    });
     window.location.reload();
   },
 };

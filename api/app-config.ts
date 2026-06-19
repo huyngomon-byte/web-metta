@@ -1,4 +1,12 @@
 import { adminAuth, adminDb } from './_firebaseAdmin.js';
+import {
+  PUBLIC_CMS_CACHE_HEADER,
+  normalizePublicCmsSnapshot,
+  readPublicCmsBlobSnapshot,
+  writePublicCmsBlobSnapshot,
+  type PublicCmsDocument,
+  type PublicCmsSnapshot,
+} from './_publicCmsSnapshot.js';
 import { sendBlogPage, sendSitemap } from './_publicSeoServer.js';
 
 type VercelRequest = {
@@ -15,24 +23,13 @@ type VercelResponse = {
   json: (body: unknown) => void;
 };
 
-type PublicCmsDocument = {
-  id: string;
-  [key: string]: unknown;
-};
-
-type PublicCmsSnapshot = {
-  pages: PublicCmsDocument[];
-  sections: PublicCmsDocument[];
-  settings: Record<string, unknown> | null;
-  generatedAt: string;
-};
-
 type AppConfigUser = {
+  id: string;
+  email: string;
   role: string;
   active: boolean;
 };
 
-const PUBLIC_CMS_EDGE_CACHE = 'public, max-age=15, s-maxage=60, stale-while-revalidate=3600';
 const PUBLIC_CMS_MEMORY_TTL_MS = 60 * 1000;
 const PUBLIC_CMS_MEMORY_STALE_MS = 24 * 60 * 60 * 1000;
 
@@ -87,11 +84,13 @@ async function readPublicCmsSnapshot(): Promise<PublicCmsSnapshot> {
       .map((doc) => serializable(doc.data(), doc.id))
       .filter((section) => publishedPageIds.has(String(section.pageId || '')))
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-    const snapshot = {
+    const snapshot: PublicCmsSnapshot = {
       pages,
       sections,
       settings: settingsSnap.exists ? settingsSnap.data() || null : null,
       generatedAt: new Date().toISOString(),
+      source: 'firestore-fallback',
+      schemaVersion: 1,
     };
 
     publicCmsMemoryCache = {
@@ -122,11 +121,20 @@ async function requireActiveUser(req: VercelRequest): Promise<AppConfigUser> {
   const role = data.role || decoded.role;
   const active = snap.exists ? data.active !== false : true;
   if (!active) throw new Error('Inactive user');
-  return { role: String(role || ''), active };
+  return {
+    id: decoded.uid,
+    email: String(data.email || decoded.email || ''),
+    role: String(role || ''),
+    active,
+  };
 }
 
 function isLeadManager(user: AppConfigUser) {
   return user.active && ['admin', 'manager'].includes(user.role);
+}
+
+function canManageCms(user: AppConfigUser) {
+  return user.active && ['admin', 'manager', 'design'].includes(user.role);
 }
 
 function canReadAppConfig(id: string, user: AppConfigUser) {
@@ -142,8 +150,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = String(queryValue(req.query?.id) || req.body?.id || '');
 
     if (req.method === 'GET' && id === 'publicCms') {
-      res.setHeader?.('Cache-Control', PUBLIC_CMS_EDGE_CACHE);
-      return res.status(200).json(await readPublicCmsSnapshot());
+      res.setHeader?.('Cache-Control', PUBLIC_CMS_CACHE_HEADER);
+      const blobSnapshot = await readPublicCmsBlobSnapshot().catch((error) => {
+        console.warn('[PublicCMS] Cannot read Blob snapshot:', error);
+        return null;
+      });
+      if (blobSnapshot) {
+        res.setHeader?.('X-Public-CMS-Source', 'blob');
+        return res.status(200).json(blobSnapshot.snapshot);
+      }
+
+      const firestoreFallback = await readPublicCmsSnapshot().catch((error) => {
+        console.warn('[PublicCMS] Cannot read Firestore fallback:', error);
+        return null;
+      });
+      if (firestoreFallback) {
+        res.setHeader?.('X-Public-CMS-Source', 'firestore-fallback');
+        return res.status(200).json(firestoreFallback);
+      }
+
+      res.setHeader?.('X-Public-CMS-Source', 'unavailable');
+      return res.status(503).json({ error: 'Public CMS snapshot is unavailable.' });
+    }
+
+    if ((req.method === 'PUT' || req.method === 'PATCH') && id === 'publicCms') {
+      const user = await requireActiveUser(req);
+      if (!canManageCms(user)) throw new Error('Only CMS users can publish public CMS snapshots');
+
+      const snapshot = normalizePublicCmsSnapshot(req.body?.snapshot || req.body);
+      const result = await writePublicCmsBlobSnapshot(snapshot, {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      });
+
+      res.setHeader?.('Cache-Control', 'no-store, max-age=0, must-revalidate');
+      res.setHeader?.('X-Public-CMS-Source', 'blob');
+      return res.status(200).json({
+        id: 'publicCms',
+        ok: true,
+        source: 'blob',
+        url: result.blob.url,
+        pathname: result.blob.pathname,
+        publishedAt: result.snapshot.publishedAt,
+      });
     }
 
     if (req.method === 'GET' && id === 'sitemap') {
