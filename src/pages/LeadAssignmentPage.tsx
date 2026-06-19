@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, RefreshCcw, Save, Search, Settings2, Trash2, UserCheck } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, RefreshCcw, Save, Search, Settings2, Shuffle, Trash2, UserCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -99,6 +99,12 @@ function leadBelongsToSales(lead: Lead, sales: AdminUser) {
   return lead.assignedTo === sales.id || lead.assignedTo === sales.fullName || lead.assignedToName === sales.fullName;
 }
 
+function newLeadMatchesRule(lead: Lead, rule: SalesAssignmentRule) {
+  return lead.status === leadStatuses[0]
+    && lead.assignedStatus !== 'returned'
+    && (lead.assignedTo === rule.salesId || lead.assignedTo === rule.salesName || lead.assignedToName === rule.salesName);
+}
+
 function leadReturnedToSales(lead: Lead, sales: AdminUser) {
   return lead.failedAssignedTo === sales.id || lead.failedAssignedTo === sales.fullName || lead.failedAssignedToName === sales.fullName || (leadBelongsToSales(lead, sales) && lead.assignedStatus === 'returned');
 }
@@ -133,6 +139,7 @@ export default function LeadAssignmentPage() {
   const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [bulkAssigning, setBulkAssigning] = useState(false);
 
   const salesUsers = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
   const salesNameById = useMemo(() => new Map(salesUsers.map((sales) => [sales.id, sales.fullName])), [salesUsers]);
@@ -356,6 +363,42 @@ export default function LeadAssignmentPage() {
     }
   }
 
+  async function bulkAutoAssignNewLeads() {
+    setError('');
+    setMessage('');
+    if (!user) {
+      setError('Vui lòng đăng nhập lại trước khi auto chia lead.');
+      return;
+    }
+    if (!rulesValid || !assignmentRules.length) {
+      setError('Tổng tỷ lệ active trong rule chia lead phải bằng 100%.');
+      return;
+    }
+    if (!salesUsers.length) {
+      setError('Chưa có sales active để nhận lead.');
+      return;
+    }
+    if (!confirm('Auto chia toàn bộ Lead mới chưa có PIC active theo rule hiện tại?')) return;
+
+    setBulkAssigning(true);
+    try {
+      const result = await assignmentRuleService.bulkAutoAssignNewLeads();
+      const distribution = result.distribution
+        .filter((item) => item.assigned > 0)
+        .map((item) => `${item.salesName}: ${item.assigned}`)
+        .join(', ');
+      setMessage(result.assignedCount
+        ? `Đã auto chia ${result.assignedCount}/${result.candidateCount} Lead mới chưa có PIC. ${distribution}`
+        : `Không có Lead mới chưa có PIC active cần chia. Hiện có ${result.baselineAssignedCount}/${result.totalNewLeadCount} Lead mới đã có sales active.`);
+      setSelected([]);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không auto chia được lead mới.');
+    } finally {
+      setBulkAssigning(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
@@ -387,8 +430,11 @@ export default function LeadAssignmentPage() {
                 Tổng tỷ lệ active phải bằng 100%.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
               <Badge tone={rulesValid ? 'green' : 'red'}>Tổng {rulesTotal}%</Badge>
+              <Button variant="outline" onClick={bulkAutoAssignNewLeads} disabled={!rulesValid || !assignmentRules.length || !salesUsers.length || bulkAssigning}>
+                <Shuffle className={bulkAssigning ? 'animate-spin' : ''} /> {bulkAssigning ? 'Đang chia' : 'Auto chia Lead mới'}
+              </Button>
               <Button onClick={saveRules} disabled={!rulesValid || !assignmentRules.length}>
                 <Save /> Lưu rule
               </Button>
@@ -403,14 +449,14 @@ export default function LeadAssignmentPage() {
                   <th className="py-2">Sales</th>
                   <th className="py-2 text-center">Active</th>
                   <th className="py-2 text-center">Tỷ lệ assign</th>
-                  <th className="py-2 text-center">Đang nhận</th>
+                  <th className="py-2 text-center">Lead mới đang nhận</th>
                   <th className="py-2 text-center">Share thực tế</th>
                 </tr>
               </thead>
               <tbody>
                 {assignmentRules.map((rule) => {
-                  const assigned = leads.filter((lead) => lead.assignedTo === rule.salesId || lead.assignedToName === rule.salesName || lead.assignedTo === rule.salesName).length;
-                  const assignedTotal = leads.filter((lead) => lead.assignedTo || lead.assignedToName).length;
+                  const assigned = leads.filter((lead) => newLeadMatchesRule(lead, rule)).length;
+                  const assignedTotal = leads.filter((lead) => assignmentRules.some((item) => newLeadMatchesRule(lead, item))).length;
                   return (
                     <tr key={rule.salesId} className="border-b border-slate-50">
                       <td className="py-2 font-bold text-slate-900">{rule.salesName}</td>

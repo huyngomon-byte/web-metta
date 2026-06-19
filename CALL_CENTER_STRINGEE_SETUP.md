@@ -12,10 +12,15 @@ STRINGEE_FROM_NUMBER=
 CALL_FALLBACK_AGENT_ID=
 CALL_FALLBACK_AGENT_NAME=
 PUBLIC_APP_URL=https://www.metta.edu.vn
-REQUIRE_RECORDING_AUTH=false
+REQUIRE_RECORDING_AUTH=true
+CALL_LOCK_TTL_MS=7200000
 ```
 
 Do not add real SID, API secret, or signing secret to Git.
+
+Recording playback is protected by Firebase role checks in the CRM. Only Admin and Manager can stream recordings from `/api/call/recording` or `/crm/calls/{call_id}/recording`.
+
+`CALL_LOCK_TTL_MS` controls the global outbound lock duration. Keep the default near 2 hours so only one Sales can use the shared hotline at a time, while abandoned locks still expire.
 
 `STRINGEE_SIGNING_SECRET` is optional for now. Leave it empty unless Stringee provides the exact webhook signature format for PCC callbacks.
 

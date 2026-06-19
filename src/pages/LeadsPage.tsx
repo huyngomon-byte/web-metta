@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/select';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { CallRecordingButton } from '@/components/call/CallRecordingPlayer';
 import { useCallCenter } from '@/context/CallCenterContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseCatalog } from '@/hooks/useCms';
@@ -1705,11 +1706,7 @@ function LeadDetailModal({
                       {leadCallLogs.slice(0, 6).map((log) => (
                         <div key={log.id} className="flex flex-col justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm md:flex-row md:items-center">
                           <span className="font-semibold text-slate-700">{callLogText(log)}</span>
-                          {log.recordingUrl && (
-                            <a className="text-xs font-bold text-[#003B7A] hover:underline" href={callCenterService.recordingProxyUrl(log)} target="_blank" rel="noreferrer">
-                              Ghi âm
-                            </a>
-                          )}
+                          <CallRecordingButton log={log} className="text-xs" />
                         </div>
                       ))}
                     </div>
@@ -2030,17 +2027,7 @@ function CallLogInline({ log }: { log?: CallLog }) {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
       <span>Call: {callLogText(log)}</span>
-      {log.recordingUrl && (
-        <a
-          className="font-bold text-[#003B7A] hover:underline"
-          href={callCenterService.recordingProxyUrl(log)}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(event) => event.stopPropagation()}
-        >
-          Ghi âm
-        </a>
-      )}
+      <CallRecordingButton log={log} />
     </div>
   );
 }

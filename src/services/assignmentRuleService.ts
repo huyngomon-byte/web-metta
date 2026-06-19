@@ -1,5 +1,5 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
 import { readAppConfig, writeAppConfig } from '@/services/appConfigApi';
 import type { Lead } from '@/types/crm';
 import type { SalesAssignmentPick, SalesAssignmentRule } from '@/types/assignment';
@@ -10,6 +10,31 @@ const CONFIG_COLLECTION = 'appConfig';
 const CONFIG_DOC_ID = 'salesAssignmentRules';
 
 let cachedRules: SalesAssignmentRule[] | null = null;
+
+export type BulkAutoAssignNewLeadsResult = {
+  ok: boolean;
+  status: string;
+  totalNewLeadCount: number;
+  baselineAssignedCount: number;
+  candidateCount: number;
+  assignedCount: number;
+  distribution: Array<{
+    salesId: string;
+    salesName: string;
+    percent: number;
+    before: number;
+    assigned: number;
+    after: number;
+    shareAfter: number;
+    targetAfter: number;
+  }>;
+};
+
+async function authHeaders() {
+  const token = await auth?.currentUser?.getIdToken();
+  if (!token) throw new Error('Missing auth token');
+  return { Authorization: `Bearer ${token}` };
+}
 
 function activeSales(users: AdminUser[]) {
   return users.filter((user) => user.role === 'sales' && user.active);
@@ -196,5 +221,14 @@ export const assignmentRuleService = {
     }
     writeStored(normalized);
     return normalized;
+  },
+  bulkAutoAssignNewLeads: async (): Promise<BulkAutoAssignNewLeadsResult> => {
+    const response = await fetch('/api/app-config?id=bulkAutoAssignNewLeads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    });
+    const payload = await response.json().catch(() => ({})) as Partial<BulkAutoAssignNewLeadsResult> & { error?: string };
+    if (!response.ok) throw new Error(payload.error || 'Không auto chia được lead mới.');
+    return payload as BulkAutoAssignNewLeadsResult;
   },
 };

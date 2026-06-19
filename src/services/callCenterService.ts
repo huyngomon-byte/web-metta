@@ -296,18 +296,30 @@ export const callCenterService = {
       id: existing?.id || id,
       provider: 'stringee',
       providerCallId: input.providerCallId || existing?.providerCallId || id,
+      clientCallId: input.clientCallId || existing?.clientCallId,
+      stringeeCallId: input.stringeeCallId || existing?.stringeeCallId,
       direction: input.direction || existing?.direction || 'outbound',
       status: input.status || existing?.status || 'queued',
+      callStatus: input.callStatus || input.status || existing?.callStatus || existing?.status || 'queued',
       leadId: input.leadId || existing?.leadId,
+      customerId: input.customerId || existing?.customerId || input.leadId || existing?.leadId,
       leadName: input.leadName || existing?.leadName,
       agentId: input.agentId || existing?.agentId || currentUser()?.id,
+      saleId: input.saleId || existing?.saleId || input.agentId || existing?.agentId || currentUser()?.id,
       agentName: input.agentName || existing?.agentName || currentUser()?.fullName,
+      stringeeAgentId: input.stringeeAgentId || existing?.stringeeAgentId,
+      routedAgentId: input.routedAgentId || existing?.routedAgentId,
+      routedAgentName: input.routedAgentName || existing?.routedAgentName,
+      agentPhoneNumber: input.agentPhoneNumber || existing?.agentPhoneNumber,
       fromNumber: input.fromNumber || existing?.fromNumber || '',
       toNumber: input.toNumber || existing?.toNumber || '',
       customerNumber: input.customerNumber || existing?.customerNumber || input.toNumber || '',
       startedAt: input.startedAt || existing?.startedAt || timestamp,
+      startTime: input.startTime || existing?.startTime || input.startedAt || existing?.startedAt || timestamp,
       answeredAt: input.answeredAt || existing?.answeredAt,
+      answerTime: input.answerTime || existing?.answerTime || input.answeredAt || existing?.answeredAt,
       endedAt: input.endedAt || existing?.endedAt,
+      stopTime: input.stopTime || existing?.stopTime || input.endedAt || existing?.endedAt,
       durationSec: input.durationSec ?? existing?.durationSec,
       recordingUrl: input.recordingUrl || existing?.recordingUrl,
       recordingExpiresAt: input.recordingExpiresAt || existing?.recordingExpiresAt,
@@ -387,7 +399,14 @@ export const callCenterService = {
   },
 
   recordingProxyUrl: (log: Pick<CallLog, 'id' | 'providerCallId'>) => {
+    const id = log.id || log.providerCallId;
+    return `/api/call/recording?callLogId=${encodeURIComponent(id)}`;
+  },
+
+  recordingProxyUrlById: (callLogId: string) => `/api/call/recording?callLogId=${encodeURIComponent(callLogId)}`,
+
+  recordingPageUrl: (log: Pick<CallLog, 'id' | 'providerCallId'>) => {
     const id = encodeURIComponent(log.id || log.providerCallId);
-    return `/api/call/recording?callLogId=${id}`;
+    return `/crm/calls/${id}/recording`;
   },
 };

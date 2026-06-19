@@ -1,6 +1,7 @@
 import { Mic, MicOff, Phone, PhoneCall, PhoneIncoming, PhoneOff, RadioTower, Save, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { CallRecordingButton } from '@/components/call/CallRecordingPlayer';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useCallCenter } from '@/context/CallCenterContext';
@@ -139,16 +140,7 @@ export function CallWidget() {
               {dispositions.map((item) => <option key={item} value={item}>{item}</option>)}
             </Select>
             <Textarea rows={3} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Ghi chú nhanh sau cuộc gọi..." />
-            {pendingWrapUp.recordingUrl && (
-              <a
-                href={callCenterService.recordingProxyUrl(pendingWrapUp)}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-bold text-[#003B7A] hover:underline"
-              >
-                Mở ghi âm Stringee
-              </a>
-            )}
+            <CallRecordingButton log={pendingWrapUp} className="text-xs" />
             <Button onClick={() => void saveWrapUp(disposition, note)}>
               <Save size={16} /> Lưu call log
             </Button>

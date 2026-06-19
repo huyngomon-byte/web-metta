@@ -68,6 +68,21 @@ type LeadAssignmentCount = {
   count?: number;
 };
 
+type LeadDoc = Record<string, any> & {
+  id: string;
+  parentName?: string;
+  studentName?: string;
+  fullName?: string;
+  phone?: string;
+  status?: string;
+  assignedTo?: string;
+  assignedToName?: string;
+  assignedStatus?: string;
+  assignedExpiresAtMs?: number;
+  stageHistory?: Array<{ status: string; enteredAt: string; exitedAt?: string }>;
+  submissionHistory?: Array<Record<string, unknown>>;
+};
+
 type VercelRequest = {
   method?: string;
   headers: Record<string, string | string[] | undefined>;
@@ -149,6 +164,32 @@ function originFromRequest(req: VercelRequest) {
 
 function cleanName(value?: string) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function identityKey(value?: string) {
+  return cleanName(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, stripUndefined(item)]),
+    ) as T;
+  }
+  return value;
+}
+
+function stringOrExisting(value: unknown, existing: unknown, fallback = '') {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (text) return text;
+  const existingText = typeof existing === 'string' ? existing.trim() : '';
+  return existingText || fallback;
 }
 
 function cleanPercent(value: unknown) {
@@ -278,6 +319,24 @@ function chooseAutoAssignedSales(leads: LeadAssignmentCount[], users: AdminUser[
   return winner ? { salesId: winner.salesId, salesName: winner.salesName } : null;
 }
 
+async function countAssignedLeadsForRule(db: ReturnType<typeof adminDb>, rule: SalesAssignmentRule) {
+  const leadIds = new Set<string>();
+  const collect = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
+    snap.docs.forEach((doc) => {
+      if (doc.data().assignedStatus !== 'returned') leadIds.add(doc.id);
+    });
+  };
+
+  const queries = [
+    db.collection('leads').where('assignedTo', '==', rule.salesId).get(),
+    db.collection('leads').where('assignedTo', '==', rule.salesName).get(),
+    db.collection('leads').where('assignedToName', '==', rule.salesName).get(),
+  ];
+  const snapshots = await Promise.all(queries);
+  snapshots.forEach(collect);
+  return leadIds.size;
+}
+
 async function priorityForSource(db: ReturnType<typeof adminDb>, source: string) {
   try {
     const snap = await db.collection('appConfig').doc('leadSourceConfigs').get();
@@ -291,6 +350,61 @@ async function priorityForSource(db: ReturnType<typeof adminDb>, source: string)
     console.warn('[PublicLead] Source priority config read failed, using fallback:', error);
   }
   return SOURCE_PRIORITY[source] || 1;
+}
+
+function leadStudentKey(lead: LeadDoc) {
+  return identityKey(lead.studentName || lead.fullName || '');
+}
+
+function leadParentKey(lead: LeadDoc) {
+  return identityKey(lead.parentName || '');
+}
+
+async function findMatchingLead(db: ReturnType<typeof adminDb>, phone: string, parentName: string, studentName: string) {
+  const snap = await db.collection('leads').where('phone', '==', phone).limit(25).get();
+  const candidates = snap.docs.map((item) => ({ id: item.id, ...item.data() }) as LeadDoc);
+  if (!candidates.length) return null;
+
+  const parent = identityKey(parentName);
+  const student = identityKey(studentName);
+  const exactStudent = candidates.find((lead) => student && leadStudentKey(lead) === student);
+  if (exactStudent) return exactStudent;
+
+  const sameParentWithoutStudent = candidates.find((lead) => {
+    const leadParent = leadParentKey(lead);
+    const leadStudent = leadStudentKey(lead);
+    return parent && leadParent === parent && !leadStudent;
+  });
+  if (sameParentWithoutStudent) return sameParentWithoutStudent;
+
+  if (candidates.length === 1) {
+    const only = candidates[0];
+    const leadParent = leadParentKey(only);
+    const leadStudent = leadStudentKey(only);
+    if (!leadStudent && (!leadParent || leadParent === parent)) return only;
+  }
+
+  return null;
+}
+
+function assignmentStillActive(lead: LeadDoc | null, nowMs: number) {
+  if (!lead?.assignedTo) return false;
+  if (lead.assignedStatus === 'returned') return false;
+  if (lead.assignedStatus === 'accepted') return true;
+  const expiresAt = Number(lead.assignedExpiresAtMs || 0);
+  return !expiresAt || expiresAt > nowMs;
+}
+
+function nextStageHistory(existing: LeadDoc | null, status: string, now: string) {
+  const history = Array.isArray(existing?.stageHistory) ? existing!.stageHistory : [];
+  const last = history[history.length - 1];
+  if (last?.status === status) return history;
+  return [...history, { status, enteredAt: now }];
+}
+
+function nextSubmissionHistory(existing: LeadDoc | null, entry: Record<string, unknown>) {
+  const history = Array.isArray(existing?.submissionHistory) ? existing!.submissionHistory : [];
+  return [...history.slice(-19), entry];
 }
 
 async function pickAutoAssignedSales(db: ReturnType<typeof adminDb>) {
@@ -308,12 +422,11 @@ async function pickAutoAssignedSales(db: ReturnType<typeof adminDb>) {
     const normalizedRules = normalizeAssignmentRules(users, rules);
     const countableRules = normalizedRules.filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
     const counts = await Promise.all(countableRules.map(async (rule) => {
-      const snap = await db.collection('leads').where('assignedTo', '==', rule.salesId).count().get();
       return {
         assignedTo: rule.salesId,
         assignedToName: rule.salesName,
         assignedStatus: 'active',
-        count: snap.data().count,
+        count: await countAssignedLeadsForRule(db, rule),
       };
     }));
     return chooseAutoAssignedSales(counts, users, normalizedRules);
@@ -323,7 +436,7 @@ async function pickAutoAssignedSales(db: ReturnType<typeof adminDb>) {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const lead = req.body || {};
@@ -365,85 +478,112 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (String(source).toLowerCase() === 'referral' && !isValidPhone(referralPhone)) {
     return res.status(400).json({ error: 'Referral source requires a valid referralPhone' });
   }
+  const existingLead = await findMatchingLead(db, phone, parentName, studentName);
+  const existingAssignmentActive = assignmentStillActive(existingLead, nowMs);
   const requestedStatus = typeof lead.status === 'string' ? lead.status.trim() : '';
-  const status = LEAD_STATUSES.includes(requestedStatus) ? requestedStatus : 'Lead mới';
+  const status = LEAD_STATUSES.includes(requestedStatus) ? requestedStatus : existingLead?.status || 'Lead mới';
   const isWonLead = status === WON_LEAD_STATUS;
   const rawDealSize = Number(lead.dealSize);
+  const existingDealSize = Number(existingLead?.dealSize || 0);
   const dealSize = Number.isFinite(rawDealSize) && rawDealSize > 0
     ? rawDealSize
     : interestedCourse === METTA_SUMMER_COURSE
       ? METTA_SUMMER_DEAL_SIZE
-      : 0;
+      : existingDealSize;
   const rawExpectedRevenue = Number(lead.expectedRevenue);
-  const expectedRevenue = Number.isFinite(rawExpectedRevenue) && rawExpectedRevenue > 0 ? rawExpectedRevenue : dealSize;
+  const existingExpectedRevenue = Number(existingLead?.expectedRevenue || 0);
+  const expectedRevenue = Number.isFinite(rawExpectedRevenue) && rawExpectedRevenue > 0
+    ? rawExpectedRevenue
+    : dealSize || existingExpectedRevenue;
   const rawRevenue = Number(lead.revenue);
-  const revenue = Number.isFinite(rawRevenue) && rawRevenue > 0 ? rawRevenue : isWonLead ? expectedRevenue : 0;
+  const existingRevenue = Number(existingLead?.revenue || 0);
+  const revenue = Number.isFinite(rawRevenue) && rawRevenue > 0 ? rawRevenue : isWonLead ? expectedRevenue : existingRevenue;
 
-  const leadRef = db.collection('leads').doc();
+  const leadRef = existingLead ? db.collection('leads').doc(existingLead.id) : db.collection('leads').doc();
   const sourceUrl = lead.sourceUrl || `${originFromRequest(req)}/${lead.pageSlug || ''}`;
   const [priorityLevel, autoAssignedSales] = await Promise.all([
     priorityForSource(db, source),
-    pickAutoAssignedSales(db),
+    existingAssignmentActive ? Promise.resolve(null) : pickAutoAssignedSales(db),
   ]);
-  const assignedTo = autoAssignedSales?.salesId || '';
-  const assignedToName = autoAssignedSales?.salesName || '';
+  const assignedTo = existingAssignmentActive ? String(existingLead?.assignedTo || '') : autoAssignedSales?.salesId || '';
+  const assignedToName = existingAssignmentActive ? String(existingLead?.assignedToName || '') : autoAssignedSales?.salesName || '';
+  const assignedAtMs = assignedTo ? existingAssignmentActive ? Number(existingLead?.assignedAtMs || nowMs) : nowMs : 0;
+  const assignedExpiresAtMs = assignedTo
+    ? existingAssignmentActive ? Number(existingLead?.assignedExpiresAtMs || 0) : nowMs + DAY_MS
+    : 0;
+  const assignedStatus = assignedTo ? existingAssignmentActive ? existingLead?.assignedStatus || 'active' : 'active' : 'unassigned';
   const tracking = trackingFromLead(lead, sourceUrl, req, now);
+  const submissionEntry = stripUndefined({
+    at: now,
+    source,
+    sourceUrl,
+    formId: lead.formId || 'public-lead-form',
+    pageSlug: lead.pageSlug || '',
+    parentName,
+    studentName,
+    phone,
+    interestedCourse,
+  });
 
-  const payload = {
+  const payload = stripUndefined({
     id: leadRef.id,
     fullName: studentName,
     parentName,
     studentName,
     phone,
-    email: lead.email ? String(lead.email).trim() : '',
-    contactType: lead.contactType || 'parent',
-    age: lead.age || '',
-    school: lead.school || '',
-    currentClass: lead.currentClass || '',
-    interestedCourse,
-    currentLevel: lead.currentLevel || '',
-    targetGoal: lead.targetGoal || '',
+    email: stringOrExisting(lead.email, existingLead?.email),
+    contactType: lead.contactType || existingLead?.contactType || 'parent',
+    age: stringOrExisting(lead.age, existingLead?.age),
+    school: stringOrExisting(lead.school, existingLead?.school),
+    currentClass: stringOrExisting(lead.currentClass, existingLead?.currentClass),
+    interestedCourse: stringOrExisting(interestedCourse, existingLead?.interestedCourse),
+    currentLevel: stringOrExisting(lead.currentLevel, existingLead?.currentLevel),
+    targetGoal: stringOrExisting(lead.targetGoal, existingLead?.targetGoal),
     source,
     referralPhone,
-    centerName: lead.centerName || '',
+    centerName: stringOrExisting(lead.centerName, existingLead?.centerName),
     priorityLevel,
     status,
     assignedTo,
     assignedToName,
-    assignedBy: assignedTo ? 'auto-assignment-rule' : '',
-    assignedAt: assignedTo ? now : '',
-    ...(assignedTo ? { assignedAtMs: nowMs, assignedExpiresAtMs: nowMs + DAY_MS } : {}),
-    assignedStatus: assignedTo ? 'active' : 'unassigned',
-    followUpDate: '',
-    consultationDate: '',
+    assignedBy: assignedTo ? existingAssignmentActive ? existingLead?.assignedBy || '' : 'auto-assignment-rule' : '',
+    assignedAt: assignedTo ? existingAssignmentActive ? existingLead?.assignedAt || now : now : '',
+    assignedAtMs,
+    assignedExpiresAtMs,
+    assignedStatus,
+    followUpDate: existingLead?.followUpDate || '',
+    consultationDate: existingLead?.consultationDate || '',
     dealSize,
     dealCurrency: typeof lead.dealCurrency === 'string' && lead.dealCurrency.trim() ? String(lead.dealCurrency).trim() : DEFAULT_DEAL_CURRENCY,
-    dealPackage: lead.dealPackage || '',
-    dealNote: lead.dealNote || '',
-    discountPercent: 0,
+    dealPackage: stringOrExisting(lead.dealPackage, existingLead?.dealPackage),
+    dealNote: stringOrExisting(lead.dealNote, existingLead?.dealNote),
+    discountPercent: Number(existingLead?.discountPercent || 0),
     expectedRevenue,
     revenue,
-    revenueAt: isWonLead ? now : '',
-    expectedCloseDate: '',
-    enrollmentType: 'new',
-    wonAt: isWonLead ? now : '',
-    pendingReason: '',
-    pendingReasonNote: '',
-    pendingWarmthPercent: 0,
-    lostReason: '',
-    lostNote: '',
-    initialNote: lead.note || lead.initialNote || '',
+    revenueAt: isWonLead ? existingLead?.revenueAt || now : existingLead?.revenueAt || '',
+    expectedCloseDate: existingLead?.expectedCloseDate || '',
+    enrollmentType: existingLead?.enrollmentType || 'new',
+    wonAt: isWonLead ? existingLead?.wonAt || now : existingLead?.wonAt || '',
+    pendingReason: existingLead?.pendingReason || '',
+    pendingReasonNote: existingLead?.pendingReasonNote || '',
+    pendingWarmthPercent: Number(existingLead?.pendingWarmthPercent || 0),
+    lostReason: existingLead?.lostReason || '',
+    lostNote: existingLead?.lostNote || '',
+    initialNote: stringOrExisting(lead.note || lead.initialNote, existingLead?.initialNote),
     createdBy: 'public_landing_page',
-    pageSlug: lead.pageSlug || '',
-    formId: lead.formId || 'public-lead-form',
+    pageSlug: stringOrExisting(lead.pageSlug, existingLead?.pageSlug),
+    formId: stringOrExisting(lead.formId, existingLead?.formId, 'public-lead-form'),
     tracking,
-    createdAt: now,
+    createdAt: existingLead?.createdAt || now,
     updatedAt: now,
-    stageHistory: [{ status, enteredAt: now }],
-    convertedToStudentId: '',
-  };
+    lastPublicSubmittedAt: now,
+    publicSubmitCount: Number(existingLead?.publicSubmitCount || 0) + 1,
+    stageHistory: nextStageHistory(existingLead, status, now),
+    submissionHistory: nextSubmissionHistory(existingLead, submissionEntry),
+    convertedToStudentId: existingLead?.convertedToStudentId || '',
+  });
 
-  await leadRef.set(payload);
+  await leadRef.set(payload, { merge: Boolean(existingLead) });
 
   const capiResult = await sendLeadCapiSignal({
     db,
@@ -458,7 +598,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return null;
   });
 
-  if (assignedTo) {
+  if (assignedTo && !existingAssignmentActive) {
     await notifyLeadAssigned(db, {
       leadId: leadRef.id,
       leadName: studentName || parentName || phone,
@@ -467,7 +607,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       auto: true,
       createdAt: now,
     }).catch((error) => console.warn('[PublicLead] Sales notification failed:', error));
-  } else {
+  } else if (!assignedTo) {
     await notifyLeadManagers(db, {
       title: 'Lead mới chưa có PIC',
       body: `${studentName || parentName || phone} từ ${source} cần được phân sales.`,
@@ -481,7 +621,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const parentProfileRef = db.collection('parentProfiles').doc(parentProfileId);
   const parentProfileSnap = await parentProfileRef.get().catch(() => null);
   const existingParentProfile = parentProfileSnap?.exists ? parentProfileSnap.data() || {} : {};
-  await parentProfileRef.set({
+  await parentProfileRef.set(stripUndefined({
     id: parentProfileId,
     phone,
     parentName,
@@ -496,11 +636,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     notes: existingParentProfile.notes || '',
     createdAt: existingParentProfile.createdAt || now,
     updatedAt: now,
-  }, { merge: true });
+  }), { merge: true });
 
   return res.status(200).json({
     ok: true,
     leadId: leadRef.id,
+    mode: existingLead ? 'updated' : 'created',
+    assignedTo,
+    assignedToName,
     eventId: capiResult?.eventId || eventId,
     capi: {
       triggered: Boolean(capiResult?.sent),
@@ -510,4 +653,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status: capiResult?.status || 'failed',
     },
   });
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    return await handlePublicLeadSubmit(req, res);
+  } catch (error) {
+    console.error('[PublicLead] Submit failed:', error);
+    return res.status(500).json({ error: 'Không gửi được thông tin. Vui lòng thử lại.' });
+  }
 }
