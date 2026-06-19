@@ -533,7 +533,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (id === 'bulkAutoAssignNewLeads' && req.method === 'POST') {
-      return bulkAutoAssignNewLeads(req, res);
+      return await bulkAutoAssignNewLeads(req, res);
     }
 
     const field = configFields[id];
