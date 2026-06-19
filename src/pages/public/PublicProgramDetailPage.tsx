@@ -385,7 +385,7 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       <section className="relative overflow-hidden bg-gradient-to-br from-[#FFF8EA] via-white to-[#EAF7FF] pt-24">
         <div className="absolute right-[-120px] top-12 h-72 w-72 rounded-full bg-[#F45A0A]/10 blur-3xl" />
         <div className="absolute bottom-[-140px] left-[-120px] h-80 w-80 rounded-full bg-[#16A9D8]/14 blur-3xl" />
-        <div className="relative mx-auto grid min-h-[660px] max-w-[1180px] items-center gap-12 px-5 py-12 lg:grid-cols-[1.05fr_0.95fr] lg:px-4">
+        <div className="relative mx-auto grid min-h-[660px] max-w-[1180px] items-center gap-12 px-5 py-12 lg:grid-cols-[0.92fr_1.08fr] lg:px-4">
           <div>
             <Link to="/#programs" className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-[#003B7A]/70 transition-colors hover:text-[#003B7A]">
               <ArrowLeft size={18} /> Quay lại chương trình học
@@ -418,13 +418,13 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
             </div>
           </div>
 
-          <div className="relative">
+          <div className="relative pb-8 lg:pb-0">
             <div className="group relative overflow-hidden rounded-3xl bg-white p-3 shadow-2xl shadow-[#003B7A]/15">
-              <div className="relative aspect-[4/5] overflow-hidden rounded-2xl">
+              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl">
                 <img
                   src={summerModuleImage(activeHeroSlide, activeHeroIndex)}
                   alt={summerModuleTag(activeHeroSlide)}
-                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                  className="h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03]"
                 />
                 <div className="absolute left-4 top-4 rounded-full bg-white/95 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-[#003B7A] shadow-sm backdrop-blur">
                   {summerModuleTag(activeHeroSlide)}

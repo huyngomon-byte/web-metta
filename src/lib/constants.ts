@@ -21,6 +21,7 @@ export const COURSE_OPTIONS = ['METTA Kiddies', 'METTA on Phonics', 'METTA Young
 export const STAFF_OPTIONS = ['METTA Admin'] as const;
 export const DEFAULT_DEAL_CURRENCY = 'VND';
 export const DEFAULT_COURSE_DEAL_SIZE = 20000000;
+const SUMMER_HERO_IMAGE = '/brand/metta-summer-hero-4x3.jpg';
 
 export const COURSES = [
   { name: 'METTA Kiddies', code: 'KIDDIES', ageRange: '3-6 tuổi', level: 'Preschool' },
@@ -178,9 +179,9 @@ export const PUBLIC_PROGRAMS = [
     duration: '6 tuần · 24 buổi · 1h30/buổi',
     dealSize: 1999000,
     dealCurrency: DEFAULT_DEAL_CURRENCY,
-    image: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop',
+    image: SUMMER_HERO_IMAGE,
     images: [
-      'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop',
+      SUMMER_HERO_IMAGE,
       'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=1200&q=85&auto=format&fit=crop',
       'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=1200&q=85&auto=format&fit=crop',
       'https://images.unsplash.com/photo-1547153760-18fc86324498?w=1200&q=85&auto=format&fit=crop',
@@ -300,7 +301,7 @@ export const SUMMER_DEFAULTS = {
   modulesEyebrow: '4 bộ môn',
   modulesTitle: '4 bộ môn trong chương trình',
   modules: [
-    { icon: 'Sparkles', color: '#F45A0A', title: 'Mỹ thuật', tag: 'Mỹ thuật', description: 'Màu sắc, hình khối, tranh mùa hè và sản phẩm thủ công giúp con thể hiện ý tưởng bằng chất liệu trực quan.', image: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=1200&q=85&auto=format&fit=crop' },
+    { icon: 'Sparkles', color: '#F45A0A', title: 'Mỹ thuật', tag: 'Mỹ thuật', description: 'Màu sắc, hình khối, tranh mùa hè và sản phẩm thủ công giúp con thể hiện ý tưởng bằng chất liệu trực quan.', image: SUMMER_HERO_IMAGE },
     { icon: 'Brain', color: '#003B7A', title: 'Cờ vua', tag: 'Cờ vua', description: 'Làm quen bàn cờ, quân cờ, luật chơi, chiến thuật cơ bản và mini tournament phù hợp độ tuổi.', image: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=1200&q=85&auto=format&fit=crop' },
     { icon: 'Mic', color: '#8B5CF6', title: 'Thanh nhạc', tag: 'Thanh nhạc', description: 'Cảm thụ âm nhạc, luyện hơi, hát nhóm và chuẩn bị tiết mục biểu diễn tự tin trước tập thể.', image: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=1200&q=85&auto=format&fit=crop' },
     { icon: 'Music', color: '#16A34A', title: 'Nhảy & Múa', tag: 'Nhảy & Múa', description: 'Rèn nhịp điệu, động tác cơ bản, phối hợp đội hình và trình diễn nhóm trong Showcase.', image: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=1200&q=85&auto=format&fit=crop' },

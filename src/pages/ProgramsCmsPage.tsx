@@ -826,7 +826,7 @@ function SummerImageField({ label, value, onChange }: { label: string; value: st
     <div className="flex flex-col gap-1">
       <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>
       <div className="flex items-center gap-3">
-        <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-lg border bg-slate-100">{value && <img src={value} alt="" className="h-full w-full object-cover" />}</div>
+        <div className="h-[72px] w-24 flex-shrink-0 overflow-hidden rounded-lg border bg-slate-100">{value && <img src={value} alt="" className="h-full w-full object-cover" />}</div>
         <div className="flex flex-1 flex-col gap-1">
           <label className="inline-flex w-fit cursor-pointer items-center gap-1 rounded border px-2 py-1 text-xs font-bold hover:bg-slate-50">
             <Upload size={12} /> Upload
@@ -906,7 +906,7 @@ function SummerModulesEditor({ modules, onChange }: { modules: SummerModule[]; o
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Thông tin bộ môn + ảnh hero slider</p>
-          <p className="mt-1 text-[11px] font-semibold text-slate-400">Ảnh dùng ở hero slider. Kích thước đề xuất: 1200 x 800 px, tỷ lệ 3:2, JPG/PNG.</p>
+          <p className="mt-1 text-[11px] font-semibold text-slate-400">Ảnh dùng ở hero slider. Kích thước đề xuất: 1440 x 1080 px, tỷ lệ ngang 4:3, JPG/PNG.</p>
         </div>
         <Button variant="outline" size="sm" onClick={add}><Plus size={14} /> Thêm</Button>
       </div>
