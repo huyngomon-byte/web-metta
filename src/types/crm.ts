@@ -49,6 +49,7 @@ export interface Lead {
   currentLevel: string;
   targetGoal: string;
   source: LeadSource;
+  tags?: string[];
   referralPhone?: string;
   centerName?: string;
   priorityLevel?: LeadPriorityLevel | number;

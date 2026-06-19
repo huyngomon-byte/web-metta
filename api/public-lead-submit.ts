@@ -212,6 +212,27 @@ function cleanOptional(value: unknown) {
   return text || undefined;
 }
 
+function cleanTags(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  value.forEach((item) => {
+    const tag = String(item || '').replace(/\s+/g, ' ').trim();
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) return;
+    seen.add(key);
+    tags.push(tag.slice(0, 48));
+  });
+  return tags.slice(0, 12);
+}
+
+function mergeTags(existing: unknown, incoming: unknown) {
+  return cleanTags([
+    ...(Array.isArray(existing) ? existing : []),
+    ...cleanTags(incoming),
+  ]);
+}
+
 function trackingFromLead(lead: Record<string, any>, sourceUrl: string, req: VercelRequest, now: string) {
   const input = lead.tracking && typeof lead.tracking === 'object' ? lead.tracking : {};
   return {
@@ -540,6 +561,7 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
     currentLevel: stringOrExisting(lead.currentLevel, existingLead?.currentLevel),
     targetGoal: stringOrExisting(lead.targetGoal, existingLead?.targetGoal),
     source,
+    tags: mergeTags(existingLead?.tags, lead.tags),
     referralPhone,
     centerName: stringOrExisting(lead.centerName, existingLead?.centerName),
     priorityLevel,

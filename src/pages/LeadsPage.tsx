@@ -1983,7 +1983,16 @@ function LeadsTable({
                 <TD>{lead.interestedCourse}</TD>
                 <TD>{lead.centerName || '-'}</TD>
                 <TD><span className={`rounded border px-2 py-0.5 text-xs font-bold ${priorityTone(priorityForLead(sourceConfigs, lead))}`}>{priorityLabel(priorityForLead(sourceConfigs, lead))}</span></TD>
-                <TD><Badge tone={statusTone[statusIndex(lead.status)]}>{statusLabel(lead.status)}</Badge></TD>
+                <TD>
+                  <Badge tone={statusTone[statusIndex(lead.status)]}>{statusLabel(lead.status)}</Badge>
+                  {lead.tags?.length ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {lead.tags.map((tag) => (
+                        <span key={tag} className="rounded bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">{tag}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                </TD>
                 <TD className="font-semibold text-slate-800">
                   {lead.status === WON_LEAD_STATUS
                     ? formatCurrency(wonValue(lead, courseDealSizes), lead.dealCurrency || DEFAULT_DEAL_CURRENCY)
@@ -2749,6 +2758,9 @@ function LeadKanbanCard({
           {draft.interestedCourse && <span className="rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{draft.interestedCourse}</span>}
           {draft.centerName && <span className="rounded bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">{draft.centerName}</span>}
           {draft.source && <span className="rounded bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">{sourceLabel(draft.source)}</span>}
+          {draft.tags?.map((tag) => (
+            <span key={tag} className="rounded bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-700">{tag}</span>
+          ))}
           {callLogs.length > 0 && <span className="rounded bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700">Calls: {callLogs.length}</span>}
           {isReferralLead(draft) && draft.referralPhone && <span className="rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Ref: {draft.referralPhone}</span>}
           {draft.status === DEAL_QUOTED_STATUS && (

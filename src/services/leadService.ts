@@ -272,6 +272,11 @@ function currentCourseDealSizes(): CourseDealSizeRule[] {
 
 function normalizeLead(raw: Lead): Lead {
   const lead = { ...raw, interestedCourse: normalizeCourse(raw.interestedCourse) as InterestedCourse | '' };
+  const tags = Array.isArray(lead.tags)
+    ? Array.from(new Set(lead.tags.map((tag) => String(tag || '').replace(/\s+/g, ' ').trim()).filter(Boolean))).slice(0, 12)
+    : [];
+  if (tags.length) lead.tags = tags;
+  else delete lead.tags;
   normalizeLeadSales(lead);
   repairReferralPhone(lead);
   if (!lead.studentName && lead.contactType === 'student' && lead.fullName) lead.studentName = lead.fullName;

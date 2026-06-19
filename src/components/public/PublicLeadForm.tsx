@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { leadStatuses } from '@/lib/constants';
 import { publicLeadService } from '@/services/publicLeadService';
 
 const phoneRegex = /^0(3|5|7|8|9|1[2689])\d{8}$/;
@@ -64,6 +65,7 @@ export function PublicLeadForm({
           contactType: 'parent',
           source: 'Website',
           interestedCourse,
+          status: leadStatuses[0],
           dealSize,
           dealCurrency,
           company: String(formData.get('company') || ''),

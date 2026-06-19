@@ -7,6 +7,7 @@
  * không chữ đè lên ảnh).
  */
 import { useEffect, useState } from 'react';
+import { leadStatuses } from '@/lib/constants';
 import { publicLeadService } from '@/services/publicLeadService';
 import type { PageSection } from '@/types/cms';
 
@@ -144,6 +145,7 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
           phone,
           age: form.age,
           source: 'Landing Page',
+          status: leadStatuses[0],
           initialNote: [noteLabel, form.age && `${selectLabel}: ${form.age}`].filter(Boolean).join(' · '),
           company: String(fd.get('company') || ''),
           website: String(fd.get('website') || ''),

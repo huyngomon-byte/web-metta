@@ -26,7 +26,7 @@ import { publicCmsService } from '@/services/publicCmsService';
 import { publicLeadService } from '@/services/publicLeadService';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { PageSection } from '@/types/cms';
-import { BRAND_LOGOS } from '@/lib/constants';
+import { BRAND_LOGOS, leadStatuses } from '@/lib/constants';
 
 const HEADER_LOGO = BRAND_LOGOS.onWhite;
 const FOOTER_LOGO = BRAND_LOGOS.onBlue;
@@ -399,6 +399,7 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
           contactType: 'parent',
           source: 'Landing Page',
           interestedCourse: 'Metta+ Pass',
+          status: leadStatuses[0],
           initialNote: `Metta+ Pass · Độ tuổi: ${form.age}`,
           company: String(formData.get('company') || ''),
           website: String(formData.get('website') || ''),

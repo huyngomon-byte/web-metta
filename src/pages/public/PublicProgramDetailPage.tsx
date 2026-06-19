@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Clock, 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
-import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, WON_LEAD_STATUS, resolveCourseDealSizeForProgram } from '@/lib/constants';
+import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, WON_LEAD_STATUS, leadStatuses, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { publicLeadService } from '@/services/publicLeadService';
 import { formatCurrency } from '@/lib/utils';
@@ -829,7 +829,8 @@ function SummerRegistrationModal({ program, onClose }: { program: ProgramCms; on
         contactType: 'parent',
         source: paid ? `Website - ${sourceLabel} QR chuyển khoản` : `Website - ${sourceLabel} đăng ký ngay`,
         interestedCourse: courseName || sourceLabel,
-        status: paid ? WON_LEAD_STATUS : undefined,
+        status: paid ? WON_LEAD_STATUS : leadStatuses[0],
+        tags: paid ? ['Cần check CK'] : undefined,
         dealSize: price,
         dealCurrency: currency,
         expectedRevenue: price,
