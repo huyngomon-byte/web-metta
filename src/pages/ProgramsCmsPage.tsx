@@ -724,6 +724,84 @@ async function uploadProgramImage(file: File): Promise<string | null> {
   });
 }
 
+function HomeDisplayEditor({ program, onChange }: { program: ProgramCms; onChange: (p: ProgramCms) => void }) {
+  const set = (field: keyof ProgramCms, value: unknown) => onChange({ ...program, [field]: value });
+  const fallbackImage = program.images?.find(Boolean) || program.image || '';
+  const previewImage = program.homeImage || fallbackImage;
+  const homeHighlights = program.homeHighlights !== undefined ? program.homeHighlights : program.highlights;
+
+  return (
+    <EditorSection
+      title="Hiển thị trên trang chủ"
+      subtitle="Các nội dung dùng cho card chương trình ở section Chương trình học trên trang chủ."
+    >
+      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Ảnh card trang chủ</span>
+          <div className="aspect-[4/3] overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+            {previewImage ? (
+              <img src={previewImage} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs font-bold text-slate-400">Chưa có ảnh</div>
+            )}
+          </div>
+          <label className="inline-flex w-fit cursor-pointer items-center gap-1 rounded border px-2 py-1 text-xs font-bold hover:bg-slate-50">
+            <Upload size={12} /> Upload ảnh
+            <input
+              type="file"
+              className="hidden"
+              accept="image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const url = await uploadProgramImage(file);
+                if (url) set('homeImage', url);
+              }}
+            />
+          </label>
+          <Input
+            className="text-xs"
+            value={program.homeImage ?? ''}
+            onChange={(e) => set('homeImage', e.target.value)}
+            placeholder={fallbackImage || 'URL ảnh hiển thị trên trang chủ'}
+          />
+          <p className="text-[11px] font-semibold text-slate-400">Để trống sẽ dùng ảnh đầu tiên của slider/ảnh chính.</p>
+        </div>
+
+        <div className="grid gap-3">
+          <div className="grid gap-2 md:grid-cols-2">
+            <LabeledInput label="Tiêu đề trên card" value={program.homeTitle ?? ''} onChange={(v) => set('homeTitle', v)} placeholder={program.title || 'Tên chương trình'} />
+            <LabeledInput label="Badge độ tuổi" value={program.homeAgeLabel ?? ''} onChange={(v) => set('homeAgeLabel', v)} placeholder={program.ageRange || '4–11 tuổi'} />
+            <LabeledInput label="Eyebrow / nhóm chương trình" value={program.homeEyebrow ?? ''} onChange={(v) => set('homeEyebrow', v)} placeholder={program.eyebrow || 'Chương trình hè đa bộ môn'} />
+            <LabeledInput label="Thời lượng dưới card" value={program.homeDuration ?? ''} onChange={(v) => set('homeDuration', v)} placeholder={program.duration || '6 tuần · 24 buổi · 1h30/buổi'} />
+          </div>
+
+          <LabeledTextarea
+            label="Mô tả ngắn trên card"
+            value={program.homeSummary ?? ''}
+            onChange={(v) => set('homeSummary', v)}
+            placeholder={program.summary || 'Mô tả ngắn hiển thị trên trang chủ'}
+          />
+
+          <div>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Gạch đầu dòng trên card</p>
+                <p className="mt-1 text-[11px] font-semibold text-slate-400">Trang chủ chỉ hiển thị 3 dòng đầu tiên.</p>
+              </div>
+            </div>
+            <ArrayEditor
+              label="Gạch đầu dòng"
+              items={homeHighlights}
+              onChange={(items) => set('homeHighlights', items)}
+            />
+          </div>
+        </div>
+      </div>
+    </EditorSection>
+  );
+}
+
 /* ── Helpers & editors riêng cho trang Summer ── */
 function LabeledInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
@@ -1259,6 +1337,8 @@ function ProgramCard({
               </p>
             </div>
           </div>
+
+          <HomeDisplayEditor program={program} onChange={onChange} />
 
           {isCourseTemplate && (
           <EditorSection

@@ -305,56 +305,67 @@ function CoursesBlock({ section }: { section: PageSection }) {
           </div>
         ) : (
         <div className={gridClass}>
-          {programs.map((program, i) => (
-            <article key={program.slug}
-              className={cardClass}>
-              {/* Photo */}
-              <div className="relative h-52 flex-shrink-0 overflow-hidden">
-                <img
-                  src={program.images?.find(Boolean) || program.image || '/brand/workshop-kids.jpg'}
-                  alt={program.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-navy-deep/60 to-transparent" />
-                <div className="absolute top-4 left-4">
-                  <span className="bg-cta-orange text-pure-white px-3 py-1 text-[11px] font-bold tracking-widest uppercase">
-                    {program.ageRange}
-                  </span>
-                </div>
-                <div className="absolute bottom-4 left-4">
-                  <span className="text-pure-white font-montserrat font-bold text-lg">{program.title}</span>
-                </div>
-              </div>
+          {programs.map((program) => {
+            const homeImage = program.homeImage || program.images?.find(Boolean) || program.image || '/brand/workshop-kids.jpg';
+            const homeTitle = program.homeTitle || program.title;
+            const homeAgeLabel = program.homeAgeLabel || program.ageRange;
+            const homeDuration = program.homeDuration || program.duration;
+            const homeEyebrow = program.homeEyebrow || program.eyebrow;
+            const homeSummary = program.homeSummary || program.summary;
+            const homeHighlights = (program.homeHighlights !== undefined ? program.homeHighlights : program.highlights)
+              .filter((item) => item?.trim());
 
-              {/* Body — flex-col + flex-1 để button luôn sát đáy */}
-              <div className="flex flex-col flex-1 p-6">
-                <p className="text-xs font-bold tracking-widest uppercase text-accent-cyan mb-3">{program.eyebrow}</p>
-                <p className="text-on-surface-variant text-sm leading-6 mb-4">{program.summary}</p>
-                <ul className="space-y-2 mb-6 flex-1">
-                  {program.highlights.slice(0, 3).map((h) => (
-                    <li key={h} className="flex items-start gap-2 text-sm text-on-surface-variant">
-                      <span className="material-symbols-outlined text-accent-cyan text-[16px] flex-shrink-0 mt-0.5">check_circle</span>
-                      {h}
-                    </li>
-                  ))}
-                </ul>
-                <div className="flex items-center justify-between text-xs font-semibold text-on-surface-variant border-t border-outline-variant/30 pt-4 mb-5">
-                  <span className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[15px]">schedule</span>
-                    {program.duration}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[15px]">person</span>
-                    {program.ageRange}
-                  </span>
+            return (
+              <article key={program.slug}
+                className={cardClass}>
+                {/* Photo */}
+                <div className="relative h-52 flex-shrink-0 overflow-hidden">
+                  <img
+                    src={homeImage}
+                    alt={homeTitle}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-navy-deep/60 to-transparent" />
+                  <div className="absolute top-4 left-4">
+                    <span className="bg-cta-orange text-pure-white px-3 py-1 text-[11px] font-bold tracking-widest uppercase">
+                      {homeAgeLabel}
+                    </span>
+                  </div>
+                  <div className="absolute bottom-4 left-4">
+                    <span className="text-pure-white font-montserrat font-bold text-lg">{homeTitle}</span>
+                  </div>
                 </div>
-                <Link to={`/programs/${program.slug}`}
-                  className="block w-full text-center bg-navy-deep text-pure-white py-3 font-montserrat font-bold text-[13px] tracking-wider uppercase hover:bg-cta-orange transition-colors mt-auto">
-                  Xem chi tiết chương trình
-                </Link>
-              </div>
-            </article>
-          ))}
+
+                {/* Body — flex-col + flex-1 để button luôn sát đáy */}
+                <div className="flex flex-col flex-1 p-6">
+                  <p className="text-xs font-bold tracking-widest uppercase text-accent-cyan mb-3">{homeEyebrow}</p>
+                  <p className="text-on-surface-variant text-sm leading-6 mb-4">{homeSummary}</p>
+                  <ul className="space-y-2 mb-6 flex-1">
+                    {homeHighlights.slice(0, 3).map((h) => (
+                      <li key={h} className="flex items-start gap-2 text-sm text-on-surface-variant">
+                        <span className="material-symbols-outlined text-accent-cyan text-[16px] flex-shrink-0 mt-0.5">check_circle</span>
+                        {h}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="flex items-center justify-between text-xs font-semibold text-on-surface-variant border-t border-outline-variant/30 pt-4 mb-5">
+                    <span className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[15px]">schedule</span>
+                      {homeDuration}
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-[15px]">person</span>
+                      {homeAgeLabel}
+                    </span>
+                  </div>
+                  <Link to={`/programs/${program.slug}`}
+                    className="block w-full text-center bg-navy-deep text-pure-white py-3 font-montserrat font-bold text-[13px] tracking-wider uppercase hover:bg-cta-orange transition-colors mt-auto">
+                    Xem chi tiết chương trình
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
         </div>
         )}
       </div>

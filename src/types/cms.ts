@@ -52,6 +52,13 @@ export interface ProgramCms {
   image: string;
   images?: string[]; // multiple hero images for slider
   summary: string;
+  homeImage?: string;
+  homeTitle?: string;
+  homeAgeLabel?: string;
+  homeDuration?: string;
+  homeEyebrow?: string;
+  homeSummary?: string;
+  homeHighlights?: string[];
   description: string;
   highlights: string[];
   highlightCards?: HighlightCard[]; // structured version with icon/color/title/desc
