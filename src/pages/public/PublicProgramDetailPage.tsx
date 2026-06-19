@@ -886,7 +886,7 @@ function SummerRegistrationModal({ program, onClose }: { program: ProgramCms; on
                 <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
                   <div>
                     <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">Thanh toán</p>
-                    <p className="mt-1 text-lg font-extrabold text-[#003B7A]">Techcombank</p>
+                    <p className="mt-1 text-lg font-extrabold text-[#003B7A]">Mã QR METTA Summer</p>
                   </div>
                   <span className="rounded-full bg-[#F45A0A]/10 px-3 py-1 text-xs font-extrabold text-[#F45A0A]">{priceLabel}</span>
                 </div>
@@ -894,22 +894,12 @@ function SummerRegistrationModal({ program, onClose }: { program: ProgramCms; on
                 <img
                   src={SUMMER_QR_IMAGE}
                   alt="Mã QR thanh toán METTA Summer 2026"
-                  className="mx-auto mt-5 w-full max-w-[340px] rounded-2xl border border-slate-100 object-contain"
+                  className="mx-auto mt-5 w-full max-w-[300px] rounded-2xl border border-slate-100 object-contain"
                 />
 
-                <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
-                  <div className="flex justify-between gap-4">
-                    <span className="font-semibold text-slate-500">Chủ tài khoản</span>
-                    <span className="text-right font-extrabold text-slate-900">CT TNHH GIAO DUC QUOC TE NHQ</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="font-semibold text-slate-500">Số tài khoản</span>
-                    <span className="font-extrabold text-slate-900">915190897</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="font-semibold text-slate-500">ND CK</span>
-                    <span className="break-words text-right font-extrabold text-[#F45A0A]">{transferContent}</span>
-                  </div>
+                <div className="mt-5 rounded-2xl bg-[#FFF8EA] p-4 text-center">
+                  <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#F45A0A]">ND CK</p>
+                  <p className="mt-2 break-words text-base font-extrabold text-slate-950">{transferContent}</p>
                 </div>
               </div>
             </div>
