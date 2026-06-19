@@ -223,7 +223,7 @@ export const assignmentRuleService = {
     return normalized;
   },
   bulkAutoAssignNewLeads: async (): Promise<BulkAutoAssignNewLeadsResult> => {
-    const response = await fetch('/api/leads-bulk-auto-assign', {
+    const response = await fetch('/api/app-config?id=bulkAutoAssignNewLeads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     });
