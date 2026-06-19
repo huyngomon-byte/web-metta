@@ -41,7 +41,6 @@ const DOC_SETTINGS = 'siteSettings/main';
 const DOC_INIT = 'cms_meta/init';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const FIRESTORE_TIMEOUT_MS = 2500;
-const CURRENT_PROGRAM_SLUGS = PUBLIC_PROGRAMS.map((program) => program.slug);
 
 let lastWriteError: string | null = null;
 let lastPublishError: string | null = null;
@@ -285,11 +284,8 @@ function normalizeHeaderLinks(
 
 function normalizeCourseSettings(settings: SiteSettings): SiteSettings {
   const normalizedSettings = normalizeCmsValue(settings);
-  const hasCurrentPrograms = CURRENT_PROGRAM_SLUGS.every((slug) =>
-    normalizedSettings.programs?.some((program) => program.slug === slug),
-  );
   const programs = normalizeProgramSettings(normalizeCmsValue(
-    hasCurrentPrograms && normalizedSettings.programs?.length ? normalizedSettings.programs : currentProgramSettings(),
+    Array.isArray(normalizedSettings.programs) ? normalizedSettings.programs : currentProgramSettings(),
   ) as NonNullable<SiteSettings['programs']>);
   const rawHeaderLinks = normalizedSettings.headerLinks?.length
     ? normalizedSettings.headerLinks

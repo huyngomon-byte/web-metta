@@ -1,13 +1,21 @@
 import { adminAuth, adminDb } from './_firebaseAdmin.js';
-import {
-  PUBLIC_CMS_CACHE_HEADER,
-  normalizePublicCmsSnapshot,
-  readPublicCmsBlobSnapshot,
-  writePublicCmsBlobSnapshot,
-  type PublicCmsDocument,
-  type PublicCmsSnapshot,
-} from './_publicCmsSnapshot.js';
 import { sendBlogPage, sendPublicBlogPost, sendPublicBlogPosts, sendSitemap } from './_publicSeoServer.js';
+
+type PublicCmsDocument = {
+  id: string;
+  [key: string]: unknown;
+};
+
+type PublicCmsSnapshot = {
+  pages: PublicCmsDocument[];
+  sections: PublicCmsDocument[];
+  settings: Record<string, unknown> | null;
+  generatedAt: string;
+  source?: string;
+  schemaVersion?: number;
+  stale?: boolean;
+  staleReason?: string;
+};
 
 type VercelRequest = {
   method?: string;
@@ -69,12 +77,11 @@ const NEW_LEAD_STATUS = 'Lead mới';
 const MAX_WRITES_PER_BATCH = 440;
 const WRITES_PER_LEAD = 4;
 const MAX_LEADS_PER_BATCH = Math.floor(MAX_WRITES_PER_BATCH / WRITES_PER_LEAD);
-const PUBLIC_CMS_MEMORY_TTL_MS = 60 * 1000;
 const PUBLIC_CMS_MEMORY_STALE_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_CMS_NO_STORE_HEADER = 'no-store, max-age=0, must-revalidate';
 
 let publicCmsMemoryCache: {
   snapshot: PublicCmsSnapshot;
-  expiresAt: number;
   staleUntil: number;
 } | null = null;
 
@@ -211,10 +218,6 @@ function serializable(data: Record<string, unknown> | undefined, id: string): Pu
 
 async function readPublicCmsSnapshot(): Promise<PublicCmsSnapshot> {
   const timestamp = Date.now();
-  if (publicCmsMemoryCache && publicCmsMemoryCache.expiresAt > timestamp) {
-    return publicCmsMemoryCache.snapshot;
-  }
-
   const db = adminDb();
   try {
     const [pagesSnap, sectionsSnap, settingsSnap] = await Promise.all([
@@ -234,13 +237,12 @@ async function readPublicCmsSnapshot(): Promise<PublicCmsSnapshot> {
       sections,
       settings: settingsSnap.exists ? settingsSnap.data() || null : null,
       generatedAt: new Date().toISOString(),
-      source: 'firestore-fallback',
+      source: 'firestore',
       schemaVersion: 1,
     };
 
     publicCmsMemoryCache = {
       snapshot,
-      expiresAt: timestamp + PUBLIC_CMS_MEMORY_TTL_MS,
       staleUntil: timestamp + PUBLIC_CMS_MEMORY_STALE_MS,
     };
 
@@ -470,23 +472,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = String(queryValue(req.query?.id) || req.body?.id || '');
 
     if (req.method === 'GET' && id === 'publicCms') {
-      res.setHeader?.('Cache-Control', PUBLIC_CMS_CACHE_HEADER);
-      const blobSnapshot = await readPublicCmsBlobSnapshot().catch((error) => {
-        console.warn('[PublicCMS] Cannot read Blob snapshot:', error);
+      res.setHeader?.('Cache-Control', PUBLIC_CMS_NO_STORE_HEADER);
+      const firestoreSnapshot = await readPublicCmsSnapshot().catch((error) => {
+        console.warn('[PublicCMS] Cannot read Firestore public CMS:', error);
         return null;
       });
-      if (blobSnapshot) {
-        res.setHeader?.('X-Public-CMS-Source', 'blob');
-        return res.status(200).json(blobSnapshot.snapshot);
-      }
-
-      const firestoreFallback = await readPublicCmsSnapshot().catch((error) => {
-        console.warn('[PublicCMS] Cannot read Firestore fallback:', error);
-        return null;
-      });
-      if (firestoreFallback) {
-        res.setHeader?.('X-Public-CMS-Source', 'firestore-fallback');
-        return res.status(200).json(firestoreFallback);
+      if (firestoreSnapshot) {
+        res.setHeader?.('X-Public-CMS-Source', 'firestore');
+        return res.status(200).json(firestoreSnapshot);
       }
 
       res.setHeader?.('X-Public-CMS-Source', 'unavailable');
@@ -497,22 +490,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireActiveUser(req);
       if (!canManageCms(user)) throw new Error('Only CMS users can publish public CMS snapshots');
 
-      const snapshot = normalizePublicCmsSnapshot(req.body?.snapshot || req.body);
-      const result = await writePublicCmsBlobSnapshot(snapshot, {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-      });
+      publicCmsMemoryCache = null;
 
-      res.setHeader?.('Cache-Control', 'no-store, max-age=0, must-revalidate');
-      res.setHeader?.('X-Public-CMS-Source', 'blob');
+      res.setHeader?.('Cache-Control', PUBLIC_CMS_NO_STORE_HEADER);
+      res.setHeader?.('X-Public-CMS-Source', 'firestore');
       return res.status(200).json({
         id: 'publicCms',
         ok: true,
-        source: 'blob',
-        url: result.blob.url,
-        pathname: result.blob.pathname,
-        publishedAt: result.snapshot.publishedAt,
+        source: 'firestore',
+        publishedAt: new Date().toISOString(),
       });
     }
 

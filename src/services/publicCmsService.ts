@@ -41,7 +41,6 @@ const CP1252_EXTENSIONS: Record<number, number> = {
 
 const CLASSIC_MOJIBAKE = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â)/;
 const SUSPECT_TEXT = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â|�|Ē)/g;
-const CURRENT_PROGRAM_SLUGS = PUBLIC_PROGRAMS.map((program) => program.slug);
 const METTA_PLUS_SPLIT_TYPES = new Set([
   'Metta+ Hero',
   'Metta+ Benefits',
@@ -246,11 +245,8 @@ function normalizeHeaderLinks(
 
 function normalizeSettings(settings: SiteSettings): SiteSettings {
   const normalizedSettings = normalizeCmsValue(settings);
-  const hasCurrentPrograms = CURRENT_PROGRAM_SLUGS.every((slug) =>
-    normalizedSettings.programs?.some((program) => program.slug === slug),
-  );
   const programs = normalizeCmsValue(
-    hasCurrentPrograms && normalizedSettings.programs?.length ? normalizedSettings.programs : currentProgramSettings(),
+    Array.isArray(normalizedSettings.programs) ? normalizedSettings.programs : currentProgramSettings(),
   ) as NonNullable<SiteSettings['programs']>;
   const rawHeaderLinks = normalizedSettings.headerLinks?.length
     ? normalizedSettings.headerLinks
@@ -283,7 +279,6 @@ const LOCAL_SNAPSHOT: PublicCmsSnapshot = {
   settings: PUBLIC_SETTINGS,
 };
 
-let remoteSnapshotPromise: Promise<PublicCmsSnapshot | null> | null = null;
 const PUBLIC_CMS_FETCH_TIMEOUT_MS = 6000;
 
 function hasUsableHomepageSections(items: PageSection[]) {
@@ -332,26 +327,22 @@ function normalizeRemoteSnapshot(input: Partial<PublicCmsSnapshot>): PublicCmsSn
 
 async function loadRemoteSnapshot() {
   if (typeof window === 'undefined') return null;
-  if (!remoteSnapshotPromise) {
-    remoteSnapshotPromise = (async () => {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), PUBLIC_CMS_FETCH_TIMEOUT_MS);
-      try {
-        const response = await fetch('/api/app-config?id=publicCms', {
-          headers: { Accept: 'application/json' },
-          signal: controller.signal,
-        });
-        if (!response.ok) return null;
-        return normalizeRemoteSnapshot(await response.json());
-      } catch (error) {
-        console.warn('[PublicCMS] Cannot load remote CMS snapshot, using local fallback:', error);
-        return null;
-      } finally {
-        window.clearTimeout(timeout);
-      }
-    })();
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), PUBLIC_CMS_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`/api/app-config?id=publicCms&t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    return normalizeRemoteSnapshot(await response.json());
+  } catch (error) {
+    console.warn('[PublicCMS] Cannot load remote CMS snapshot, using local fallback:', error);
+    return null;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return remoteSnapshotPromise;
 }
 
 async function getSnapshot() {

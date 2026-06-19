@@ -353,6 +353,7 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
   }];
   const activeHeroIndex = heroSlides.length ? Math.min(heroSlideIndex, heroSlides.length - 1) : 0;
   const activeHeroSlide = heroSlides[activeHeroIndex];
+  const activeHeroTag = summerModuleTag(activeHeroSlide);
   const activeShowcaseIndex = showcaseImages.length ? Math.min(showcaseSlideIndex, showcaseImages.length - 1) : 0;
   const activeShowcaseImage = showcaseImages[activeShowcaseIndex];
 
@@ -371,6 +372,14 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
     });
   }, [heroSlides.length]);
 
+  useEffect(() => {
+    if (heroSlides.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setHeroSlideIndex((current) => (current + 1) % heroSlides.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, [heroSlides.length]);
+
   const moveShowcaseSlide = useCallback((direction: number) => {
     setShowcaseSlideIndex((current) => {
       if (!showcaseImages.length) return 0;
@@ -382,89 +391,109 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
     <main className="bg-white">
       {/* ── Hero ── */}
       {showSection('hero') && (
-      <section className="relative overflow-hidden bg-gradient-to-br from-[#FFF8EA] via-white to-[#EAF7FF] pt-24">
-        <div className="absolute right-[-120px] top-12 h-72 w-72 rounded-full bg-[#F45A0A]/10 blur-3xl" />
-        <div className="absolute bottom-[-140px] left-[-120px] h-80 w-80 rounded-full bg-[#16A9D8]/14 blur-3xl" />
-        <div className="relative mx-auto grid min-h-[660px] max-w-[1180px] items-center gap-12 px-5 py-12 lg:grid-cols-[0.92fr_1.08fr] lg:px-4">
-          <div>
-            <Link to="/#programs" className="mb-6 inline-flex items-center gap-2 text-sm font-bold text-[#003B7A]/70 transition-colors hover:text-[#003B7A]">
+      <section className="relative overflow-hidden" style={{ minHeight: 'clamp(620px, 43vw, 820px)' }}>
+        <div className="absolute inset-0">
+          {heroSlides.map((slide, index) => (
+            <img
+              key={`${summerModuleTag(slide)}-${index}`}
+              src={summerModuleImage(slide, index)}
+              alt=""
+              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${index === activeHeroIndex ? 'opacity-100' : 'opacity-0'}`}
+            />
+          ))}
+          <div className="absolute inset-0 hidden md:block" style={{ background: 'linear-gradient(90deg, rgba(8,45,82,0.88) 0%, rgba(8,45,82,0.62) 45%, rgba(8,45,82,0.18) 100%)' }} />
+          <div className="absolute inset-0 md:hidden" style={{ background: 'linear-gradient(180deg, rgba(8,45,82,0.84) 0%, rgba(8,45,82,0.74) 62%, rgba(8,45,82,0.58) 100%)' }} />
+        </div>
+        <div className="relative z-10 mx-auto flex max-w-[1180px] flex-col px-5 pb-16 pt-20 sm:pt-24 lg:px-4 lg:pt-28">
+          <div
+            className="w-full max-w-[620px] p-5 sm:p-7 lg:p-8"
+            style={{
+              background: 'rgba(255,255,255,0.08)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              borderRadius: '24px',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+            }}
+          >
+            <Link to="/#programs" className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/70 transition-colors hover:text-white sm:mb-6">
               <ArrowLeft size={18} /> Quay lại chương trình học
             </Link>
             {program.eyebrow && (
-              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#F45A0A]/25 bg-[#F45A0A]/10 px-3.5 py-2">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#F45A0A]/25 bg-[#F45A0A]/15 px-3.5 py-2 sm:mb-5">
                 <Sparkles size={15} className="text-[#F45A0A]" />
                 <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#F45A0A]">{program.eyebrow}</span>
               </div>
             )}
-            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] text-[#003B7A] md:text-6xl">
+            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] text-white md:text-5xl">
               {program.title}
             </h1>
-            {subtitle && <p className="mt-4 max-w-2xl text-lg font-bold leading-8 text-[#1267AE] md:text-xl">{subtitle}</p>}
-            {program.description && <p className="mt-5 max-w-2xl text-base leading-8 text-slate-600">{program.description}</p>}
-            <div className="mt-7 flex flex-wrap gap-2.5">
+            {subtitle && <p className="mt-3 max-w-2xl text-base font-bold leading-7 text-white md:text-lg">{subtitle}</p>}
+            {program.description && <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75 md:text-base md:leading-7">{program.description}</p>}
+            <div className="mt-4 inline-flex w-fit rounded-full border border-white/18 bg-white/10 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-white/80 backdrop-blur">
+              {activeHeroTag}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
               {chips.map((chip) => (
-                <span key={chip} className="rounded-full border border-[#16A9D8]/20 bg-white px-4 py-2 text-sm font-extrabold text-[#003B7A] shadow-sm">
+                <span key={chip} className="rounded-full border border-white/16 bg-white/10 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm backdrop-blur sm:px-4 sm:py-2 sm:text-sm">
                   {chip}
                 </span>
               ))}
             </div>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-7 py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-orange-600">
+            {heroStats.length > 0 && (
+              <div className="mt-5 grid grid-cols-3 gap-2">
+                {heroStats.map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border border-white/12 bg-white/5 px-2 py-2 sm:px-3.5 sm:py-2.5">
+                    <p className="text-lg font-extrabold sm:text-xl" style={{ color: stat.color || '#16A9D8' }}>{stat.value}</p>
+                    <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-white/55 sm:text-[10px]">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 flex flex-col gap-2 sm:mt-5 sm:flex-row sm:gap-3">
+              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-orange-600 sm:py-3.5 sm:text-sm">
                 Tư vấn chương trình <ArrowRight size={18} />
               </button>
-              <button type="button" onClick={() => setRegistrationOpen(true)} className="inline-flex items-center justify-center rounded-2xl border-2 border-[#003B7A]/15 bg-white px-7 py-4 text-sm font-bold uppercase tracking-wide text-[#003B7A] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F4FAFF]">
+              <button type="button" onClick={() => setRegistrationOpen(true)} className="inline-flex items-center justify-center rounded-2xl border-2 border-white/50 bg-white/5 px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#003B7A] sm:py-3.5 sm:text-sm">
                 Đăng ký ngay
               </button>
             </div>
           </div>
-
-          <div className="relative pb-8 lg:pb-0">
-            <div className="group relative overflow-hidden rounded-3xl bg-white p-3 shadow-2xl shadow-[#003B7A]/15">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl">
-                <img
-                  src={summerModuleImage(activeHeroSlide, activeHeroIndex)}
-                  alt={summerModuleTag(activeHeroSlide)}
-                  className="h-full w-full object-cover object-center transition-transform duration-700 group-hover:scale-[1.03]"
-                />
-                <div className="absolute left-4 top-4 rounded-full bg-white/95 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-[#003B7A] shadow-sm backdrop-blur">
-                  {summerModuleTag(activeHeroSlide)}
-                </div>
-                {heroSlides.length > 1 && (
-                  <div className="absolute right-4 top-4 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => moveHeroSlide(-1)}
-                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#003B7A] shadow-sm transition-colors hover:bg-[#F4FAFF]"
-                      aria-label="Ảnh hero trước"
-                    >
-                      <ChevronLeft size={18} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveHeroSlide(1)}
-                      className="flex h-10 w-10 items-center justify-center rounded-full bg-[#003B7A] text-white shadow-sm transition-colors hover:bg-[#1267AE]"
-                      aria-label="Ảnh hero tiếp theo"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            {heroStats.length > 0 && (
-              <div className="absolute -bottom-6 left-5 right-5 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur">
-                <div className="grid gap-3 text-center" style={{ gridTemplateColumns: `repeat(${heroStats.length}, minmax(0, 1fr))` }}>
-                  {heroStats.map((stat) => (
-                    <div key={stat.label}>
-                      <p className="text-2xl font-extrabold" style={{ color: stat.color || '#003B7A' }}>{stat.value}</p>
-                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{stat.label}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
         </div>
+
+        {heroSlides.length > 1 && (
+          <div className="absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2">
+            {heroSlides.map((slide, index) => (
+              <button
+                key={summerModuleTag(slide)}
+                type="button"
+                onClick={() => setHeroSlideIndex(index)}
+                className={`h-2.5 rounded-full transition-all ${index === activeHeroIndex ? 'w-8 bg-white' : 'w-2.5 bg-white/45 hover:bg-white/70'}`}
+                aria-label={`Chọn ảnh ${summerModuleTag(slide)}`}
+              />
+            ))}
+          </div>
+        )}
+
+        {heroSlides.length > 1 && (
+          <div className="absolute bottom-12 right-5 z-10 hidden items-center gap-2 md:flex lg:right-[calc((100vw-1180px)/2)]">
+            <button
+              type="button"
+              onClick={() => moveHeroSlide(-1)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/90 text-[#003B7A] shadow-sm backdrop-blur transition-colors hover:bg-white"
+              aria-label="Ảnh hero trước"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => moveHeroSlide(1)}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-[#003B7A] text-white shadow-sm transition-colors hover:bg-[#1267AE]"
+              aria-label="Ảnh hero tiếp theo"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
       </section>
       )}
 
