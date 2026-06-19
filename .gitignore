@@ -3,6 +3,11 @@ node_modules/
 
 # Secrets — KHONG commit
 .env
+# Firebase service-account keys (migrate project) — KHONG commit
+key-old.json
+key-new.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
 .env.local
 .env.*.local
 .env*
