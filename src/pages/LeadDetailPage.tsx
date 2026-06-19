@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { CallRecordingButton } from '@/components/call/CallRecordingPlayer';
 import { useCallCenter } from '@/context/CallCenterContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseCatalog } from '@/hooks/useCms';
@@ -550,11 +551,7 @@ export default function LeadDetailPage() {
                   {callLogs.slice(0, 8).map((log) => (
                     <div key={log.id} className="flex flex-col justify-between gap-2 rounded-lg bg-white px-3 py-2 text-sm md:flex-row md:items-center">
                       <span className="font-semibold text-slate-700">{callLogText(log)}</span>
-                      {log.recordingUrl && (
-                        <a className="text-xs font-bold text-[#003B7A] hover:underline" href={callCenterService.recordingProxyUrl(log)} target="_blank" rel="noreferrer">
-                          Ghi âm
-                        </a>
-                      )}
+                        <CallRecordingButton log={log} className="text-xs" />
                     </div>
                   ))}
                 </div>

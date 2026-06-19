@@ -1,5 +1,7 @@
-import { adminAuth, adminDb } from '../../api/_firebaseAdmin.js';
+import { adminDb } from '../../api/_firebaseAdmin.js';
+import { ApiError, requireApiUser } from '../../api/_apiAuth.js';
 import { normalizePhone, stringeePccAgentByUserId, stringeePccCallout, stringeePhoneBridgeCallout } from '../../api/_stringee.js';
+import { acquireCallLock, CallLockBusyError, releaseCallLock, updateCallLock } from './lock.js';
 
 type VercelRequest = {
   method?: string;
@@ -27,11 +29,7 @@ type CallSettings = {
   }>;
 };
 
-function bearerToken(req: VercelRequest) {
-  const value = req.headers.authorization || req.headers.Authorization;
-  const raw = Array.isArray(value) ? value[0] : value;
-  return raw?.replace(/^Bearer\s+/i, '').trim() || '';
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
@@ -69,35 +67,64 @@ async function resolveAgentPhone(stringeeUserId: string, mapping?: NonNullable<C
 
 async function writeInitialLog(db: ReturnType<typeof adminDb>, data: Record<string, unknown>) {
   const providerCallId = String(data.providerCallId || `pcc-out-${Date.now()}`);
+  const timestamp = new Date().toISOString();
+  const status = String(data.status || 'ringing');
+  const startedAt = String(data.startedAt || timestamp);
   await db.collection('callLogs').doc(providerCallId).set(stripUndefined({
     id: providerCallId,
     provider: 'stringee',
     direction: 'outbound',
-    status: 'ringing',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    status,
+    createdAt: timestamp,
+    updatedAt: timestamp,
     ...data,
+    callStatus: data.callStatus || data.status || status,
+    startTime: data.startTime || data.startedAt || startedAt,
   }), { merge: true }).catch(() => {});
+}
+
+function assignmentExpired(lead: Record<string, any>, nowMs = Date.now()) {
+  if (!lead.assignedTo || lead.assignedStatus === 'returned') return true;
+  if (lead.assignedStatus === 'accepted') return false;
+  const assignedAtMs = Number(lead.assignedAtMs || 0);
+  return Boolean(assignedAtMs) && nowMs - assignedAtMs >= DAY_MS;
+}
+
+async function leadForCall(db: ReturnType<typeof adminDb>, leadId: string) {
+  if (!leadId) throw new ApiError(400, 'Missing leadId for outbound call');
+  const snap = await db.collection('leads').doc(leadId).get();
+  if (!snap.exists) throw new ApiError(404, 'Lead not found');
+  return { id: snap.id, ...(snap.data() || {}) } as Record<string, any>;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const token = bearerToken(req);
-  if (!token) return res.status(401).json({ error: 'Missing Firebase ID token' });
+  const db = adminDb();
+  const user = await requireApiUser(db, req).catch((error) => {
+    if (error instanceof ApiError) return error;
+    return new ApiError(401, 'Invalid Firebase ID token');
+  });
+  if (user instanceof ApiError) return res.status(user.status).json({ error: user.message });
+  if (!['admin', 'manager', 'sales'].includes(user.role)) {
+    return res.status(403).json({ error: 'Only Admin, Manager or Sales can start outbound calls' });
+  }
 
-  const decoded = await adminAuth().verifyIdToken(token).catch(() => null);
-  if (!decoded?.uid) return res.status(401).json({ error: 'Invalid Firebase ID token' });
-
-  const crmUserId = String(req.body?.crmUserId || decoded.uid).trim();
-  if (crmUserId !== decoded.uid && decoded.role !== 'admin') {
+  const crmUserId = String(req.body?.crmUserId || user.id).trim();
+  if (crmUserId !== user.id && user.role !== 'admin') {
     return res.status(403).json({ error: 'Cannot start call for another user' });
   }
 
-  const customerNumber = normalizePhone(String(req.body?.phone || req.body?.customerNumber || ''));
+  const lead = await leadForCall(db, String(req.body?.leadId || '').trim()).catch((error) => error);
+  if (lead instanceof ApiError) return res.status(lead.status).json({ error: lead.message });
+  if (lead instanceof Error) return res.status(500).json({ error: lead.message });
+  if (user.role === 'sales' && (lead.assignedTo !== user.id || assignmentExpired(lead))) {
+    return res.status(403).json({ error: 'Sales can only call active leads assigned to them' });
+  }
+
+  const customerNumber = normalizePhone(String(lead.phone || req.body?.phone || req.body?.customerNumber || ''));
   if (!customerNumber) return res.status(400).json({ error: 'Lead phone is required' });
 
-  const db = adminDb();
   const config = await settings(db);
   const fromNumber = normalizePhone(String(config.fromNumber || process.env.STRINGEE_FROM_NUMBER || '842471058267'));
   const fallbackCrmId = process.env.CALL_FALLBACK_AGENT_ID || config.fallbackAgentId || '';
@@ -109,15 +136,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const requestedCallId = String(req.body?.providerCallId || '').trim();
   const providerCallId = requestedCallId || `pcc-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const leadName = String(req.body?.leadName || '').trim();
+  const leadName = String(req.body?.leadName || lead.studentName || lead.parentName || lead.fullName || '').trim();
   const agentName = String(
-    req.body?.agentName || mappedCrmName(crmUserId, config) || crmUserId,
+    req.body?.agentName || mappedCrmName(crmUserId, config) || user.fullName || crmUserId,
   ).trim();
   const routedAgentName = String(
     requestedMapping?.crmName || fallbackMapping?.crmName || (fallbackMapping ? config.fallbackAgentName : '') || routedCrmId,
   ).trim();
 
+  let lockAcquired = false;
   try {
+    await acquireCallLock(db, {
+      providerCallId,
+      clientCallId: providerCallId,
+      agentId: crmUserId,
+      agentName,
+      stringeeAgentId: stringeeUserId,
+      routedAgentId: routedCrmId,
+      routedAgentName,
+      leadId: lead.id,
+      leadName,
+      customerNumber,
+      fromNumber,
+      callStatus: 'ringing',
+    });
+    lockAcquired = true;
+
     const agentPhoneNumber = await resolveAgentPhone(stringeeUserId, requestedMapping || fallbackMapping);
     const result = agentPhoneNumber
       ? await stringeePhoneBridgeCallout({
@@ -136,14 +180,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const stringeeCallId = String(result.payload?.callId || '').trim();
     const logId = stringeeCallId || providerCallId;
     const calloutMode = agentPhoneNumber ? 'phone_bridge' : 'pcc_app_sip';
+    const startedAt = new Date().toISOString();
+
+    await updateCallLock(db, {
+      providerCallId: logId,
+      clientCallId: providerCallId,
+      stringeeCallId,
+      calloutMode,
+      startedAt,
+    });
 
     await writeInitialLog(db, {
       providerCallId: logId,
       clientCallId: providerCallId,
       stringeeCallId,
-      leadId: req.body?.leadId || '',
+      leadId: lead.id,
       leadName,
       agentId: crmUserId,
+      saleId: crmUserId,
       agentName,
       stringeeAgentId: stringeeUserId,
       routedAgentId: routedCrmId,
@@ -152,7 +206,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       fromNumber,
       toNumber: customerNumber,
       customerNumber,
-      startedAt: new Date().toISOString(),
+      customerId: lead.id,
+      startedAt,
+      startTime: startedAt,
       rawEvent: {
         type: agentPhoneNumber ? 'phone_bridge_callout_requested' : 'pcc_callout_requested',
         calloutMode,
@@ -172,12 +228,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: result.payload?.message || 'PCC callout requested',
     });
   } catch (error) {
+    if (error instanceof CallLockBusyError) {
+      return res.status(error.status).json({ error: error.message, lock: error.lock });
+    }
+    if (lockAcquired) {
+      await releaseCallLock(db, providerCallId, {
+        releaseReason: 'callout_failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     await writeInitialLog(db, {
       providerCallId,
       status: 'failed',
-      leadId: req.body?.leadId || '',
+      leadId: lead.id,
       leadName,
       agentId: crmUserId,
+      saleId: crmUserId,
       agentName,
       stringeeAgentId: stringeeUserId,
       routedAgentId: routedCrmId,
@@ -185,8 +251,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       fromNumber,
       toNumber: customerNumber,
       customerNumber,
+      customerId: lead.id,
       startedAt: new Date().toISOString(),
+      startTime: new Date().toISOString(),
       endedAt: new Date().toISOString(),
+      stopTime: new Date().toISOString(),
+      callStatus: 'failed',
       rawEvent: {
         type: 'pcc_callout_failed',
         fallbackUsed: !requestedMapping && Boolean(fallbackMapping),

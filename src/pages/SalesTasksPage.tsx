@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { CallRecordingButton } from '@/components/call/CallRecordingPlayer';
 import { useCallCenter } from '@/context/CallCenterContext';
 import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } from '@/lib/constants';
 import { expectedRevenueAmount, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
@@ -1091,7 +1092,7 @@ function TaskLeadModal({
                   <div key={log.id} className="rounded-md border border-slate-200 bg-white p-2 text-xs">
                     <p className="font-bold text-slate-800">{log.direction === 'outbound' ? 'Outbound' : 'Inbound'} · {log.disposition || log.status}</p>
                     <p className="mt-1 text-slate-500">{formatDate(log.startedAt, true)}{log.durationSec ? ` · ${log.durationSec}s` : ''}</p>
-                    {log.recordingUrl && <a className="mt-1 inline-block font-bold text-[#003B7A] hover:underline" href={callCenterService.recordingProxyUrl(log)} target="_blank" rel="noreferrer">Recording</a>}
+                    <CallRecordingButton log={log} className="mt-1 text-xs" />
                   </div>
                 ))}
                 {!callLogs.length && <p className="rounded-md border border-dashed border-slate-200 py-4 text-center text-xs font-semibold text-slate-400">Chưa có call log.</p>}

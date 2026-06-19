@@ -1,4 +1,5 @@
-import { adminAuth, adminDb } from '../../api/_firebaseAdmin.js';
+import { adminDb } from '../../api/_firebaseAdmin.js';
+import { ApiError, requireApiUser, requireAnyRole } from '../../api/_apiAuth.js';
 import { stringeeRestToken } from '../../api/_stringee.js';
 
 type VercelRequest = {
@@ -19,27 +20,21 @@ function first(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function bearer(req: VercelRequest) {
-  const raw = first(req.headers.authorization || req.headers.Authorization);
-  return raw?.replace(/^Bearer\s+/i, '').trim() || first(req.query?.token) || '';
-}
-
-async function verifyIfRequired(req: VercelRequest) {
-  if (process.env.REQUIRE_RECORDING_AUTH !== 'true') return true;
-  const token = bearer(req);
-  if (!token) return false;
-  const decoded = await adminAuth().verifyIdToken(token).catch(() => null);
-  return Boolean(decoded?.uid);
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-  if (!await verifyIfRequired(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   const callLogId = first(req.query?.callLogId) || first(req.query?.callId) || '';
   if (!callLogId) return res.status(400).json({ error: 'Missing callLogId' });
 
   const db = adminDb();
+  try {
+    const user = await requireApiUser(db, req);
+    requireAnyRole(user, ['admin', 'manager']);
+  } catch (error) {
+    const status = error instanceof ApiError ? error.status : 401;
+    return res.status(status).json({ error: error instanceof Error ? error.message : 'Unauthorized' });
+  }
+
   const snap = await db.collection('callLogs').doc(callLogId).get().catch(() => null);
   if (!snap?.exists) return res.status(404).json({ error: 'Call log not found' });
   const log = snap.data() as { recordingUrl?: string };

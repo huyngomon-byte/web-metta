@@ -93,6 +93,7 @@ const LeadsPage = lazyWithRetry(() => import('@/pages/LeadsPage'));
 const LeadAssignmentPage = lazyWithRetry(() => import('@/pages/LeadAssignmentPage'));
 const LeadDatabasePage = lazyWithRetry(() => import('@/pages/LeadDatabasePage'));
 const LeadDetailPage = lazyWithRetry(() => import('@/pages/LeadDetailPage'));
+const CallRecordingPage = lazyWithRetry(() => import('@/pages/CallRecordingPage'));
 const SalesTasksPage = lazyWithRetry(() => import('@/pages/SalesTasksPage'));
 const AppointmentsPage = lazyWithRetry(() => import('@/pages/AppointmentsPage'));
 const CapiSettingsPage = lazyWithRetry(() => import('@/pages/CapiSettingsPage'));
@@ -163,6 +164,7 @@ export default function App() {
                   <Route path="/crm/tasks" element={<SalesTasksPage />} />
                   <Route path="/crm/database" element={<LeadDatabasePage />} />
                   <Route path="/crm/leads/:id" element={<LeadDetailPage />} />
+                  <Route path="/crm/calls/:callId/recording" element={<CallRecordingPage />} />
                   <Route path="/appointments" element={<AppointmentsPage />} />
                   <Route path="/capi" element={<CapiSettingsPage />} />
                   <Route path="/capi/events" element={<CapiEventsPage />} />

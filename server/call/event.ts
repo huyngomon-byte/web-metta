@@ -1,5 +1,6 @@
 import { adminDb } from '../../api/_firebaseAdmin.js';
 import { normalizePhone, verifyStringeeSignature } from '../../api/_stringee.js';
+import { releaseCallLock } from './lock.js';
 
 type VercelRequest = {
   method?: string;
@@ -111,6 +112,10 @@ function duration(req: VercelRequest, startedAt?: string, endedAt?: string) {
   return undefined;
 }
 
+function isTerminalStatus(status: string) {
+  return status === 'ended' || status === 'failed' || status === 'missed';
+}
+
 async function recentLogByCustomer(db: ReturnType<typeof adminDb>, customerNumber: string) {
   if (!customerNumber) return null;
   const snap = await db.collection('callLogs').where('customerNumber', '==', customerNumber).limit(20).get().catch(() => null);
@@ -199,16 +204,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     stringeeCallId,
     direction: existing.direction || String(custom.direction || field(req, 'direction') || ''),
     status: nextStatus,
+    callStatus: nextStatus,
     leadId: existing.leadId || String(custom.leadId || field(req, 'leadId') || ''),
     leadName: existing.leadName || String(custom.leadName || field(req, 'leadName') || ''),
     agentId: existing.agentId || String(custom.agentId || field(req, 'agentId') || ''),
+    saleId: existing.saleId || existing.agentId || String(custom.agentId || field(req, 'agentId') || ''),
     agentName: existing.agentName || String(custom.agentName || field(req, 'agentName') || ''),
     fromNumber: existing.fromNumber || normalizePhone(String(field(req, 'from') || field(req, 'fromNumber') || '')),
     toNumber: existing.toNumber || normalizePhone(String(field(req, 'to') || field(req, 'toNumber') || '')),
     customerNumber: existing.customerNumber || eventCustomerNumber,
+    customerId: existing.customerId || existing.leadId || String(custom.leadId || field(req, 'leadId') || ''),
     startedAt,
+    startTime: existing.startTime || startedAt,
     answeredAt,
+    answerTime: existing.answerTime || answeredAt,
     endedAt,
+    stopTime: endedAt,
     durationSec: duration(req, answeredAt || startedAt, endedAt),
     recordingUrl: recording,
     recordingExpiresAt,
@@ -220,5 +231,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const safePatch = stripUndefined(patch);
   await ref.set(safePatch, { merge: true });
   if (safePatch.endedAt || safePatch.recordingUrl) await addOrUpdateCallActivity(db, { ...existing, ...safePatch });
+  if (isTerminalStatus(nextStatus)) {
+    await releaseCallLock(db, [providerCallId, stringeeCallId, existing.clientCallId].filter(Boolean), {
+      providerCallId,
+      stringeeCallId,
+      releaseReason: nextStatus,
+      endedAt: endedAt || timestamp,
+    });
+  }
   return res.status(200).json({ ok: true, callId: providerCallId, stringeeCallId });
 }

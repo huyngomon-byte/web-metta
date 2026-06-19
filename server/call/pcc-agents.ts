@@ -109,14 +109,18 @@ function callsFromRequest(req: VercelRequest): PccCall[] {
 
 async function writeInboundLog(db: ReturnType<typeof adminDb>, data: Record<string, unknown>) {
   const providerCallId = String(data.providerCallId || `pcc-in-${Date.now()}`);
+  const timestamp = new Date().toISOString();
+  const startedAt = String(data.startedAt || timestamp);
   await db.collection('callLogs').doc(providerCallId).set({
     id: providerCallId,
     provider: 'stringee',
     direction: 'inbound',
     status: 'ringing',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
     ...data,
+    callStatus: data.callStatus || 'ringing',
+    startTime: data.startTime || data.startedAt || startedAt,
   }, { merge: true }).catch(() => {});
 }
 
@@ -140,8 +144,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const customerNumber = normalizePhone(call.from || '');
     const lead = await findLeadByPhone(db, customerNumber);
     const assignedCrmId = lead?.assignedTo || '';
-    const assignedOnline = await agentOnline(db, assignedCrmId);
-    const assignedMapping = assignedCrmId && assignedOnline ? mappingForCrm(assignedCrmId, config) : undefined;
+    const assignedPresenceOnline = await agentOnline(db, assignedCrmId);
+    const assignedMapping = assignedCrmId ? mappingForCrm(assignedCrmId, config) : undefined;
     const targetCrmId = assignedMapping?.crmUserId || fallbackMapping?.crmUserId || '';
     const targetMapping = assignedMapping || fallbackMapping;
     const agentEntries = await Promise.all(
@@ -157,10 +161,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       leadId: lead?.id || '',
       leadName: leadName(lead),
       agentId: targetCrmId,
+      saleId: targetCrmId,
       agentName: targetCrmId === assignedCrmId ? lead?.assignedToName || targetMapping?.crmName || targetCrmId : fallbackMapping?.crmName || config.fallbackAgentName || fallbackCrmId,
       fromNumber: customerNumber,
       toNumber: normalizePhone(call.to || process.env.STRINGEE_FROM_NUMBER || ''),
       customerNumber,
+      customerId: lead?.id || '',
       startedAt: new Date().toISOString(),
       rawEvent: {
         type: 'pcc_get_list_agents',
@@ -168,7 +174,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         projectId: req.body?.projectId || field(req, 'projectId'),
         leadMatched: Boolean(lead),
         assignedCrmId,
-        assignedOnline,
+        assignedPresenceOnline,
+        assignedMappingReturned: Boolean(assignedMapping),
       },
     });
 

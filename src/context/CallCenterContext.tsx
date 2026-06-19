@@ -148,6 +148,27 @@ function durationSec(startedAt?: string, endedAt?: string) {
   return Math.round((end - start) / 1000);
 }
 
+function terminalStatus(status?: string) {
+  return status === 'ended' || status === 'failed' || status === 'missed';
+}
+
+function logMatchesSession(log: CallLog, session: CallSession) {
+  const sessionIds = new Set([
+    session.id,
+    session.providerCallId,
+    session.log?.id,
+    session.log?.providerCallId,
+    session.log?.clientCallId,
+    session.log?.stringeeCallId,
+  ].filter(Boolean));
+  return [
+    log.id,
+    log.providerCallId,
+    log.clientCallId,
+    log.stringeeCallId,
+  ].some((value) => sessionIds.has(value));
+}
+
 function makeCallFailed(response: unknown) {
   const payload = response && typeof response === 'object' ? response as Record<string, unknown> : {};
   const resultCode = Number(payload.r ?? payload.code ?? payload.statusCode);
@@ -181,6 +202,48 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     activeCallRef.current = activeCall;
+  }, [activeCall]);
+
+  useEffect(() => {
+    if (!activeCall || activeCall.sdkCall || !activeCall.leadId) return undefined;
+    let cancelled = false;
+
+    async function syncPccStatus() {
+      const session = activeCallRef.current;
+      if (!session || session.sdkCall || !session.leadId) return;
+      const logs = await callCenterService.getLogsForLead(session.leadId).catch(() => []);
+      const remote = logs.find((log) => logMatchesSession(log, session));
+      if (!remote || cancelled) return;
+
+      if (terminalStatus(remote.status)) {
+        activeCallRef.current = null;
+        setActiveCall(null);
+        setIncomingCall(null);
+        setPendingWrapUp(remote);
+        if (remote.status === 'failed' || remote.status === 'missed' || !remote.answeredAt) {
+          setError('Cuộc gọi không kết nối được với khách. Vui lòng ghi chú kết quả cuộc gọi.');
+        }
+        return;
+      }
+
+      if (remote.status === 'answered' && session.status !== 'answered') {
+        const next = {
+          ...session,
+          status: 'answered' as const,
+          answeredAt: remote.answeredAt || new Date().toISOString(),
+          log: remote,
+        };
+        activeCallRef.current = next;
+        setActiveCall(next);
+      }
+    }
+
+    void syncPccStatus();
+    const timer = window.setInterval(() => void syncPccStatus(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [activeCall]);
 
   const clearError = useCallback(() => setError(''), []);
