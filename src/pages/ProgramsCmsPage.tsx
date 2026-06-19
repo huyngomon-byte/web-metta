@@ -8,7 +8,7 @@ import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMME
 import { useThemeSettings } from '@/hooks/useCms';
 import { formatCurrency } from '@/lib/utils';
 import { cmsService } from '@/services/cmsService';
-import type { HighlightCard, ProgramCms, RoadmapCard, SkillPetal, SummerStat, SummerAudienceItem, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage } from '@/types/cms';
+import type { HighlightCard, ProgramCms, RoadmapCard, SkillPetal, SummerStat, SummerAudienceItem, SummerModule, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage, SummerSectionKey } from '@/types/cms';
 
 const DEFAULT_PROGRAMS: ProgramCms[] = PUBLIC_PROGRAMS.map((program) => ({
   ...program,
@@ -124,6 +124,7 @@ const SKILL_EMOJIS: Record<string, string> = { Social: '🤝', Physical: '🏃',
 
 /* ── Icon registry for highlight/outcome card editor ── */
 const HIGHLIGHT_ICONS: { name: string; label: string; Icon: LucideIcon }[] = [
+  { name: 'Sparkles', label: 'Sáng tạo', Icon: Sparkles },
   { name: 'Music', label: 'Âm nhạc', Icon: Music },
   { name: 'BookOpen', label: 'Sách', Icon: BookOpen },
   { name: 'Eye', label: 'Nhìn', Icon: Eye },
@@ -488,31 +489,45 @@ function EditorSection({
   title,
   subtitle,
   defaultOpen = false,
+  visible,
+  onVisibleChange,
   children,
 }: {
   title: string;
   subtitle?: string;
   defaultOpen?: boolean;
+  visible?: boolean;
+  onVisibleChange?: (visible: boolean) => void;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const hasVisibilityToggle = typeof visible === 'boolean' && Boolean(onVisibleChange);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
-      >
-        <div>
+      <div className="flex w-full items-center justify-between gap-3 px-4 py-3 hover:bg-slate-50 transition-colors">
+        <button type="button" onClick={() => setOpen(!open)} className="min-w-0 flex-1 text-left">
           <p className="text-xs font-extrabold uppercase tracking-wide text-slate-600">{title}</p>
           {subtitle && <p className="mt-1 text-xs text-slate-400">{subtitle}</p>}
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {hasVisibilityToggle && (
+            <button
+              type="button"
+              aria-pressed={visible}
+              onClick={() => onVisibleChange?.(!visible)}
+              className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-bold transition-colors ${visible ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-500'}`}
+            >
+              {visible ? <Eye size={14} /> : <EyeOff size={14} />}
+              {visible ? 'Đang hiện' : 'Đang ẩn'}
+            </button>
+          )}
+          <button type="button" onClick={() => setOpen(!open)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            {open ? 'Thu gọn' : 'Mở rộng'}
+          </button>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
-          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          {open ? 'Thu gọn' : 'Mở rộng'}
-        </span>
-      </button>
+      </div>
       {open && <div className="border-t border-slate-100 p-4">{children}</div>}
     </div>
   );
@@ -700,6 +715,75 @@ function SummerAudienceEditor({ items, onChange }: { items: SummerAudienceItem[]
   );
 }
 
+function SummerModulesEditor({ modules, onChange }: { modules: SummerModule[]; onChange: (items: SummerModule[]) => void }) {
+  const update = (i: number, field: keyof SummerModule, val: string) => {
+    if (field === 'color') rememberColor(val);
+    const copy = [...modules];
+    copy[i] = { ...copy[i], [field]: val };
+    onChange(copy);
+  };
+
+  const add = () => {
+    const idx = modules.length;
+    const fallback = SUMMER_DEFAULTS.modules[idx % SUMMER_DEFAULTS.modules.length];
+    onChange([...modules, {
+      icon: fallback.icon,
+      color: fallback.color,
+      title: '',
+      description: '',
+      image: fallback.image,
+      tag: fallback.tag,
+    }]);
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Thông tin bộ môn + ảnh hero slider</p>
+          <p className="mt-1 text-[11px] font-semibold text-slate-400">Ảnh dùng ở hero slider. Kích thước đề xuất: 1200 x 800 px, tỷ lệ 3:2, JPG/PNG.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={add}><Plus size={14} /> Thêm</Button>
+      </div>
+      {modules.map((mod, i) => {
+        const iconItem = HIGHLIGHT_ICONS.find((ic) => ic.name === mod.icon) ?? HIGHLIGHT_ICONS[0];
+        const imageValue = mod.image ?? SUMMER_DEFAULTS.modules[i % SUMMER_DEFAULTS.modules.length]?.image ?? '';
+        return (
+          <div key={i} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:grid-cols-[260px_1fr]">
+            <SummerImageField
+              label={`Ảnh bộ môn ${i + 1}`}
+              value={imageValue}
+              onChange={(value) => update(i, 'image', value)}
+            />
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap gap-1">
+                {HIGHLIGHT_ICONS.map((ic) => (
+                  <button key={ic.name} type="button" title={ic.label} onClick={() => update(i, 'icon', ic.name)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${mod.icon === ic.name ? 'scale-110 bg-[#003B7A] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    <ic.Icon size={15} />
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                <Input value={mod.title} onChange={(e) => update(i, 'title', e.target.value)} placeholder="Tên bộ môn" />
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg border" style={{ color: mod.color, backgroundColor: `${mod.color}1A` }}>
+                    <iconItem.Icon size={16} />
+                  </div>
+                  <input type="color" value={mod.color || '#003B7A'} onChange={(e) => update(i, 'color', e.target.value)} className="h-9 w-10 cursor-pointer rounded border" />
+                  <button type="button" onClick={() => onChange(modules.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500"><Trash2 size={16} /></button>
+                </div>
+              </div>
+              <Input value={mod.tag ?? mod.title} onChange={(e) => update(i, 'tag', e.target.value)} placeholder="Tag hiển thị trên ảnh hero" />
+              <Textarea rows={3} value={mod.description} onChange={(e) => update(i, 'description', e.target.value)} placeholder="Mô tả bộ môn" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SummerWeeklyEditor({ columns, rows, onColumns, onRows }: { columns: string[]; rows: string[][]; onColumns: (c: string[]) => void; onRows: (r: string[][]) => void }) {
   const setCol = (ci: number, val: string) => { const c = [...columns]; c[ci] = val; onColumns(c); };
   const setCell = (ri: number, ci: number, val: string) => { const c = rows.map((r) => [...r]); if (!c[ri]) return; c[ri][ci] = val; onRows(c); };
@@ -785,12 +869,25 @@ function SummerClassInfoEditor({ rows, onChange }: { rows: SummerClassInfoRow[];
   );
 }
 
-function SummerGalleryEditor({ images, onChange }: { images: SummerGalleryImage[]; onChange: (g: SummerGalleryImage[]) => void }) {
+function SummerGalleryEditor({
+  images,
+  onChange,
+  label = 'Ảnh thư viện',
+  sizeNote,
+}: {
+  images: SummerGalleryImage[];
+  onChange: (g: SummerGalleryImage[]) => void;
+  label?: string;
+  sizeNote?: string;
+}) {
   const update = (i: number, field: keyof SummerGalleryImage, val: string) => { const c = [...images]; c[i] = { ...c[i], [field]: val }; onChange(c); };
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Ảnh thư viện</span>
+        <div>
+          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</span>
+          {sizeNote && <p className="mt-1 text-[11px] font-semibold text-slate-400">{sizeNote}</p>}
+        </div>
         <Button variant="outline" size="sm" onClick={() => onChange([...images, { src: '', title: '', alt: '' }])}><Plus size={14} /> Thêm</Button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -828,21 +925,29 @@ function SummerContentEditor({ program, onChange }: { program: ProgramCms; onCha
   const set = (field: keyof ProgramCms, value: unknown) => onChange({ ...program, [field]: value });
   const D = SUMMER_DEFAULTS;
   const classInfoRows = summerClassInfoRowsForProgram(program, program.summerClassInfo ?? D.classInfo);
+  const sectionVisibility = { ...D.sectionVisibility, ...program.summerSectionVisibility };
+  const sectionControl = (section: SummerSectionKey) => ({
+    visible: sectionVisibility[section] !== false,
+    onVisibleChange: (visible: boolean) => set('summerSectionVisibility', { ...program.summerSectionVisibility, [section]: visible }),
+  });
   return (
     <div className="flex flex-col gap-4 rounded-xl border-2 border-dashed border-[#F45A0A]/30 bg-[#FFF7ED]/50 p-4">
       <div className="flex items-center gap-2 text-sm font-extrabold text-[#9A3412]">
         <Sparkles size={16} /> Nội dung riêng trang Summer
       </div>
 
-      <EditorSection title="Hero (Summer)" subtitle="Dòng phụ, chip và số liệu nổi ở đầu trang." defaultOpen>
+      <EditorSection title="Hero (Summer)" subtitle="Dòng phụ, chip, số liệu nổi và ảnh slider ở đầu trang." defaultOpen {...sectionControl('hero')}>
         <div className="flex flex-col gap-3">
           <LabeledInput label="Dòng phụ dưới tiêu đề" value={program.summerSubtitle ?? D.subtitle} onChange={(v) => set('summerSubtitle', v)} />
           <ArrayEditor label="Chip (hero)" items={program.summerChips ?? D.chips} onChange={(v) => set('summerChips', v)} />
           <SummerStatsEditor stats={program.summerHeroStats ?? D.heroStats} onChange={(v) => set('summerHeroStats', v)} />
+          <p className="rounded-lg bg-[#EAF7FF] px-3 py-2 text-xs font-semibold text-[#003B7A]">
+            Ảnh hero slider và tag trên ảnh nằm trong từng bộ môn ở section "4 bộ môn".
+          </p>
         </div>
       </EditorSection>
 
-      <EditorSection title="Tổng quan chương trình">
+      <EditorSection title="Tổng quan chương trình" {...sectionControl('overview')}>
         <div className="grid gap-2">
           <LabeledInput label="Eyebrow" value={program.summerOverviewEyebrow ?? D.overviewEyebrow} onChange={(v) => set('summerOverviewEyebrow', v)} />
           <LabeledInput label="Tiêu đề" value={program.summerOverviewTitle ?? D.overviewTitle} onChange={(v) => set('summerOverviewTitle', v)} />
@@ -850,20 +955,20 @@ function SummerContentEditor({ program, onChange }: { program: ProgramCms; onCha
         </div>
       </EditorSection>
 
-      <EditorSection title="Đối tượng phù hợp">
+      <EditorSection title="Đối tượng phù hợp" {...sectionControl('audience')}>
         <LabeledInput label="Tiêu đề section" value={program.summerAudienceTitle ?? D.audienceTitle} onChange={(v) => set('summerAudienceTitle', v)} />
         <div className="mt-3"><SummerAudienceEditor items={program.summerAudience ?? D.audience} onChange={(v) => set('summerAudience', v)} /></div>
       </EditorSection>
 
-      <EditorSection title="4 bộ môn">
+      <EditorSection title="4 bộ môn" {...sectionControl('modules')}>
         <div className="mb-3 grid gap-2 md:grid-cols-2">
           <LabeledInput label="Eyebrow" value={program.summerModulesEyebrow ?? D.modulesEyebrow} onChange={(v) => set('summerModulesEyebrow', v)} />
           <LabeledInput label="Tiêu đề" value={program.summerModulesTitle ?? D.modulesTitle} onChange={(v) => set('summerModulesTitle', v)} />
         </div>
-        <HighlightCardsEditor label="Các bộ môn" cards={(program.summerModules ?? D.modules) as HighlightCard[]} onChange={(cards) => set('summerModules', cards)} defaultColors={['#F45A0A', '#003B7A', '#8B5CF6', '#16A34A']} />
+        <SummerModulesEditor modules={program.summerModules ?? D.modules} onChange={(items) => set('summerModules', items)} />
       </EditorSection>
 
-      <EditorSection title="Lộ trình & lịch tuần">
+      <EditorSection title="Lộ trình & lịch tuần" {...sectionControl('roadmap')}>
         <div className="mb-3 grid gap-2 md:grid-cols-2">
           <LabeledInput label="Eyebrow" value={program.summerRoadmapEyebrow ?? D.roadmapEyebrow} onChange={(v) => set('summerRoadmapEyebrow', v)} />
           <LabeledInput label="Tiêu đề" value={program.summerRoadmapTitle ?? D.roadmapTitle} onChange={(v) => set('summerRoadmapTitle', v)} />
@@ -872,22 +977,27 @@ function SummerContentEditor({ program, onChange }: { program: ProgramCms; onCha
         <div className="mt-4"><SummerWeeklyEditor columns={program.summerWeeklyColumns ?? D.weeklyColumns} rows={program.summerWeeklyPlan ?? D.weeklyPlan} onColumns={(v) => set('summerWeeklyColumns', v)} onRows={(v) => set('summerWeeklyPlan', v)} /></div>
       </EditorSection>
 
-      <EditorSection title="Kết quả (Sau 6 tuần)">
+      <EditorSection title="Kết quả (Sau 6 tuần)" {...sectionControl('outcomes')}>
         <LabeledInput label="Tiêu đề" value={program.summerOutcomesTitle ?? D.outcomesTitle} onChange={(v) => set('summerOutcomesTitle', v)} />
         <div className="mt-2"><ArrayEditor label="Danh sách kết quả" items={program.summerOutcomesList ?? D.outcomes} onChange={(v) => set('summerOutcomesList', v)} /></div>
       </EditorSection>
 
-      <EditorSection title="Showcase cuối khóa">
+      <EditorSection title="Showcase cuối khóa" {...sectionControl('showcase')}>
         <div className="mb-3 grid gap-2">
           <LabeledInput label="Eyebrow" value={program.summerShowcaseEyebrow ?? D.showcaseEyebrow} onChange={(v) => set('summerShowcaseEyebrow', v)} />
           <LabeledInput label="Tiêu đề" value={program.summerShowcaseTitle ?? D.showcaseTitle} onChange={(v) => set('summerShowcaseTitle', v)} />
           <LabeledTextarea label="Nội dung" value={program.summerShowcaseBody ?? D.showcaseBody} onChange={(v) => set('summerShowcaseBody', v)} />
-          <SummerImageField label="Ảnh showcase" value={program.summerShowcaseImage ?? D.showcaseImage} onChange={(v) => set('summerShowcaseImage', v)} />
+          <SummerGalleryEditor
+            label="Ảnh slider showcase"
+            sizeNote="Kích thước ảnh đề xuất: 1200 x 800 px, tỷ lệ 3:2. Phần này không hiển thị tag trên ảnh."
+            images={program.summerShowcaseImages?.length ? program.summerShowcaseImages : (program.summerShowcaseImage ? [{ src: program.summerShowcaseImage, title: program.summerShowcaseTitle ?? D.showcaseTitle, alt: program.summerShowcaseTitle ?? D.showcaseTitle }] : D.showcaseImages)}
+            onChange={(v) => set('summerShowcaseImages', v)}
+          />
         </div>
         <SummerShowcaseEditor items={program.summerShowcaseItems ?? D.showcaseItems} onChange={(v) => set('summerShowcaseItems', v)} />
       </EditorSection>
 
-      <EditorSection title="Thông tin lớp học">
+      <EditorSection title="Thông tin lớp học" {...sectionControl('classInfo')}>
         <div className="mb-3 grid gap-2">
           <LabeledInput label="Tiêu đề" value={program.summerClassInfoTitle ?? D.classInfoTitle} onChange={(v) => set('summerClassInfoTitle', v)} />
           <LabeledTextarea label="Mô tả" value={program.summerClassInfoBody ?? D.classInfoBody} onChange={(v) => set('summerClassInfoBody', v)} />
@@ -895,16 +1005,20 @@ function SummerContentEditor({ program, onChange }: { program: ProgramCms; onCha
         <SummerClassInfoEditor rows={classInfoRows} onChange={(v) => set('summerClassInfo', v)} />
       </EditorSection>
 
-      <EditorSection title="Thư viện ảnh">
+      <EditorSection title="Thư viện ảnh" {...sectionControl('gallery')}>
         <LabeledInput label="Tiêu đề" value={program.summerGalleryTitle ?? D.galleryTitle} onChange={(v) => set('summerGalleryTitle', v)} />
         <div className="mt-2"><SummerGalleryEditor images={program.summerGallery ?? D.gallery} onChange={(v) => set('summerGallery', v)} /></div>
       </EditorSection>
 
-      <EditorSection title="CTA cuối trang">
+      <EditorSection title="CTA cuối trang" {...sectionControl('cta')}>
         <div className="grid gap-2">
           <LabeledInput label="Tiêu đề" value={program.summerCtaTitle ?? D.ctaTitle} onChange={(v) => set('summerCtaTitle', v)} />
           <LabeledTextarea label="Nội dung" value={program.summerCtaBody ?? D.ctaBody} onChange={(v) => set('summerCtaBody', v)} />
         </div>
+      </EditorSection>
+
+      <EditorSection title="Form tư vấn cuối trang" subtitle="Ẩn/hiện form tư vấn ở cuối trang Summer." {...sectionControl('leadForm')}>
+        <p className="text-sm font-semibold text-slate-500">Form sử dụng chung component lead form của website. Nội dung form được đồng bộ theo chương trình.</p>
       </EditorSection>
     </div>
   );

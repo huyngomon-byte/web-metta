@@ -12,7 +12,26 @@ const COURSE_OPTIONS = [
   'METTA Young Learner',
   'METTA Young Learners',
   'Metta+ Pass',
+  'METTA Summer 2026',
 ];
+
+const LEAD_STATUSES = [
+  'Lead mới',
+  'Đã liên hệ',
+  'Chưa nghe máy',
+  'Đã hẹn tư vấn',
+  'Đã tư vấn/Đặt lịch test',
+  'Đã test/Học thử',
+  'Đã báo phí/Chờ chốt',
+  'Đã đăng ký học',
+  'Mất lead',
+];
+
+const WON_LEAD_STATUS = 'Đã đăng ký học';
+const DEFAULT_DEAL_CURRENCY = 'VND';
+const METTA_SUMMER_COURSE = 'METTA Summer 2026';
+const METTA_SUMMER_DEAL_SIZE = 1999000;
+
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const RATE_LIMIT_MAX = 6;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -352,6 +371,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (String(source).toLowerCase() === 'referral' && !isValidPhone(referralPhone)) {
     return res.status(400).json({ error: 'Referral source requires a valid referralPhone' });
   }
+  const requestedStatus = typeof lead.status === 'string' ? lead.status.trim() : '';
+  const status = LEAD_STATUSES.includes(requestedStatus) ? requestedStatus : 'Lead mới';
+  const isWonLead = status === WON_LEAD_STATUS;
+  const rawDealSize = Number(lead.dealSize);
+  const dealSize = Number.isFinite(rawDealSize) && rawDealSize > 0
+    ? rawDealSize
+    : lead.interestedCourse === METTA_SUMMER_COURSE
+      ? METTA_SUMMER_DEAL_SIZE
+      : 0;
+  const rawExpectedRevenue = Number(lead.expectedRevenue);
+  const expectedRevenue = Number.isFinite(rawExpectedRevenue) && rawExpectedRevenue > 0 ? rawExpectedRevenue : dealSize;
+  const rawRevenue = Number(lead.revenue);
+  const revenue = Number.isFinite(rawRevenue) && rawRevenue > 0 ? rawRevenue : isWonLead ? expectedRevenue : 0;
+
   const leadRef = db.collection('leads').doc();
   const sourceUrl = lead.sourceUrl || `${originFromRequest(req)}/${lead.pageSlug || ''}`;
   const [priorityLevel, autoAssignedSales] = await Promise.all([
@@ -380,7 +413,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     referralPhone,
     centerName: lead.centerName || '',
     priorityLevel,
-    status: 'Lead mới',
+    status,
     assignedTo,
     assignedToName,
     assignedBy: assignedTo ? 'auto-assignment-rule' : '',
@@ -389,17 +422,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     assignedStatus: assignedTo ? 'active' : 'unassigned',
     followUpDate: '',
     consultationDate: '',
-    dealSize: 0,
-    dealCurrency: 'VND',
-    dealPackage: '',
-    dealNote: '',
+    dealSize,
+    dealCurrency: typeof lead.dealCurrency === 'string' && lead.dealCurrency.trim() ? String(lead.dealCurrency).trim() : DEFAULT_DEAL_CURRENCY,
+    dealPackage: lead.dealPackage || '',
+    dealNote: lead.dealNote || '',
     discountPercent: 0,
-    expectedRevenue: 0,
-    revenue: 0,
-    revenueAt: '',
+    expectedRevenue,
+    revenue,
+    revenueAt: isWonLead ? now : '',
     expectedCloseDate: '',
     enrollmentType: 'new',
-    wonAt: '',
+    wonAt: isWonLead ? now : '',
     pendingReason: '',
     pendingReasonNote: '',
     pendingWarmthPercent: 0,
@@ -412,7 +445,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     tracking,
     createdAt: now,
     updatedAt: now,
-    stageHistory: [{ status: 'Lead mới', enteredAt: now }],
+    stageHistory: [{ status, enteredAt: now }],
     convertedToStudentId: '',
   };
 
@@ -422,7 +455,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     db,
     lead: payload,
     eventName: 'Lead',
-    statusKey: 'lead-moi',
+    statusKey: isWonLead ? 'da-dang-ky-hoc' : 'lead-moi',
     source: 'server',
     request: req,
     formId: payload.formId,

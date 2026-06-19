@@ -67,6 +67,7 @@ export interface ProgramCms {
   summerSubtitle?: string;                 // dòng phụ dưới tiêu đề hero
   summerChips?: string[];                  // các chip nhỏ ở hero
   summerHeroStats?: SummerStat[];          // 3 ô số liệu nổi dưới ảnh hero
+  summerSectionVisibility?: SummerSectionVisibility;
   summerOverviewEyebrow?: string;
   summerOverviewTitle?: string;
   summerOverviewBody?: string;
@@ -86,6 +87,7 @@ export interface ProgramCms {
   summerShowcaseTitle?: string;
   summerShowcaseBody?: string;
   summerShowcaseImage?: string;
+  summerShowcaseImages?: SummerGalleryImage[];
   summerShowcaseItems?: SummerShowcaseItem[];
   summerClassInfoTitle?: string;
   summerClassInfoBody?: string;
@@ -112,7 +114,24 @@ export interface SummerModule {
   color: string;       // hex màu nhấn
   title: string;
   description: string;
+  image?: string;
+  tag?: string;
 }
+
+export type SummerSectionKey =
+  | 'hero'
+  | 'overview'
+  | 'audience'
+  | 'modules'
+  | 'roadmap'
+  | 'outcomes'
+  | 'showcase'
+  | 'classInfo'
+  | 'gallery'
+  | 'cta'
+  | 'leadForm';
+
+export type SummerSectionVisibility = Partial<Record<SummerSectionKey, boolean>>;
 
 export interface SummerShowcaseItem {
   icon: string;        // Lucide icon name

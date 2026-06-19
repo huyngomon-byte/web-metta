@@ -1,11 +1,12 @@
-import { ArrowLeft, ArrowRight, CheckCircle2, Clock, GraduationCap, Sparkles, Users, Music, BookOpen, Eye, Brain, Globe, Zap, Mic, MessageCircle, Star, Cpu, FlaskConical, Trophy, Target, Lightbulb, Hand, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Clock, GraduationCap, Sparkles, Users, Music, BookOpen, Eye, Brain, Globe, Zap, Mic, MessageCircle, Star, Cpu, FlaskConical, Trophy, Target, Lightbulb, Hand, X, type LucideIcon } from 'lucide-react';
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
-import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, resolveCourseDealSizeForProgram } from '@/lib/constants';
+import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, WON_LEAD_STATUS, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
+import { publicLeadService } from '@/services/publicLeadService';
 import { formatCurrency } from '@/lib/utils';
-import type { ProgramCms } from '@/types/cms';
+import type { ProgramCms, SummerGalleryImage, SummerModule, SummerSectionKey } from '@/types/cms';
 
 export default function PublicProgramDetailPage() {
   const { slug } = useParams();
@@ -247,8 +248,33 @@ function summerClassInfoFromProgram(program: ProgramCms) {
   });
 }
 
+function summerModuleImage(module: { image?: string }, index: number) {
+  return module.image || SUMMER_DEFAULTS.modules[index % SUMMER_DEFAULTS.modules.length]?.image || SUMMER_DEFAULTS.showcaseImage;
+}
+
+function summerModuleTag(module: { tag?: string; title?: string }) {
+  return module.tag || module.title || 'METTA Summer';
+}
+
+function summerGalleryImageSrc(image: SummerGalleryImage) {
+  return image.src || SUMMER_DEFAULTS.showcaseImage;
+}
+
+const SUMMER_QR_IMAGE = '/brand/metta-summer-2026-qr.jpg';
+
+function normalizeSummerPhone(phone: string) {
+  return phone.replace(/[\s.\-()]/g, '').replace(/^\+84/, '0');
+}
+
+function isValidSummerPhone(phone: string) {
+  return /^0(3|5|7|8|9|1[2689])\d{8}$/.test(phone);
+}
+
 function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCtaClick: () => void }) {
   const [showPlan, setShowPlan] = useState(false);
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0);
+  const [showcaseSlideIndex, setShowcaseSlideIndex] = useState(0);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
 
   // Nội dung lấy từ CMS, fallback về SUMMER_DEFAULTS nếu chưa nhập
   const subtitle = program.summerSubtitle || SUMMER_DEFAULTS.subtitle;
@@ -274,6 +300,11 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
   const showcaseTitle = program.summerShowcaseTitle || SUMMER_DEFAULTS.showcaseTitle;
   const showcaseBody = program.summerShowcaseBody || SUMMER_DEFAULTS.showcaseBody;
   const showcaseImage = program.summerShowcaseImage || SUMMER_DEFAULTS.showcaseImage;
+  const showcaseImages = program.summerShowcaseImages?.length
+    ? program.summerShowcaseImages
+    : (program.summerShowcaseImage
+      ? [{ src: program.summerShowcaseImage, title: showcaseTitle, alt: showcaseTitle }]
+      : SUMMER_DEFAULTS.showcaseImages);
   const showcaseItems = program.summerShowcaseItems?.length ? program.summerShowcaseItems : SUMMER_DEFAULTS.showcaseItems;
   const classInfoTitle = program.summerClassInfoTitle || SUMMER_DEFAULTS.classInfoTitle;
   const classInfoBody = program.summerClassInfoBody || SUMMER_DEFAULTS.classInfoBody;
@@ -282,10 +313,47 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
   const gallery = program.summerGallery?.length ? program.summerGallery : SUMMER_DEFAULTS.gallery;
   const ctaTitle = program.summerCtaTitle || SUMMER_DEFAULTS.ctaTitle;
   const ctaBody = program.summerCtaBody || SUMMER_DEFAULTS.ctaBody;
+  const sectionVisibility = { ...SUMMER_DEFAULTS.sectionVisibility, ...program.summerSectionVisibility };
+  const showSection = (section: SummerSectionKey) => sectionVisibility[section] !== false;
+  const heroSlides: SummerModule[] = modules.length ? modules : [{
+    icon: 'Sparkles',
+    color: '#F45A0A',
+    title: program.title,
+    description: program.description,
+    image: heroImage,
+    tag: program.eyebrow || program.title,
+  }];
+  const activeHeroIndex = heroSlides.length ? Math.min(heroSlideIndex, heroSlides.length - 1) : 0;
+  const activeHeroSlide = heroSlides[activeHeroIndex];
+  const activeShowcaseIndex = showcaseImages.length ? Math.min(showcaseSlideIndex, showcaseImages.length - 1) : 0;
+  const activeShowcaseImage = showcaseImages[activeShowcaseIndex];
+
+  useEffect(() => {
+    if (heroSlides.length > 0 && heroSlideIndex >= heroSlides.length) setHeroSlideIndex(0);
+  }, [heroSlideIndex, heroSlides.length]);
+
+  useEffect(() => {
+    if (showcaseImages.length > 0 && showcaseSlideIndex >= showcaseImages.length) setShowcaseSlideIndex(0);
+  }, [showcaseImages.length, showcaseSlideIndex]);
+
+  const moveHeroSlide = useCallback((direction: number) => {
+    setHeroSlideIndex((current) => {
+      if (!heroSlides.length) return 0;
+      return (current + direction + heroSlides.length) % heroSlides.length;
+    });
+  }, [heroSlides.length]);
+
+  const moveShowcaseSlide = useCallback((direction: number) => {
+    setShowcaseSlideIndex((current) => {
+      if (!showcaseImages.length) return 0;
+      return (current + direction + showcaseImages.length) % showcaseImages.length;
+    });
+  }, [showcaseImages.length]);
 
   return (
     <main className="bg-white">
       {/* ── Hero ── */}
+      {showSection('hero') && (
       <section className="relative overflow-hidden bg-gradient-to-br from-[#FFF8EA] via-white to-[#EAF7FF] pt-24">
         <div className="absolute right-[-120px] top-12 h-72 w-72 rounded-full bg-[#F45A0A]/10 blur-3xl" />
         <div className="absolute bottom-[-140px] left-[-120px] h-80 w-80 rounded-full bg-[#16A9D8]/14 blur-3xl" />
@@ -316,15 +384,44 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
               <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-7 py-4 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-orange-600">
                 Tư vấn chương trình <ArrowRight size={18} />
               </button>
-              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center rounded-2xl border-2 border-[#003B7A]/15 bg-white px-7 py-4 text-sm font-bold uppercase tracking-wide text-[#003B7A] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F4FAFF]">
-                Đăng ký giữ chỗ
+              <button type="button" onClick={() => setRegistrationOpen(true)} className="inline-flex items-center justify-center rounded-2xl border-2 border-[#003B7A]/15 bg-white px-7 py-4 text-sm font-bold uppercase tracking-wide text-[#003B7A] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-[#F4FAFF]">
+                Đăng ký ngay
               </button>
             </div>
           </div>
 
           <div className="relative">
-            <div className="aspect-[4/5] overflow-hidden rounded-3xl bg-white p-3 shadow-2xl shadow-[#003B7A]/15">
-              <img src={heroImage} alt={program.title} className="h-full w-full rounded-2xl object-cover" />
+            <div className="group relative overflow-hidden rounded-3xl bg-white p-3 shadow-2xl shadow-[#003B7A]/15">
+              <div className="relative aspect-[4/5] overflow-hidden rounded-2xl">
+                <img
+                  src={summerModuleImage(activeHeroSlide, activeHeroIndex)}
+                  alt={summerModuleTag(activeHeroSlide)}
+                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
+                />
+                <div className="absolute left-4 top-4 rounded-full bg-white/95 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-[#003B7A] shadow-sm backdrop-blur">
+                  {summerModuleTag(activeHeroSlide)}
+                </div>
+                {heroSlides.length > 1 && (
+                  <div className="absolute right-4 top-4 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => moveHeroSlide(-1)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#003B7A] shadow-sm transition-colors hover:bg-[#F4FAFF]"
+                      aria-label="Ảnh hero trước"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveHeroSlide(1)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-[#003B7A] text-white shadow-sm transition-colors hover:bg-[#1267AE]"
+                      aria-label="Ảnh hero tiếp theo"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             {heroStats.length > 0 && (
               <div className="absolute -bottom-6 left-5 right-5 rounded-2xl border border-white/70 bg-white/95 p-4 shadow-xl backdrop-blur">
@@ -341,8 +438,10 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
           </div>
         </div>
       </section>
+      )}
 
       {/* ── Tổng quan ── */}
+      {showSection('overview') && (
       <section className="py-14 lg:py-16">
         <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
           <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
@@ -354,9 +453,10 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
           </div>
         </div>
       </section>
+      )}
 
       {/* ── Đối tượng phù hợp ── */}
-      {audience.length > 0 && (
+      {showSection('audience') && audience.length > 0 && (
         <section className="bg-[#F7FAFD] py-14 lg:py-16">
           <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
             <h2 className="text-3xl font-extrabold text-slate-950">{audienceTitle}</h2>
@@ -376,7 +476,7 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       )}
 
       {/* ── 4 bộ môn ── */}
-      {modules.length > 0 && (
+      {showSection('modules') && modules.length > 0 && (
         <section className="py-14 lg:py-16">
           <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
             <div className="max-w-2xl">
@@ -403,6 +503,7 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       )}
 
       {/* ── Lộ trình + lịch tuần ── */}
+      {showSection('roadmap') && (
       <section className="bg-[#003B7A] py-14 text-white lg:py-16">
         <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
           <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F6B43C]">{roadmapEyebrow}</p>
@@ -454,9 +555,10 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
           )}
         </div>
       </section>
+      )}
 
       {/* ── Kết quả ── */}
-      {outcomes.length > 0 && (
+      {showSection('outcomes') && outcomes.length > 0 && (
         <section className="py-14 lg:py-16">
           <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
             <h2 className="text-3xl font-extrabold text-slate-950">{outcomesTitle}</h2>
@@ -473,11 +575,43 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       )}
 
       {/* ── Showcase ── */}
+      {showSection('showcase') && (
       <section className="bg-[#FFF8EA] py-14 lg:py-16">
         <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
           <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-            <div className="overflow-hidden rounded-3xl shadow-xl">
-              <img src={showcaseImage} alt={showcaseTitle} className="h-[320px] w-full object-cover md:h-[420px]" />
+            <div className="relative overflow-hidden rounded-3xl bg-white p-3 shadow-xl">
+              <div className="relative overflow-hidden rounded-2xl">
+                <img
+                  src={activeShowcaseImage ? summerGalleryImageSrc(activeShowcaseImage) : showcaseImage}
+                  alt={activeShowcaseImage?.alt || activeShowcaseImage?.title || showcaseTitle}
+                  className="h-[320px] w-full object-cover md:h-[420px]"
+                />
+                {showcaseImages.length > 1 && (
+                  <div className="absolute bottom-4 left-4 rounded-full bg-white/95 px-3 py-1.5 text-xs font-extrabold text-[#003B7A] shadow-sm backdrop-blur">
+                    {String(activeShowcaseIndex + 1).padStart(2, '0')} / {String(showcaseImages.length).padStart(2, '0')}
+                  </div>
+                )}
+                {showcaseImages.length > 1 && (
+                  <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => moveShowcaseSlide(-1)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-[#003B7A] shadow-sm transition-colors hover:bg-[#F4FAFF]"
+                      aria-label="Ảnh showcase trước"
+                    >
+                      <ChevronLeft size={18} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveShowcaseSlide(1)}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-[#003B7A] text-white shadow-sm transition-colors hover:bg-[#1267AE]"
+                      aria-label="Ảnh showcase tiếp theo"
+                    >
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-sm font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">{showcaseEyebrow}</p>
@@ -501,9 +635,10 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
           )}
         </div>
       </section>
+      )}
 
       {/* ── Thông tin lớp học ── */}
-      {classInfo.length > 0 && (
+      {showSection('classInfo') && classInfo.length > 0 && (
         <section className="py-14 lg:py-16">
           <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
             <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
@@ -526,7 +661,7 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       )}
 
       {/* ── Thư viện ảnh ── */}
-      {gallery.length > 0 && (
+      {showSection('gallery') && gallery.length > 0 && (
         <section className="bg-[#F7FAFD] py-14 lg:py-16">
           <div className="mx-auto max-w-[1180px] px-5 lg:px-4">
             <h2 className="text-3xl font-extrabold text-slate-950">{galleryTitle}</h2>
@@ -543,6 +678,7 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       )}
 
       {/* ── CTA ── */}
+      {showSection('cta') && (
       <section className="bg-[#003B7A] py-14 text-white lg:py-16">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-6 px-5 lg:flex-row lg:items-center lg:justify-between lg:px-4">
           <div className="max-w-2xl">
@@ -553,15 +689,234 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
             <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-7 py-4 text-sm font-bold uppercase tracking-wide text-white transition-all hover:-translate-y-0.5 hover:bg-orange-600">
               Tư vấn chương trình <ArrowRight size={18} />
             </button>
-            <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center rounded-2xl border-2 border-white/25 bg-white/10 px-7 py-4 text-sm font-bold uppercase tracking-wide text-white transition-all hover:-translate-y-0.5 hover:bg-white/20">
-              Đăng ký giữ chỗ
+            <button type="button" onClick={() => setRegistrationOpen(true)} className="inline-flex items-center justify-center rounded-2xl border-2 border-white/25 bg-white/10 px-7 py-4 text-sm font-bold uppercase tracking-wide text-white transition-all hover:-translate-y-0.5 hover:bg-white/20">
+              Đăng ký ngay
             </button>
           </div>
         </div>
       </section>
+      )}
 
-      <PublicLeadForm formId="metta-summer-2026-form" title={`Tư vấn chương trình ${program.title}`} />
+      {showSection('leadForm') && (
+        <PublicLeadForm formId="metta-summer-2026-form" title={`Tư vấn chương trình ${program.title}`} />
+      )}
+
+      {registrationOpen && (
+        <SummerRegistrationModal
+          program={program}
+          onClose={() => setRegistrationOpen(false)}
+        />
+      )}
     </main>
+  );
+}
+
+function SummerRegistrationModal({ program, onClose }: { program: ProgramCms; onClose: () => void }) {
+  const [parentName, setParentName] = useState('');
+  const [studentName, setStudentName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [loadingAction, setLoadingAction] = useState<'consult' | 'paid' | null>(null);
+
+  const price = resolveCourseDealSizeForProgram(program);
+  const currency = program.dealCurrency || DEFAULT_DEAL_CURRENCY;
+  const normalizedPhone = normalizeSummerPhone(phone);
+  const transferName = parentName.trim() || 'Tên phụ huynh';
+  const transferPhone = normalizedPhone || 'SĐT';
+  const transferContent = `${transferName} - ${transferPhone}`;
+  const priceLabel = formatCurrency(price, currency);
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  async function submitRegistration(action: 'consult' | 'paid') {
+    setError('');
+    setSuccessMessage('');
+
+    const cleanParentName = parentName.replace(/\s+/g, ' ').trim();
+    const cleanStudentName = studentName.replace(/\s+/g, ' ').trim();
+    const cleanPhone = normalizeSummerPhone(phone);
+
+    if (!cleanParentName || !cleanStudentName || !cleanPhone) {
+      setError('Vui lòng nhập tên phụ huynh, tên bé và số điện thoại.');
+      return;
+    }
+
+    if (!isValidSummerPhone(cleanPhone)) {
+      setError('Số điện thoại chưa đúng định dạng.');
+      return;
+    }
+
+    const paid = action === 'paid';
+    setLoadingAction(action);
+    try {
+      await publicLeadService.submit({
+        fullName: cleanStudentName,
+        parentName: cleanParentName,
+        studentName: cleanStudentName,
+        phone: cleanPhone,
+        contactType: 'parent',
+        source: paid ? 'Website - Summer QR chuyển khoản' : 'Website - Summer đăng ký ngay',
+        interestedCourse: 'METTA Summer 2026',
+        status: paid ? WON_LEAD_STATUS : undefined,
+        dealSize: price,
+        dealCurrency: currency,
+        expectedRevenue: price,
+        revenue: paid ? price : undefined,
+        dealPackage: 'METTA Summer 2026',
+        dealNote: `ND CK: ${cleanParentName} - ${cleanPhone}`,
+        initialNote: paid
+          ? `Phụ huynh chọn Đã chuyển khoản trên popup METTA Summer 2026. ND CK: ${cleanParentName} - ${cleanPhone}. Sales kiểm tra giao dịch Techcombank.`
+          : `Phụ huynh chọn Cần tư vấn thêm trên popup METTA Summer 2026. ND CK gợi ý: ${cleanParentName} - ${cleanPhone}.`,
+      }, paid ? 'metta-summer-2026-paid-popup' : 'metta-summer-2026-consult-popup');
+
+      setSuccessMessage(paid
+        ? 'Đã ghi nhận đăng ký học METTA Summer 2026. Sales METTA sẽ kiểm tra chuyển khoản.'
+        : 'METTA đã nhận thông tin. Tư vấn viên sẽ liên hệ để hỗ trợ thêm.');
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Không gửi được thông tin. Vui lòng thử lại.');
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/60 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="summer-registration-title">
+      <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center">
+        <div className="relative w-full overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-slate-900"
+            aria-label="Đóng form đăng ký"
+          >
+            <X size={20} />
+          </button>
+
+          <div className="grid lg:grid-cols-[1fr_0.95fr]">
+            <div className="p-5 sm:p-7 lg:p-8">
+              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#F45A0A]">METTA Summer 2026</p>
+              <h2 id="summer-registration-title" className="mt-3 text-2xl font-extrabold leading-tight text-[#003B7A] sm:text-3xl">
+                Đăng ký ngay
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                Điền thông tin để METTA ghi nhận đăng ký và hỗ trợ phụ huynh hoàn tất lớp hè cho con.
+              </p>
+
+              <div className="mt-6 grid gap-4">
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">Tên phụ huynh</span>
+                  <input
+                    value={parentName}
+                    onChange={(event) => setParentName(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#16A9D8] focus:ring-4 focus:ring-[#16A9D8]/15"
+                    placeholder="Ví dụ: Nguyễn Minh Anh"
+                    autoFocus
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">Tên bé</span>
+                  <input
+                    value={studentName}
+                    onChange={(event) => setStudentName(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#16A9D8] focus:ring-4 focus:ring-[#16A9D8]/15"
+                    placeholder="Ví dụ: Minh Khôi"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">Số điện thoại</span>
+                  <input
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#16A9D8] focus:ring-4 focus:ring-[#16A9D8]/15"
+                    placeholder="Ví dụ: 0912345678"
+                    inputMode="tel"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-[#F6B43C]/35 bg-[#FFF8EA] p-4">
+                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#F45A0A]">Nội dung chuyển khoản</p>
+                <p className="mt-2 break-words text-lg font-extrabold text-slate-950">{transferContent}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-600">Học phí: {priceLabel} / trọn khóa</p>
+              </div>
+
+              {error && (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                  {error}
+                </div>
+              )}
+              {successMessage && (
+                <div className="mt-4 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                  <CheckCircle2 size={20} className="mt-0.5 shrink-0" />
+                  <span>{successMessage}</span>
+                </div>
+              )}
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => submitRegistration('consult')}
+                  disabled={Boolean(loadingAction)}
+                  className="inline-flex items-center justify-center rounded-2xl border-2 border-[#003B7A]/15 bg-white px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-[#003B7A] transition-all hover:-translate-y-0.5 hover:bg-[#F4FAFF] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingAction === 'consult' ? 'Đang gửi...' : 'Cần tư vấn thêm'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitRegistration('paid')}
+                  disabled={Boolean(loadingAction)}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingAction === 'paid' ? 'Đang ghi nhận...' : 'Đã chuyển khoản'} <ArrowRight size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-[#EAF7FF] via-white to-[#FFF8EA] p-5 sm:p-7 lg:p-8">
+              <div className="rounded-3xl bg-white p-4 shadow-xl shadow-[#003B7A]/10">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">Thanh toán</p>
+                    <p className="mt-1 text-lg font-extrabold text-[#003B7A]">Techcombank</p>
+                  </div>
+                  <span className="rounded-full bg-[#F45A0A]/10 px-3 py-1 text-xs font-extrabold text-[#F45A0A]">{priceLabel}</span>
+                </div>
+
+                <img
+                  src={SUMMER_QR_IMAGE}
+                  alt="Mã QR thanh toán METTA Summer 2026"
+                  className="mx-auto mt-5 w-full max-w-[340px] rounded-2xl border border-slate-100 object-contain"
+                />
+
+                <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="font-semibold text-slate-500">Chủ tài khoản</span>
+                    <span className="text-right font-extrabold text-slate-900">CT TNHH GIAO DUC QUOC TE NHQ</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="font-semibold text-slate-500">Số tài khoản</span>
+                    <span className="font-extrabold text-slate-900">915190897</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="font-semibold text-slate-500">ND CK</span>
+                    <span className="break-words text-right font-extrabold text-[#F45A0A]">{transferContent}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import type { SummerStat, SummerAudienceItem, SummerModule, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage, RoadmapCard } from '@/types/cms';
+import type { SummerStat, SummerAudienceItem, SummerModule, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage, RoadmapCard, SummerSectionVisibility } from '@/types/cms';
 
 const LOGO_ASSET_VERSION = '20260612-1555';
 
@@ -264,6 +264,19 @@ export const SUMMER_DEFAULTS = {
     { value: '24', label: 'buổi', color: '#003B7A' },
     { value: '4', label: 'bộ môn', color: '#16A34A' },
   ] as SummerStat[],
+  sectionVisibility: {
+    hero: true,
+    overview: true,
+    audience: true,
+    modules: true,
+    roadmap: true,
+    outcomes: true,
+    showcase: true,
+    classInfo: true,
+    gallery: true,
+    cta: true,
+    leadForm: true,
+  } as SummerSectionVisibility,
   overviewEyebrow: 'Tổng quan chương trình',
   overviewTitle: 'Một mùa hè để con khám phá, phát triển và tỏa sáng',
   overviewBody:
@@ -282,10 +295,10 @@ export const SUMMER_DEFAULTS = {
   modulesEyebrow: '4 bộ môn',
   modulesTitle: '4 bộ môn trong chương trình',
   modules: [
-    { icon: 'Sparkles', color: '#F45A0A', title: 'Mỹ thuật', description: 'Màu sắc, hình khối, tranh mùa hè và sản phẩm thủ công giúp con thể hiện ý tưởng bằng chất liệu trực quan.' },
-    { icon: 'Brain', color: '#003B7A', title: 'Cờ vua', description: 'Làm quen bàn cờ, quân cờ, luật chơi, chiến thuật cơ bản và mini tournament phù hợp độ tuổi.' },
-    { icon: 'Mic', color: '#8B5CF6', title: 'Thanh nhạc', description: 'Cảm thụ âm nhạc, luyện hơi, hát nhóm và chuẩn bị tiết mục biểu diễn tự tin trước tập thể.' },
-    { icon: 'Music', color: '#16A34A', title: 'Nhảy & Múa', description: 'Rèn nhịp điệu, động tác cơ bản, phối hợp đội hình và trình diễn nhóm trong Showcase.' },
+    { icon: 'Sparkles', color: '#F45A0A', title: 'Mỹ thuật', tag: 'Mỹ thuật', description: 'Màu sắc, hình khối, tranh mùa hè và sản phẩm thủ công giúp con thể hiện ý tưởng bằng chất liệu trực quan.', image: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=1200&q=85&auto=format&fit=crop' },
+    { icon: 'Brain', color: '#003B7A', title: 'Cờ vua', tag: 'Cờ vua', description: 'Làm quen bàn cờ, quân cờ, luật chơi, chiến thuật cơ bản và mini tournament phù hợp độ tuổi.', image: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=1200&q=85&auto=format&fit=crop' },
+    { icon: 'Mic', color: '#8B5CF6', title: 'Thanh nhạc', tag: 'Thanh nhạc', description: 'Cảm thụ âm nhạc, luyện hơi, hát nhóm và chuẩn bị tiết mục biểu diễn tự tin trước tập thể.', image: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?w=1200&q=85&auto=format&fit=crop' },
+    { icon: 'Music', color: '#16A34A', title: 'Nhảy & Múa', tag: 'Nhảy & Múa', description: 'Rèn nhịp điệu, động tác cơ bản, phối hợp đội hình và trình diễn nhóm trong Showcase.', image: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=1200&q=85&auto=format&fit=crop' },
   ] as SummerModule[],
   roadmapEyebrow: 'Lộ trình học',
   roadmapTitle: 'Lộ trình học 6 tuần',
@@ -318,6 +331,12 @@ export const SUMMER_DEFAULTS = {
   showcaseBody:
     'Cuối khóa, học viên tham gia triển lãm sản phẩm mỹ thuật, giải cờ vua mini, biểu diễn thanh nhạc, nhảy múa, trao chứng nhận và chụp ảnh cùng phụ huynh.',
   showcaseImage: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop',
+  showcaseImages: [
+    { src: 'https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200&q=85&auto=format&fit=crop', title: 'METTA Summer Showcase 2026', alt: 'Học viên tham gia hoạt động showcase cuối khóa' },
+    { src: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=1200&q=85&auto=format&fit=crop', title: 'Art Exhibition', alt: 'Triển lãm sản phẩm mỹ thuật của học viên' },
+    { src: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?w=1200&q=85&auto=format&fit=crop', title: 'Chess Mini Tournament', alt: 'Giải cờ vua mini trong showcase cuối khóa' },
+    { src: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=1200&q=85&auto=format&fit=crop', title: 'Dance Showcase', alt: 'Học viên biểu diễn nhảy múa trong showcase' },
+  ] as SummerGalleryImage[],
   showcaseItems: [
     { icon: 'Sparkles', title: 'Art Exhibition', description: 'Trưng bày tranh và sản phẩm thủ công của học viên.' },
     { icon: 'Brain', title: 'Chess Mini Tournament', description: 'Không gian thi đấu nhỏ, vui vẻ và khích lệ tinh thần chiến thuật.' },
@@ -344,7 +363,7 @@ export const SUMMER_DEFAULTS = {
     { src: 'https://images.unsplash.com/photo-1547153760-18fc86324498?w=800&q=85&auto=format&fit=crop', title: 'Nhảy & Múa', alt: 'Hoạt động nhảy múa và trình diễn nhóm' },
   ] as SummerGalleryImage[],
   ctaTitle: 'Sẵn sàng cho con một mùa hè đáng nhớ tại METTA?',
-  ctaBody: 'Để lại thông tin để METTA tư vấn lịch học, độ tuổi phù hợp và hướng dẫn đăng ký giữ chỗ cho con.',
+  ctaBody: 'Để lại thông tin để METTA tư vấn lịch học, độ tuổi phù hợp và hướng dẫn đăng ký ngay cho con.',
 };
 
 export const DEAL_QUOTED_STATUS = 'Đã báo phí/Chờ chốt';
