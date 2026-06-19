@@ -88,10 +88,16 @@ const CANONICAL_HOME_NEWS = {
   ]),
 };
 
+const MISSING_FACILITY_PATHS = new Set([
+  '/images/facilities/facility-1.jpg',
+  '/images/facilities/facility-2.jpg',
+  '/images/facilities/facility-3.jpg',
+]);
+
 const FACILITY_FALLBACK_IMAGES = [
-  { src: '/images/facilities/facility-1.jpg', title: '' },
-  { src: '/images/facilities/facility-2.jpg', title: '' },
-  { src: '/images/facilities/facility-3.jpg', title: '' },
+  { src: '/brand/hero-classroom.png', title: '' },
+  { src: '/brand/brand-banner.jpg', title: '' },
+  { src: '/brand/workshop-kids.jpg', title: '' },
 ];
 
 const FACILITY_ALTS = [
@@ -110,9 +116,23 @@ function parseExtraArray(value?: string): Array<Record<string, unknown>> {
   }
 }
 
+function normalizeFacilitySrc(item: Record<string, unknown>) {
+  const value = item.src || item.url || item.image || item.fileUrl;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isUsableFacilitySrc(src: string) {
+  if (!src) return false;
+  const path = src.split('?')[0];
+  return !MISSING_FACILITY_PATHS.has(path);
+}
+
 function normalizeFacilityImages(extraData?: string) {
   const source = parseExtraArray(extraData);
-  const images = source.length ? source : FACILITY_FALLBACK_IMAGES;
+  const customImages = source
+    .map((item) => ({ ...item, src: normalizeFacilitySrc(item) }))
+    .filter((item) => isUsableFacilitySrc(item.src));
+  const images = customImages.length ? customImages : FACILITY_FALLBACK_IMAGES;
   return images.map((item, index) => ({
     ...item,
     alt: FACILITY_ALTS[index] || (typeof item.alt === 'string' ? item.alt : ''),

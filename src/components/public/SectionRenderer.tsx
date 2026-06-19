@@ -20,6 +20,42 @@ function sectionId(section: PageSection, fallback: string) {
   return section.anchorId || fallback;
 }
 
+const MISSING_FACILITY_PATHS = new Set([
+  '/images/facilities/facility-1.jpg',
+  '/images/facilities/facility-2.jpg',
+  '/images/facilities/facility-3.jpg',
+]);
+
+const DEFAULT_FACILITY_IMAGES: FacilityImage[] = [
+  { src: '/brand/hero-classroom.png', alt: 'Phòng học hiện đại tại METTA Academy', title: '' },
+  { src: '/brand/brand-banner.jpg', alt: 'Không gian học tập tại METTA Academy', title: '' },
+  { src: '/brand/workshop-kids.jpg', alt: 'Học viên METTA Academy trong lớp học', title: '' },
+];
+
+function facilityImageSrc(item: Partial<FacilityImage> & Record<string, unknown>) {
+  const value = item.src || item.url || item.image || item.fileUrl;
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isUsableFacilityImage(item: Partial<FacilityImage> & Record<string, unknown>) {
+  const src = facilityImageSrc(item);
+  if (!src) return false;
+  return !MISSING_FACILITY_PATHS.has(src.split('?')[0]);
+}
+
+function cleanFacilityImages(items: Array<Partial<FacilityImage> & Record<string, unknown>> | undefined): FacilityImage[] {
+  return (items || [])
+    .map((item) => {
+      const src = facilityImageSrc(item);
+      return {
+        src,
+        alt: typeof item.alt === 'string' ? item.alt : '',
+        title: typeof item.title === 'string' ? item.title : '',
+      };
+    })
+    .filter(isUsableFacilityImage);
+}
+
 /* ── Hero ─────────────────────────────────────────────────────────────────── */
 function HeroBlock({ section }: { section: PageSection }) {
   type HeroSlide = { url: string };
@@ -674,14 +710,23 @@ function CTABlock({ section }: { section: PageSection }) {
 
 /* ── Facilities (Cơ sở vật chất) ───────────────────────────────────────────── */
 function FacilitiesBlock({ section }: { section: PageSection }) {
-  const images = parseExtra<FacilityImage[]>(section.extraData);
+  const { settings } = usePublicThemeSettings();
+  const sectionImages = cleanFacilityImages(parseExtra<Array<Partial<FacilityImage> & Record<string, unknown>>>(section.extraData));
+  const settingsImages = cleanFacilityImages(settings.facilities?.images);
+  const seedImages = cleanFacilityImages(seedSettings.facilities?.images);
   // Fallback ảnh mặc định nếu section chưa cấu hình ảnh
-  const finalImages = images.length ? images : (seedSettings.facilities?.images ?? []);
+  const finalImages = sectionImages.length
+    ? sectionImages
+    : settingsImages.length
+      ? settingsImages
+      : seedImages.length
+        ? seedImages
+        : DEFAULT_FACILITY_IMAGES;
   return (
     <FacilitiesSection
-      eyebrow={section.subtitle || undefined}
-      title={section.title || undefined}
-      description={section.description ?? undefined}
+      eyebrow={section.subtitle || settings.facilities?.eyebrow || undefined}
+      title={section.title || settings.facilities?.title || undefined}
+      description={section.description || settings.facilities?.description || undefined}
       images={finalImages}
     />
   );
