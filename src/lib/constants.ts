@@ -32,6 +32,7 @@ export const COURSES = [
 export const PUBLIC_PROGRAMS = [
   {
     slug: 'metta-kiddies',
+    programTemplate: 'course',
     courseName: 'Mầm non · Preschool',
     title: 'METTA Kiddies',
     eyebrow: 'Giai đoạn vàng ngôn ngữ',
@@ -65,6 +66,7 @@ export const PUBLIC_PROGRAMS = [
   },
   {
     slug: 'metta-on-phonics',
+    programTemplate: 'course',
     courseName: 'Tiểu học sớm · Early Primary',
     title: 'METTA on Phonics',
     eyebrow: 'Đánh vần chuẩn bản xứ',
@@ -98,6 +100,7 @@ export const PUBLIC_PROGRAMS = [
   },
   {
     slug: 'metta-young-learner',
+    programTemplate: 'course',
     courseName: 'Tiểu học · Primary',
     title: 'METTA Young Learner',
     eyebrow: 'Tiếng Anh thế hệ mới',
@@ -131,6 +134,7 @@ export const PUBLIC_PROGRAMS = [
   },
   {
     slug: 'ielts-junior',
+    programTemplate: 'course',
     courseName: 'THCS · Secondary',
     title: 'IELTS Junior',
     eyebrow: 'Khởi đầu vững chắc từ cấp 2',
@@ -164,6 +168,7 @@ export const PUBLIC_PROGRAMS = [
   },
   {
     slug: 'metta-summer-2026',
+    programTemplate: 'skills',
     courseName: 'Summer Camp · Đa bộ môn',
     title: 'METTA Summer 2026',
     seoTitle: 'METTA Summer 2026 | Chương trình hè cho trẻ 4–11 tuổi',

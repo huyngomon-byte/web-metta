@@ -6,7 +6,11 @@ import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, WON_LEAD_STATU
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { publicLeadService } from '@/services/publicLeadService';
 import { formatCurrency } from '@/lib/utils';
-import type { ProgramCms, SummerGalleryImage, SummerModule, SummerSectionKey } from '@/types/cms';
+import type { ProgramCms, ProgramTemplate, SummerGalleryImage, SummerModule, SummerSectionKey } from '@/types/cms';
+
+function programTemplateOf(program: Pick<ProgramCms, 'programTemplate' | 'slug'>): ProgramTemplate {
+  return program.programTemplate || (program.slug === 'metta-summer-2026' ? 'skills' : 'course');
+}
 
 export default function PublicProgramDetailPage() {
   const { slug } = useParams();
@@ -35,6 +39,7 @@ export default function PublicProgramDetailPage() {
   const program: ProgramCms | undefined = cmsProgram ?? (staticProgram
     ? {
         slug: staticProgram.slug,
+        programTemplate: staticProgram.programTemplate,
         title: staticProgram.title,
         eyebrow: staticProgram.eyebrow,
         ageRange: staticProgram.ageRange,
@@ -52,7 +57,7 @@ export default function PublicProgramDetailPage() {
 
   if (!program) return <Navigate to="/" replace />;
 
-  if (program.slug === 'metta-summer-2026') {
+  if (programTemplateOf(program) === 'skills') {
     return <SummerProgramPage program={program} onCtaClick={scrollToLeadForm} />;
   }
 
@@ -230,7 +235,13 @@ export default function PublicProgramDetailPage() {
       {/* Skills - The Metta 5 */}
       <SkillsFlower skills={program.skills} />
 
-      <PublicLeadForm formId={`${program.slug}-form`} title={`Nhận tư vấn chương trình ${program.title}`} />
+      <PublicLeadForm
+        formId={`${program.slug}-form`}
+        title={`Nhận tư vấn chương trình ${program.title}`}
+        interestedCourse={leadCourseFromProgram(program)}
+        dealSize={resolveCourseDealSizeForProgram(program)}
+        dealCurrency={program.dealCurrency || DEFAULT_DEAL_CURRENCY}
+      />
     </>
   );
 }
@@ -246,6 +257,23 @@ function summerClassInfoFromProgram(program: ProgramCms) {
     if (row.label === 'Học phí') return { ...row, value: price };
     return row;
   });
+}
+
+function leadCourseFromProgram(program: ProgramCms) {
+  switch (program.slug) {
+    case 'metta-kiddies':
+      return 'METTA Kiddies';
+    case 'metta-on-phonics':
+      return 'METTA on Phonics';
+    case 'metta-young-learner':
+      return 'METTA Young Learner';
+    case 'ielts-junior':
+      return 'IELTS Junior';
+    case 'metta-summer-2026':
+      return 'METTA Summer 2026';
+    default:
+      return program.title || program.courseName || '';
+  }
 }
 
 function summerModuleImage(module: { image?: string }, index: number) {
@@ -698,7 +726,13 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       )}
 
       {showSection('leadForm') && (
-        <PublicLeadForm formId="metta-summer-2026-form" title={`Tư vấn chương trình ${program.title}`} />
+        <PublicLeadForm
+          formId={`${program.slug}-form`}
+          title={`Tư vấn chương trình ${program.title}`}
+          interestedCourse={leadCourseFromProgram(program)}
+          dealSize={resolveCourseDealSizeForProgram(program)}
+          dealCurrency={program.dealCurrency || DEFAULT_DEAL_CURRENCY}
+        />
       )}
 
       {registrationOpen && (
@@ -726,6 +760,8 @@ function SummerRegistrationModal({ program, onClose }: { program: ProgramCms; on
   const transferPhone = normalizedPhone || 'SĐT';
   const transferContent = `${transferName} - ${transferPhone}`;
   const priceLabel = formatCurrency(price, currency);
+  const courseName = leadCourseFromProgram(program);
+  const sourceLabel = program.title || courseName || 'Chương trình kỹ năng';
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -762,22 +798,22 @@ function SummerRegistrationModal({ program, onClose }: { program: ProgramCms; on
         studentName: cleanStudentName,
         phone: cleanPhone,
         contactType: 'parent',
-        source: paid ? 'Website - Summer QR chuyển khoản' : 'Website - Summer đăng ký ngay',
-        interestedCourse: 'METTA Summer 2026',
+        source: paid ? `Website - ${sourceLabel} QR chuyển khoản` : `Website - ${sourceLabel} đăng ký ngay`,
+        interestedCourse: courseName || sourceLabel,
         status: paid ? WON_LEAD_STATUS : undefined,
         dealSize: price,
         dealCurrency: currency,
         expectedRevenue: price,
         revenue: paid ? price : undefined,
-        dealPackage: 'METTA Summer 2026',
+        dealPackage: courseName || sourceLabel,
         dealNote: `ND CK: ${cleanParentName} - ${cleanPhone}`,
         initialNote: paid
-          ? `Phụ huynh chọn Đã chuyển khoản trên popup METTA Summer 2026. ND CK: ${cleanParentName} - ${cleanPhone}. Sales kiểm tra giao dịch Techcombank.`
-          : `Phụ huynh chọn Cần tư vấn thêm trên popup METTA Summer 2026. ND CK gợi ý: ${cleanParentName} - ${cleanPhone}.`,
-      }, paid ? 'metta-summer-2026-paid-popup' : 'metta-summer-2026-consult-popup');
+          ? `Phụ huynh chọn Đã chuyển khoản trên popup ${sourceLabel}. ND CK: ${cleanParentName} - ${cleanPhone}. Sales kiểm tra giao dịch Techcombank.`
+          : `Phụ huynh chọn Cần tư vấn thêm trên popup ${sourceLabel}. ND CK gợi ý: ${cleanParentName} - ${cleanPhone}.`,
+      }, paid ? `${program.slug}-paid-popup` : `${program.slug}-consult-popup`);
 
       setSuccessMessage(paid
-        ? 'Đã ghi nhận đăng ký học METTA Summer 2026. Sales METTA sẽ kiểm tra chuyển khoản.'
+        ? `Đã ghi nhận đăng ký học ${sourceLabel}. Sales METTA sẽ kiểm tra chuyển khoản.`
         : 'METTA đã nhận thông tin. Tư vấn viên sẽ liên hệ để hỗ trợ thêm.');
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Không gửi được thông tin. Vui lòng thử lại.');

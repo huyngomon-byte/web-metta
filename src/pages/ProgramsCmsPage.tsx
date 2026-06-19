@@ -8,7 +8,7 @@ import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMME
 import { useThemeSettings } from '@/hooks/useCms';
 import { formatCurrency } from '@/lib/utils';
 import { cmsService } from '@/services/cmsService';
-import type { HighlightCard, ProgramCms, RoadmapCard, SkillPetal, SummerStat, SummerAudienceItem, SummerModule, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage, SummerSectionKey } from '@/types/cms';
+import type { HighlightCard, ProgramCms, ProgramTemplate, RoadmapCard, SkillPetal, SummerStat, SummerAudienceItem, SummerModule, SummerShowcaseItem, SummerClassInfoRow, SummerGalleryImage, SummerSectionKey } from '@/types/cms';
 
 const DEFAULT_PROGRAMS: ProgramCms[] = PUBLIC_PROGRAMS.map((program) => ({
   ...program,
@@ -22,6 +22,93 @@ const DEFAULT_PROGRAMS: ProgramCms[] = PUBLIC_PROGRAMS.map((program) => ({
   roadmapCards: 'roadmapCards' in program ? program.roadmapCards.map((card) => ({ ...card })) : undefined,
   skills: 'skills' in program ? program.skills.map((skill) => ({ ...skill })) : undefined,
 }));
+
+function programTemplateOf(program: Pick<ProgramCms, 'programTemplate' | 'slug'>): ProgramTemplate {
+  return program.programTemplate || (program.slug === 'metta-summer-2026' ? 'skills' : 'course');
+}
+
+function programTemplateLabel(template: ProgramTemplate) {
+  return template === 'skills' ? 'Chương trình kỹ năng' : 'Chương trình học';
+}
+
+function cloneSummerDefaults(): Partial<ProgramCms> {
+  const D = SUMMER_DEFAULTS;
+  return {
+    summerSubtitle: D.subtitle,
+    summerChips: [...D.chips],
+    summerHeroStats: D.heroStats.map((item) => ({ ...item })),
+    summerSectionVisibility: { ...D.sectionVisibility },
+    summerOverviewEyebrow: D.overviewEyebrow,
+    summerOverviewTitle: D.overviewTitle,
+    summerOverviewBody: D.overviewBody,
+    summerAudienceTitle: D.audienceTitle,
+    summerAudience: D.audience.map((item) => ({ ...item })),
+    summerModulesEyebrow: D.modulesEyebrow,
+    summerModulesTitle: D.modulesTitle,
+    summerModules: D.modules.map((item) => ({ ...item })),
+    summerRoadmapEyebrow: D.roadmapEyebrow,
+    summerRoadmapTitle: D.roadmapTitle,
+    summerStages: D.stages.map((item) => ({ ...item })),
+    summerWeeklyColumns: [...D.weeklyColumns],
+    summerWeeklyPlan: D.weeklyPlan.map((row) => [...row]),
+    summerOutcomesTitle: D.outcomesTitle,
+    summerOutcomesList: [...D.outcomes],
+    summerShowcaseEyebrow: D.showcaseEyebrow,
+    summerShowcaseTitle: D.showcaseTitle,
+    summerShowcaseBody: D.showcaseBody,
+    summerShowcaseImage: D.showcaseImage,
+    summerShowcaseImages: D.showcaseImages.map((item) => ({ ...item })),
+    summerShowcaseItems: D.showcaseItems.map((item) => ({ ...item })),
+    summerClassInfoTitle: D.classInfoTitle,
+    summerClassInfoBody: D.classInfoBody,
+    summerClassInfo: D.classInfo.map((item) => ({ ...item })),
+    summerGalleryTitle: D.galleryTitle,
+    summerGallery: D.gallery.map((item) => ({ ...item })),
+    summerCtaTitle: D.ctaTitle,
+    summerCtaBody: D.ctaBody,
+  };
+}
+
+function createCourseProgram(): ProgramCms {
+  return {
+    slug: `program-${Date.now()}`,
+    visible: true,
+    programTemplate: 'course',
+    title: '',
+    eyebrow: '',
+    ageRange: '',
+    duration: '',
+    courseName: '',
+    dealSize: DEFAULT_COURSE_DEAL_SIZE,
+    dealCurrency: DEFAULT_DEAL_CURRENCY,
+    image: '',
+    summary: '',
+    description: '',
+    highlights: [''],
+    methodology: [''],
+    outcomes: [''],
+    roadmap: [''],
+    roadmapCards: [{ label: 'Level 1', title: '', description: '', color: '#16A9D8' }],
+  };
+}
+
+function createSkillsProgram(): ProgramCms {
+  const timestamp = Date.now();
+  return {
+    ...createCourseProgram(),
+    slug: `skills-${timestamp}`,
+    programTemplate: 'skills',
+    eyebrow: 'Chương trình kỹ năng',
+    courseName: 'Kỹ năng · Đa bộ môn',
+    dealSize: DEFAULT_COURSE_DEAL_SIZE,
+    highlights: [],
+    methodology: [],
+    outcomes: [],
+    roadmap: [],
+    roadmapCards: [],
+    ...cloneSummerDefaults(),
+  };
+}
 
 function ArrayEditor({
   label,
@@ -933,10 +1020,10 @@ function SummerContentEditor({ program, onChange }: { program: ProgramCms; onCha
   return (
     <div className="flex flex-col gap-4 rounded-xl border-2 border-dashed border-[#F45A0A]/30 bg-[#FFF7ED]/50 p-4">
       <div className="flex items-center gap-2 text-sm font-extrabold text-[#9A3412]">
-        <Sparkles size={16} /> Nội dung riêng trang Summer
+        <Sparkles size={16} /> Nội dung chương trình kỹ năng
       </div>
 
-      <EditorSection title="Hero (Summer)" subtitle="Dòng phụ, chip, số liệu nổi và ảnh slider ở đầu trang." defaultOpen {...sectionControl('hero')}>
+      <EditorSection title="Hero chương trình kỹ năng" subtitle="Dòng phụ, chip, số liệu nổi và ảnh slider ở đầu trang." defaultOpen {...sectionControl('hero')}>
         <div className="flex flex-col gap-3">
           <LabeledInput label="Dòng phụ dưới tiêu đề" value={program.summerSubtitle ?? D.subtitle} onChange={(v) => set('summerSubtitle', v)} />
           <ArrayEditor label="Chip (hero)" items={program.summerChips ?? D.chips} onChange={(v) => set('summerChips', v)} />
@@ -1017,7 +1104,7 @@ function SummerContentEditor({ program, onChange }: { program: ProgramCms; onCha
         </div>
       </EditorSection>
 
-      <EditorSection title="Form tư vấn cuối trang" subtitle="Ẩn/hiện form tư vấn ở cuối trang Summer." {...sectionControl('leadForm')}>
+      <EditorSection title="Form tư vấn cuối trang" subtitle="Ẩn/hiện form tư vấn ở cuối trang chương trình kỹ năng." {...sectionControl('leadForm')}>
         <p className="text-sm font-semibold text-slate-500">Form sử dụng chung component lead form của website. Nội dung form được đồng bộ theo chương trình.</p>
       </EditorSection>
     </div>
@@ -1047,6 +1134,9 @@ function ProgramCard({
     onChange({ ...program, [field]: value });
   const defaultDealSize = defaultCourseDealSizeForProgram(program);
   const effectiveDealSize = resolveCourseDealSizeForProgram(program);
+  const template = programTemplateOf(program);
+  const isCourseTemplate = template === 'course';
+  const isSkillsTemplate = template === 'skills';
 
   return (
     <Card className={`${open ? 'border-[#003B7A]/30 shadow-md' : ''} ${program.visible === false ? 'opacity-60 grayscale-[0.2]' : ''}`}>
@@ -1058,6 +1148,9 @@ function ProgramCard({
           <div className="flex items-center gap-3 flex-1 min-w-0">
             <span className="text-xs font-bold text-slate-400 bg-slate-100 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">{index + 1}</span>
             <CardTitle className="text-lg truncate">{program.title || `Chương trình ${index + 1}`}</CardTitle>
+            <span className={`hidden rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide sm:inline-flex ${isSkillsTemplate ? 'bg-orange-50 text-[#C2410C]' : 'bg-blue-50 text-[#003B7A]'}`}>
+              {programTemplateLabel(template)}
+            </span>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
@@ -1100,6 +1193,30 @@ function ProgramCard({
 
       {open && (
         <CardContent className="flex flex-col gap-5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Mẫu hiển thị</p>
+            <div className="flex flex-wrap gap-2">
+              {(['course', 'skills'] as ProgramTemplate[]).map((item) => {
+                const active = template === item;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => set('programTemplate', item)}
+                    className={`rounded-lg border px-3 py-2 text-sm font-bold transition-colors ${active ? 'border-[#003B7A] bg-[#003B7A] text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-[#003B7A]/40 hover:text-[#003B7A]'}`}
+                  >
+                    {programTemplateLabel(item)}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs font-semibold text-slate-400">
+              {isSkillsTemplate
+                ? 'Mẫu kỹ năng dùng layout kỹ năng/Summer và chỉ hiện các mục có tác dụng trên trang đó.'
+                : 'Mẫu chương trình học dùng layout chương trình chính quy với điểm nổi bật, phương pháp, kết quả và lộ trình.'}
+            </p>
+          </div>
+
           {/* Basic info */}
           <div className="grid gap-3 md:grid-cols-2">
             <div className="flex flex-col gap-1">
@@ -1143,6 +1260,7 @@ function ProgramCard({
             </div>
           </div>
 
+          {isCourseTemplate && (
           <EditorSection
             title="Ảnh slider"
             subtitle="Upload hoặc dán URL ảnh dùng ở trang chi tiết chương trình."
@@ -1154,9 +1272,12 @@ function ProgramCard({
               }}
             />
           </EditorSection>
+          )}
 
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Mô tả chi tiết</label>
+            <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+              {isSkillsTemplate ? 'Mô tả ngắn trên hero' : 'Mô tả chi tiết'}
+            </label>
             <Textarea
               value={program.description}
               onChange={(e) => set('description', e.target.value)}
@@ -1164,6 +1285,8 @@ function ProgramCard({
             />
           </div>
 
+          {isCourseTemplate && (
+          <>
           {/* Tiêu đề section "Điểm nổi bật" */}
           <EditorSection
             title="Điểm nổi bật"
@@ -1268,7 +1391,10 @@ function ProgramCard({
           />
           </EditorSection>
 
-          {program.slug === 'metta-summer-2026' && (
+          </>
+          )}
+
+          {isSkillsTemplate && (
             <SummerContentEditor program={program} onChange={onChange} />
           )}
         </CardContent>
@@ -1282,10 +1408,14 @@ export default function ProgramsCmsPage() {
   const [programs, setPrograms] = useState<ProgramCms[]>(DEFAULT_PROGRAMS);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
 
   useEffect(() => {
     if (settings?.programs?.length) {
-      setPrograms(settings.programs);
+      setPrograms(settings.programs.map((program) => ({
+        ...program,
+        programTemplate: programTemplateOf(program),
+      })));
     }
   }, [settings]);
 
@@ -1308,33 +1438,20 @@ export default function ProgramsCmsPage() {
     setPrograms(programs.filter((_, i) => i !== index));
   }
 
-  function addProgram() {
-    setPrograms([...programs, {
-      slug: `program-${Date.now()}`,
-      visible: true,
-      title: '',
-      eyebrow: '',
-      ageRange: '',
-      duration: '',
-      courseName: '',
-      dealSize: DEFAULT_COURSE_DEAL_SIZE,
-      dealCurrency: DEFAULT_DEAL_CURRENCY,
-      image: '',
-      summary: '',
-      description: '',
-      highlights: [''],
-      methodology: [''],
-      outcomes: [''],
-      roadmap: [''],
-      roadmapCards: [{ label: 'Level 1', title: '', description: '', color: '#16A9D8' }],
-    }]);
+  function addProgram(template: ProgramTemplate) {
+    setPrograms([...programs, template === 'skills' ? createSkillsProgram() : createCourseProgram()]);
+    setAddMenuOpen(false);
   }
 
   async function handleSave() {
     if (!settings) return;
+    const programsForSave = programs.map((program) => ({
+      ...program,
+      programTemplate: programTemplateOf(program),
+    }));
     setSaving(true);
     try {
-      await cmsService.saveSettings({ ...settings, programs });
+      await cmsService.saveSettings({ ...settings, programs: programsForSave });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } finally {
@@ -1347,7 +1464,7 @@ export default function ProgramsCmsPage() {
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-950">Chương trình học</h1>
-          <p className="text-slate-500">Chỉnh sửa nội dung, hình ảnh và thông tin 4 chương trình học.</p>
+          <p className="text-slate-500">Chỉnh sửa nội dung, hình ảnh và thông tin các chương trình học/kỹ năng.</p>
         </div>
         <Button onClick={handleSave} disabled={saving || !settings}>
           <Save /> {saving ? 'Đang lưu...' : saved ? '✓ Đã lưu' : 'Lưu thay đổi'}
@@ -1370,7 +1487,29 @@ export default function ProgramsCmsPage() {
       </div>
 
       <div className="flex justify-between">
-        <Button variant="outline" onClick={addProgram}><Plus /> Thêm chương trình</Button>
+        <div className="relative">
+          <Button variant="outline" onClick={() => setAddMenuOpen((open) => !open)}><Plus /> Thêm chương trình</Button>
+          {addMenuOpen && (
+            <div className="absolute bottom-full left-0 z-20 mb-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
+              <button
+                type="button"
+                onClick={() => addProgram('course')}
+                className="block w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-blue-50"
+              >
+                <span className="block text-sm font-extrabold text-[#003B7A]">Chương trình học</span>
+                <span className="mt-1 block text-xs font-semibold text-slate-500">Dùng layout chương trình chính quy.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => addProgram('skills')}
+                className="block w-full px-4 py-3 text-left hover:bg-orange-50"
+              >
+                <span className="block text-sm font-extrabold text-[#C2410C]">Chương trình kỹ năng</span>
+                <span className="mt-1 block text-xs font-semibold text-slate-500">Dùng layout kỹ năng/Summer với các section ẩn hiện riêng.</span>
+              </button>
+            </div>
+          )}
+        </div>
         <Button onClick={handleSave} disabled={saving || !settings}>
           <Save /> {saving ? 'Đang lưu...' : saved ? '✓ Đã lưu' : 'Lưu thay đổi'}
         </Button>

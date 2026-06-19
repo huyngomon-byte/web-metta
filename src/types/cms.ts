@@ -34,9 +34,12 @@ export interface HighlightCard {
   description: string; // subtitle / supporting text
 }
 
+export type ProgramTemplate = 'course' | 'skills';
+
 export interface ProgramCms {
   slug: string;
   visible?: boolean;
+  programTemplate?: ProgramTemplate;
   title: string;
   seoTitle?: string;
   seoDescription?: string;

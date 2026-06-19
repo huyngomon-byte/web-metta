@@ -10,9 +10,15 @@ function normalizePhone(phone: string) {
 export function PublicLeadForm({
   formId = 'consultation-form',
   title = 'Đăng ký tư vấn miễn phí',
+  interestedCourse = '',
+  dealSize,
+  dealCurrency,
 }: {
   formId?: string;
   title?: string;
+  interestedCourse?: string;
+  dealSize?: number;
+  dealCurrency?: string;
 }) {
   const [form, setForm] = useState({ parentName: '', studentName: '', phone: '' });
   const [error, setError] = useState('');
@@ -57,6 +63,9 @@ export function PublicLeadForm({
           phone: phoneNormalized,
           contactType: 'parent',
           source: 'Website',
+          interestedCourse,
+          dealSize,
+          dealCurrency,
           company: String(formData.get('company') || ''),
           website: String(formData.get('website') || ''),
         },

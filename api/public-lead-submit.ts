@@ -3,18 +3,6 @@ import { adminAppCheck, adminDb } from './_firebaseAdmin.js';
 import { sendLeadCapiSignal } from './_metaCapi.js';
 import { notifyLeadAssigned, notifyLeadManagers } from './_notifications.js';
 
-const COURSE_OPTIONS = [
-  'Mẫu giáo',
-  'Thiếu Nhi',
-  'Phonics',
-  'METTA Kiddies',
-  'METTA on Phonics',
-  'METTA Young Learner',
-  'METTA Young Learners',
-  'Metta+ Pass',
-  'METTA Summer 2026',
-];
-
 const LEAD_STATUSES = [
   'Lead mới',
   'Đã liên hệ',
@@ -101,6 +89,11 @@ function normalizePhone(phone: string) {
 
 function isValidPhone(phone: string) {
   return /^0(3|5|7|8|9|1[2689])\d{8}$/.test(phone);
+}
+
+function cleanCourseName(value: unknown) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 function firstHeaderValue(value?: string | string[]) {
@@ -339,7 +332,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const parentName = cleanName(lead.parentName || (lead.contactType === 'parent' ? legacyName : ''));
   const studentName = cleanName(lead.studentName || (lead.contactType === 'student' ? legacyName : ''));
   if (!parentName || !studentName || !lead.phone) return res.status(400).json({ error: 'parentName, studentName and phone are required' });
-  if (lead.interestedCourse && !COURSE_OPTIONS.includes(lead.interestedCourse)) return res.status(400).json({ error: 'Invalid interestedCourse' });
+  const interestedCourse = cleanCourseName(lead.interestedCourse);
+  if (lead.interestedCourse && !interestedCourse) return res.status(400).json({ error: 'Invalid interestedCourse' });
   if (!isValidEmail(lead.email)) return res.status(400).json({ error: 'Invalid email' });
 
   const phone = normalizePhone(String(lead.phone));
@@ -377,7 +371,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const rawDealSize = Number(lead.dealSize);
   const dealSize = Number.isFinite(rawDealSize) && rawDealSize > 0
     ? rawDealSize
-    : lead.interestedCourse === METTA_SUMMER_COURSE
+    : interestedCourse === METTA_SUMMER_COURSE
       ? METTA_SUMMER_DEAL_SIZE
       : 0;
   const rawExpectedRevenue = Number(lead.expectedRevenue);
@@ -406,7 +400,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     age: lead.age || '',
     school: lead.school || '',
     currentClass: lead.currentClass || '',
-    interestedCourse: lead.interestedCourse || '',
+    interestedCourse,
     currentLevel: lead.currentLevel || '',
     targetGoal: lead.targetGoal || '',
     source,
