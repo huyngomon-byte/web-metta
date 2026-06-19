@@ -279,6 +279,7 @@ const LOCAL_SNAPSHOT: PublicCmsSnapshot = {
 };
 
 let remoteSnapshotPromise: Promise<PublicCmsSnapshot | null> | null = null;
+const PUBLIC_CMS_FETCH_TIMEOUT_MS = 6000;
 
 function hasUsableHomepageSections(items: PageSection[]) {
   const visibleTypes = new Set(items.filter((section) => section.visible).map((section) => section.type));
@@ -327,18 +328,23 @@ function normalizeRemoteSnapshot(input: Partial<PublicCmsSnapshot>): PublicCmsSn
 async function loadRemoteSnapshot() {
   if (typeof window === 'undefined') return null;
   if (!remoteSnapshotPromise) {
-    remoteSnapshotPromise = fetch('/api/app-config?id=publicCms', {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    })
-      .then(async (response) => {
+    remoteSnapshotPromise = (async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), PUBLIC_CMS_FETCH_TIMEOUT_MS);
+      try {
+        const response = await fetch('/api/app-config?id=publicCms', {
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
         if (!response.ok) return null;
         return normalizeRemoteSnapshot(await response.json());
-      })
-      .catch((error) => {
+      } catch (error) {
         console.warn('[PublicCMS] Cannot load remote CMS snapshot, using local fallback:', error);
         return null;
-      });
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    })();
   }
   return remoteSnapshotPromise;
 }
