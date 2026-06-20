@@ -28,9 +28,11 @@ function isInternalRoute(href: string) {
 }
 
 export function PublicFooter() {
-  const { settings } = usePublicThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
   const navigate = useNavigate();
   const location = useLocation();
+  if (loading && !settings) return <FooterLoadingShell />;
+
   const current = settings || seedSettings;
   const footerColumns = current.footerColumns?.length ? current.footerColumns : seedSettings.footerColumns || [];
   const socials = current.socials || {};
@@ -135,6 +137,36 @@ export function PublicFooter() {
 
         <div className="mt-12 pt-6 border-t border-pure-white/10 flex justify-center text-center text-sm text-surface-variant">
           <p>© 2026 {current.brandName || 'METTA Academy'}. {current.footerText || 'Learn with Mind. Lead with Heart.'}</p>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function FooterLoadingShell() {
+  return (
+    <footer data-public-shell="footer" className="w-full bg-primary border-t-4 border-cta-orange pt-16 pb-8">
+      <div className="mx-auto max-w-[1440px] px-5 lg:px-page">
+        <div className="grid grid-cols-1 gap-10 md:grid-cols-12">
+          <div className="space-y-5 md:col-span-4">
+            <img
+              src={BRAND_LOGOS.onBlue}
+              alt="METTA Academy"
+              className="h-[58px] w-auto max-w-[230px] object-contain sm:h-16"
+            />
+            <div className="h-4 w-56 animate-pulse rounded bg-white/15" />
+            <div className="h-4 w-44 animate-pulse rounded bg-white/15" />
+          </div>
+          <div className="hidden space-y-4 md:col-span-8 md:grid md:grid-cols-3 md:gap-8">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="space-y-4">
+                <div className="h-5 w-28 animate-pulse rounded bg-white/15" />
+                <div className="h-4 w-24 animate-pulse rounded bg-white/10" />
+                <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
+                <div className="h-4 w-20 animate-pulse rounded bg-white/10" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </footer>

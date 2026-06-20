@@ -280,6 +280,8 @@ const LOCAL_SNAPSHOT: PublicCmsSnapshot = {
 };
 
 const PUBLIC_CMS_FETCH_TIMEOUT_MS = 6000;
+const SNAPSHOT_REQUEST_DEDUPE_MS = 500;
+let snapshotRequest: Promise<PublicCmsSnapshot> | null = null;
 
 function hasUsableHomepageSections(items: PageSection[]) {
   const visibleTypes = new Set(items.filter((section) => section.visible).map((section) => section.type));
@@ -346,7 +348,17 @@ async function loadRemoteSnapshot() {
 }
 
 async function getSnapshot() {
-  return (await loadRemoteSnapshot()) || LOCAL_SNAPSHOT;
+  if (typeof window === 'undefined') return LOCAL_SNAPSHOT;
+  if (!snapshotRequest) {
+    snapshotRequest = loadRemoteSnapshot()
+      .then((snapshot) => snapshot || LOCAL_SNAPSHOT)
+      .finally(() => {
+        window.setTimeout(() => {
+          snapshotRequest = null;
+        }, SNAPSHOT_REQUEST_DEDUPE_MS);
+      });
+  }
+  return snapshotRequest;
 }
 
 export const publicCmsService = {

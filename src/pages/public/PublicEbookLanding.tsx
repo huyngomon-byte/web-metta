@@ -130,7 +130,9 @@ function MiniHeader() {
 
 /* ── Mini footer ─────────────────────────────────────────────────────────── */
 function MiniFooter() {
-  const { settings } = usePublicThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
+  if (loading && !settings) return null;
+
   const s = settings || seedSettings;
   const hotline = s.hotline;
   const address = s.address;

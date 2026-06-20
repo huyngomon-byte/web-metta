@@ -6,7 +6,7 @@ import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, WON_LEAD_STATU
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { publicLeadService } from '@/services/publicLeadService';
 import { formatCurrency } from '@/lib/utils';
-import type { ProgramCms, ProgramTemplate, SummerGalleryImage, SummerModule, SummerSectionKey } from '@/types/cms';
+import type { ProgramCms, ProgramTemplate, SummerGalleryImage, SummerModule, SummerSectionKey, SummerStat } from '@/types/cms';
 
 function programTemplateOf(program: Pick<ProgramCms, 'programTemplate' | 'slug'>): ProgramTemplate {
   return program.programTemplate || (program.slug === 'metta-summer-2026' ? 'skills' : 'course');
@@ -338,7 +338,8 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
   // Nội dung lấy từ CMS, fallback về SUMMER_DEFAULTS nếu chưa nhập
   const subtitle = program.summerSubtitle || SUMMER_DEFAULTS.subtitle;
   const chips = program.summerChips?.length ? program.summerChips : SUMMER_DEFAULTS.chips;
-  const heroStats = program.summerHeroStats?.length ? program.summerHeroStats : SUMMER_DEFAULTS.heroStats;
+  const heroStats = (program.summerHeroStats ?? SUMMER_DEFAULTS.heroStats)
+    .filter((stat) => stat.value.trim() || stat.label.trim());
   const heroImage = program.image || program.images?.[0] || SUMMER_DEFAULTS.showcaseImage;
   const overviewEyebrow = program.summerOverviewEyebrow || SUMMER_DEFAULTS.overviewEyebrow;
   const overviewTitle = program.summerOverviewTitle || SUMMER_DEFAULTS.overviewTitle;

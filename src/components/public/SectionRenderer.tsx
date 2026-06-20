@@ -10,6 +10,12 @@ import { PUBLIC_PROGRAMS } from '@/lib/constants';
 import type { FacilityImage, ProgramCms } from '@/types/cms';
 import type { PageSection } from '@/types/cms';
 
+type FacilityImageInput = Partial<FacilityImage> & {
+  url?: unknown;
+  image?: unknown;
+  fileUrl?: unknown;
+};
+
 /* ── helpers ──────────────────────────────────────────────────────────────── */
 function parseExtra<T = unknown[]>(json?: string, fallback: T = [] as unknown as T): T {
   if (!json) return fallback;
@@ -32,18 +38,18 @@ const DEFAULT_FACILITY_IMAGES: FacilityImage[] = [
   { src: '/brand/workshop-kids.jpg', alt: 'Học viên METTA Academy trong lớp học', title: '' },
 ];
 
-function facilityImageSrc(item: Partial<FacilityImage> & Record<string, unknown>) {
+function facilityImageSrc(item: FacilityImageInput) {
   const value = item.src || item.url || item.image || item.fileUrl;
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function isUsableFacilityImage(item: Partial<FacilityImage> & Record<string, unknown>) {
+function isUsableFacilityImage(item: FacilityImageInput) {
   const src = facilityImageSrc(item);
   if (!src) return false;
   return !MISSING_FACILITY_PATHS.has(src.split('?')[0]);
 }
 
-function cleanFacilityImages(items: Array<Partial<FacilityImage> & Record<string, unknown>> | undefined): FacilityImage[] {
+function cleanFacilityImages(items: FacilityImageInput[] | undefined): FacilityImage[] {
   return (items || [])
     .map((item) => {
       const src = facilityImageSrc(item);
@@ -287,7 +293,7 @@ function CoursesBlock({ section }: { section: PageSection }) {
     roadmapCards: 'roadmapCards' in program ? program.roadmapCards.map((card) => ({ ...card })) : undefined,
     skills: 'skills' in program ? program.skills.map((skill) => ({ ...skill })) : undefined,
   }));
-  const programs = (settings?.programs?.length ? settings.programs : fallbackPrograms)
+  const programs = (loading && !settings ? [] : settings?.programs?.length ? settings.programs : fallbackPrograms)
     .filter((program) => program.visible !== false);
   const count = programs.length;
 
@@ -710,10 +716,11 @@ function CTABlock({ section }: { section: PageSection }) {
 
 /* ── Facilities (Cơ sở vật chất) ───────────────────────────────────────────── */
 function FacilitiesBlock({ section }: { section: PageSection }) {
-  const { settings } = usePublicThemeSettings();
-  const sectionImages = cleanFacilityImages(parseExtra<Array<Partial<FacilityImage> & Record<string, unknown>>>(section.extraData));
-  const settingsImages = cleanFacilityImages(settings.facilities?.images);
+  const { settings, loading } = usePublicThemeSettings();
+  const sectionImages = cleanFacilityImages(parseExtra<FacilityImageInput[]>(section.extraData));
+  const settingsImages = cleanFacilityImages(settings?.facilities?.images);
   const seedImages = cleanFacilityImages(seedSettings.facilities?.images);
+  if (loading && !settings && !sectionImages.length) return <FacilitiesLoadingBlock section={section} />;
   // Fallback ảnh mặc định nếu section chưa cấu hình ảnh
   const finalImages = sectionImages.length
     ? sectionImages
@@ -724,11 +731,29 @@ function FacilitiesBlock({ section }: { section: PageSection }) {
         : DEFAULT_FACILITY_IMAGES;
   return (
     <FacilitiesSection
-      eyebrow={section.subtitle || settings.facilities?.eyebrow || undefined}
-      title={section.title || settings.facilities?.title || undefined}
-      description={section.description || settings.facilities?.description || undefined}
+      eyebrow={section.subtitle || settings?.facilities?.eyebrow || undefined}
+      title={section.title || settings?.facilities?.title || undefined}
+      description={section.description || settings?.facilities?.description || undefined}
       images={finalImages}
     />
+  );
+}
+
+function FacilitiesLoadingBlock({ section }: { section: PageSection }) {
+  return (
+    <section id={sectionId(section, 'facilities')} className="bg-pure-white py-14">
+      <div className="mx-auto max-w-[1200px] px-5 lg:px-page">
+        <div className="mb-8 space-y-3">
+          <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
+          <div className="h-9 w-72 animate-pulse rounded bg-slate-100" />
+          <div className="h-4 w-full max-w-xl animate-pulse rounded bg-slate-100" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="h-56 animate-pulse rounded-2xl bg-slate-100 md:col-span-2" />
+          <div className="h-56 animate-pulse rounded-2xl bg-slate-100" />
+        </div>
+      </div>
+    </section>
   );
 }
 

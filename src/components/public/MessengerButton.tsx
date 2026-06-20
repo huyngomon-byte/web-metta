@@ -4,7 +4,9 @@ const DEFAULT_MESSENGER_URL = 'https://www.facebook.com/messages/t/anhngumetta';
 const MESSENGER_ICON = '/brand/logo messenger.webp?v=20260601-1818';
 
 export function MessengerButton() {
-  const { settings } = usePublicThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
+  if (loading && !settings) return null;
+
   const href = settings?.socials?.messenger || settings?.socials?.facebookMessenger || DEFAULT_MESSENGER_URL;
 
   return (

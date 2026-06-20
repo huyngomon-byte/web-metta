@@ -9,8 +9,7 @@ import type { PublicBlogPage } from '@/services/publicBlogService';
 const PUBLIC_NEWS_PAGE_LIMIT = 9;
 
 export default function PublicNewsPage() {
-  const { settings } = usePublicThemeSettings();
-  const current = settings || seedSettings;
+  const { settings, loading: settingsLoading } = usePublicThemeSettings();
   const [searchParams] = useSearchParams();
   const currentPage = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10) || 1);
   const [pageData, setPageData] = useState<PublicBlogPage | null>(null);
@@ -28,6 +27,9 @@ export default function PublicNewsPage() {
   }, [currentPage, pageData?.hasNext]);
 
   const posts = pageData?.posts || null;
+  if (settingsLoading && !settings) return <NewsPageSkeleton />;
+
+  const current = settings || seedSettings;
 
   return (
     <>
@@ -120,5 +122,34 @@ export default function PublicNewsPage() {
         </div>
       </section>
     </>
+  );
+}
+
+function NewsPageSkeleton() {
+  return (
+    <main className="min-h-screen bg-[#F5F9FC] pt-[72px]">
+      <section className="bg-gradient-to-b from-[#003B7A] to-[#002B5B] py-12">
+        <div className="mx-auto max-w-[1180px] px-5">
+          <div className="mb-6 h-5 w-24 animate-pulse rounded bg-white/10" />
+          <div className="h-12 w-80 max-w-full animate-pulse rounded-lg bg-white/15" />
+          <div className="mt-3 h-5 w-96 max-w-full animate-pulse rounded bg-white/10" />
+        </div>
+      </section>
+      <section className="py-12">
+        <div className="mx-auto grid max-w-[1180px] grid-cols-1 gap-6 px-5 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="overflow-hidden rounded-xl bg-white shadow-sm">
+              <div className="h-52 animate-pulse bg-slate-100" />
+              <div className="space-y-3 p-6">
+                <div className="h-4 w-28 animate-pulse rounded bg-slate-100" />
+                <div className="h-5 w-full animate-pulse rounded bg-slate-100" />
+                <div className="h-5 w-9/12 animate-pulse rounded bg-slate-100" />
+                <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </main>
   );
 }

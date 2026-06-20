@@ -65,7 +65,9 @@ function isHttpUrl(url?: string) {
 }
 
 export default function PublicContactPage() {
-  const { settings } = usePublicThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
+  if (loading && !settings) return <ContactPageSkeleton />;
+
   const current = settings || seedSettings;
   const mapUrl = current.mapUrl || seedSettings.mapUrl || DEFAULT_MAP_URL;
   const embedUrl = getEmbeddableMapUrl(mapUrl, current.address);
@@ -168,5 +170,25 @@ export default function PublicContactPage() {
       </section>
       <PublicLeadForm formId="contact-form" title="Gửi thông tin liên hệ" />
     </>
+  );
+}
+
+function ContactPageSkeleton() {
+  return (
+    <main className="min-h-screen bg-white pt-[72px]">
+      <section className="bg-[#003B7A] py-20">
+        <div className="mx-auto max-w-[1180px] px-4">
+          <div className="h-12 w-80 max-w-full animate-pulse rounded-lg bg-white/15" />
+          <div className="mt-4 h-5 w-full max-w-2xl animate-pulse rounded bg-white/10" />
+        </div>
+      </section>
+      <section className="bg-white py-16">
+        <div className="mx-auto grid max-w-[1180px] gap-6 px-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="min-h-[118px] animate-pulse rounded-xl border border-slate-200 bg-slate-50" />
+          ))}
+        </div>
+      </section>
+    </main>
   );
 }

@@ -1,5 +1,11 @@
 import type { PageSection } from '@/types/cms';
 
+type FacilityRepairImage = Record<string, unknown> & {
+  src: string;
+  alt?: unknown;
+  title?: unknown;
+};
+
 const CANONICAL_HOME_HERO = {
   subtitle: 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai',
   description:
@@ -94,7 +100,7 @@ const MISSING_FACILITY_PATHS = new Set([
   '/images/facilities/facility-3.jpg',
 ]);
 
-const FACILITY_FALLBACK_IMAGES = [
+const FACILITY_FALLBACK_IMAGES: FacilityRepairImage[] = [
   { src: '/brand/hero-classroom.png', title: '' },
   { src: '/brand/brand-banner.jpg', title: '' },
   { src: '/brand/workshop-kids.jpg', title: '' },
@@ -129,7 +135,7 @@ function isUsableFacilitySrc(src: string) {
 
 function normalizeFacilityImages(extraData?: string) {
   const source = parseExtraArray(extraData);
-  const customImages = source
+  const customImages: FacilityRepairImage[] = source
     .map((item) => ({ ...item, src: normalizeFacilitySrc(item) }))
     .filter((item) => isUsableFacilitySrc(item.src));
   const images = customImages.length ? customImages : FACILITY_FALLBACK_IMAGES;

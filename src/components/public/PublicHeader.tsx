@@ -83,7 +83,9 @@ export function PublicHeader() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const { settings } = usePublicThemeSettings();
+  const { settings, loading } = usePublicThemeSettings();
+  if (loading && !settings) return <HeaderLoadingShell />;
+
   const current = settings || seedSettings;
   const rawLinks = (current.headerLinks?.length ? current.headerLinks : seedSettings.headerLinks || []) as NavLink[];
   // Auto-sync links
@@ -270,6 +272,29 @@ export function PublicHeader() {
           </NavAnchor>
         </div>
       )}
+    </header>
+  );
+}
+
+function HeaderLoadingShell() {
+  return (
+    <header data-public-shell="header" className="fixed top-0 w-full z-[100] h-[72px] bg-pure-white/95 backdrop-blur-md border-b border-navy-deep/10 shadow-sm">
+      <nav className="flex justify-between items-center w-full px-5 lg:px-page max-w-[1440px] mx-auto h-full">
+        <Link to="/" className="flex items-center gap-2.5 flex-shrink-0">
+          <img
+            src={BRAND_LOGOS.onWhite}
+            alt="METTA Academy"
+            className="h-[46px] w-auto object-contain sm:h-[50px]"
+          />
+        </Link>
+        <div className="hidden items-center gap-5 lg:flex">
+          <div className="h-4 w-20 animate-pulse rounded bg-slate-200" />
+          <div className="h-4 w-28 animate-pulse rounded bg-slate-200" />
+          <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+          <div className="h-10 w-32 animate-pulse rounded-lg bg-slate-200" />
+        </div>
+        <div className="h-8 w-8 animate-pulse rounded bg-slate-200 lg:hidden" />
+      </nav>
     </header>
   );
 }

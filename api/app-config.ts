@@ -77,13 +77,7 @@ const NEW_LEAD_STATUS = 'Lead mới';
 const MAX_WRITES_PER_BATCH = 440;
 const WRITES_PER_LEAD = 4;
 const MAX_LEADS_PER_BATCH = Math.floor(MAX_WRITES_PER_BATCH / WRITES_PER_LEAD);
-const PUBLIC_CMS_MEMORY_STALE_MS = 24 * 60 * 60 * 1000;
 const PUBLIC_CMS_NO_STORE_HEADER = 'no-store, max-age=0, must-revalidate';
-
-let publicCmsMemoryCache: {
-  snapshot: PublicCmsSnapshot;
-  staleUntil: number;
-} | null = null;
 
 const configFields: Record<string, 'configs' | 'rules'> = {
   leadCenterConfigs: 'configs',
@@ -217,46 +211,28 @@ function serializable(data: Record<string, unknown> | undefined, id: string): Pu
 }
 
 async function readPublicCmsSnapshot(): Promise<PublicCmsSnapshot> {
-  const timestamp = Date.now();
   const db = adminDb();
-  try {
-    const [pagesSnap, sectionsSnap, settingsSnap] = await Promise.all([
-      db.collection('pages').where('status', '==', 'published').get(),
-      db.collection('pageSections').where('visible', '==', true).get(),
-      db.doc('siteSettings/main').get(),
-    ]);
+  const [pagesSnap, sectionsSnap, settingsSnap] = await Promise.all([
+    db.collection('pages').where('status', '==', 'published').get(),
+    db.collection('pageSections').where('visible', '==', true).get(),
+    db.doc('siteSettings/main').get(),
+  ]);
 
-    const pages = pagesSnap.docs.map((doc) => serializable(doc.data(), doc.id));
-    const publishedPageIds = new Set(pages.map((page) => String(page.id)));
-    const sections = sectionsSnap.docs
-      .map((doc) => serializable(doc.data(), doc.id))
-      .filter((section) => publishedPageIds.has(String(section.pageId || '')))
-      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-    const snapshot: PublicCmsSnapshot = {
-      pages,
-      sections,
-      settings: settingsSnap.exists ? settingsSnap.data() || null : null,
-      generatedAt: new Date().toISOString(),
-      source: 'firestore',
-      schemaVersion: 1,
-    };
+  const pages = pagesSnap.docs.map((doc) => serializable(doc.data(), doc.id));
+  const publishedPageIds = new Set(pages.map((page) => String(page.id)));
+  const sections = sectionsSnap.docs
+    .map((doc) => serializable(doc.data(), doc.id))
+    .filter((section) => publishedPageIds.has(String(section.pageId || '')))
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
 
-    publicCmsMemoryCache = {
-      snapshot,
-      staleUntil: timestamp + PUBLIC_CMS_MEMORY_STALE_MS,
-    };
-
-    return snapshot;
-  } catch (error) {
-    if (publicCmsMemoryCache && publicCmsMemoryCache.staleUntil > timestamp) {
-      return {
-        ...publicCmsMemoryCache.snapshot,
-        stale: true,
-        staleReason: error instanceof Error ? error.message : 'Cannot refresh public CMS',
-      } as PublicCmsSnapshot;
-    }
-    throw error;
-  }
+  return {
+    pages,
+    sections,
+    settings: settingsSnap.exists ? settingsSnap.data() || null : null,
+    generatedAt: new Date().toISOString(),
+    source: 'firestore',
+    schemaVersion: 1,
+  };
 }
 
 async function requireActiveUser(req: VercelRequest): Promise<AppConfigUser> {
@@ -489,8 +465,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if ((req.method === 'PUT' || req.method === 'PATCH') && id === 'publicCms') {
       const user = await requireActiveUser(req);
       if (!canManageCms(user)) throw new Error('Only CMS users can publish public CMS snapshots');
-
-      publicCmsMemoryCache = null;
 
       res.setHeader?.('Cache-Control', PUBLIC_CMS_NO_STORE_HEADER);
       res.setHeader?.('X-Public-CMS-Source', 'firestore');
