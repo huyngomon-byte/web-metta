@@ -324,6 +324,11 @@ function isValidSummerPhone(phone: string) {
   return /^0(3|5|7|8|9|1[2689])\d{8}$/.test(phone);
 }
 
+const heroStatCardClass = 'flex min-h-[112px] min-w-0 flex-col rounded-2xl border border-white/65 bg-white/5 px-4 py-3.5 shadow-sm backdrop-blur';
+const heroStatLabelClass = 'mb-2 flex min-w-0 items-center gap-1.5 text-[#16A9D8]';
+const heroStatLabelTextClass = 'truncate text-[10px] font-bold uppercase tracking-wider text-white/60';
+const heroStatValueClass = 'min-w-0 break-words text-[13.5px] font-extrabold leading-snug text-white sm:text-sm';
+
 function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCtaClick: () => void }) {
   const [showPlan, setShowPlan] = useState(false);
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
@@ -378,8 +383,6 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
     tag: program.eyebrow || program.title,
   }];
   const activeHeroIndex = heroSlides.length ? Math.min(heroSlideIndex, heroSlides.length - 1) : 0;
-  const activeHeroSlide = heroSlides[activeHeroIndex];
-  const activeHeroTag = summerModuleTag(activeHeroSlide);
   const activeShowcaseIndex = showcaseImages.length ? Math.min(showcaseSlideIndex, showcaseImages.length - 1) : 0;
   const activeShowcaseImage = showcaseImages[activeShowcaseIndex];
 
@@ -455,9 +458,6 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
             </h1>
             {subtitle && <p className="mt-3 max-w-2xl text-base font-bold leading-7 text-white md:text-lg">{subtitle}</p>}
             {program.description && <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75 md:text-base md:leading-7">{program.description}</p>}
-            <div className="mt-4 inline-flex w-fit rounded-full border border-white/18 bg-white/10 px-4 py-2 text-xs font-extrabold uppercase tracking-[0.12em] text-white/80 backdrop-blur">
-              {activeHeroTag}
-            </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {chips.map((chip) => (
                 <span key={chip} className="rounded-full border border-white/16 bg-white/10 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm backdrop-blur sm:px-4 sm:py-2 sm:text-sm">
@@ -466,17 +466,17 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
               ))}
             </div>
             {heroStats.length > 0 && (
-              <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+              <div className={`mt-5 grid grid-cols-1 gap-2.5 ${heroStats.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
                 {heroStats.map((stat) => {
                   const Icon = summerStatIcon(stat);
                   const display = summerStatDisplay(stat);
                   return (
-                    <div key={`${display.label}-${display.value}`} className="flex min-h-[106px] flex-col rounded-2xl border border-white/70 bg-white/5 px-4 py-3.5 shadow-sm backdrop-blur">
-                      <div className="mb-2 flex items-center gap-1.5 text-[#16A9D8]">
+                    <div key={`${display.label}-${display.value}`} className={heroStatCardClass}>
+                      <div className={heroStatLabelClass}>
                         <Icon size={15} className="shrink-0" />
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/60">{display.label}</span>
+                        <span className={heroStatLabelTextClass}>{display.label}</span>
                       </div>
-                      <p className="text-[13.5px] font-extrabold leading-snug text-white sm:text-sm">{display.value}</p>
+                      <p className={heroStatValueClass}>{display.value}</p>
                     </div>
                   );
                 })}
@@ -1362,12 +1362,12 @@ function ProgramHero({ program, onCtaClick }: { program: ProgramCms; onCtaClick:
               { Icon: Clock, label: 'Thời lượng', value: program.duration },
               { Icon: GraduationCap, label: 'Nhóm khóa', value: program.courseName },
             ].map(({ Icon, label, value }) => (
-              <div key={label} className="flex flex-col rounded-2xl border border-white/12 bg-white/5 px-4 py-3.5">
-                <div className="mb-1.5 flex items-center gap-1.5 text-[#16A9D8]">
+              <div key={label} className={heroStatCardClass}>
+                <div className={heroStatLabelClass}>
                   <Icon size={15} className="shrink-0" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-white/55">{label}</span>
+                  <span className={heroStatLabelTextClass}>{label}</span>
                 </div>
-                <p className="text-[13.5px] font-extrabold leading-snug text-white">{value}</p>
+                <p className={heroStatValueClass}>{value}</p>
               </div>
             ))}
           </div>
