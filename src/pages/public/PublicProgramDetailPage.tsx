@@ -284,6 +284,32 @@ function summerModuleTag(module: { tag?: string; title?: string }) {
   return module.tag || module.title || 'METTA Summer';
 }
 
+function isSummerStatDescriptor(text: string) {
+  const value = text.toLowerCase();
+  return value.includes('độ tuổi')
+    || value.includes('tuổi học')
+    || value.includes('thời lượng')
+    || value.includes('nhóm')
+    || value.includes('khoá')
+    || value.includes('khóa');
+}
+
+function summerStatDisplay(stat: SummerStat) {
+  const value = stat.value.trim();
+  const label = stat.label.trim();
+  if (isSummerStatDescriptor(value) && label) return { label: value, value: label };
+  return { label: label || value, value };
+}
+
+function summerStatIcon(stat: SummerStat): LucideIcon {
+  const display = summerStatDisplay(stat);
+  const text = `${display.label} ${display.value}`.toLowerCase();
+  if (text.includes('tuổi') || text.includes('tuoi') || text.includes('age')) return Users;
+  if (text.includes('thời lượng') || text.includes('thoi luong') || text.includes('tuần') || text.includes('buổi')) return Clock;
+  if (text.includes('nhóm') || text.includes('khoá') || text.includes('khóa') || text.includes('mầm non') || text.includes('preschool')) return GraduationCap;
+  return Sparkles;
+}
+
 function summerGalleryImageSrc(image: SummerGalleryImage) {
   return image.src || SUMMER_DEFAULTS.showcaseImage;
 }
@@ -440,13 +466,20 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
               ))}
             </div>
             {heroStats.length > 0 && (
-              <div className="mt-5 grid grid-cols-3 gap-2">
-                {heroStats.map((stat) => (
-                  <div key={stat.label} className="rounded-2xl border border-white/12 bg-white/5 px-2 py-2 sm:px-3.5 sm:py-2.5">
-                    <p className="text-lg font-extrabold sm:text-xl" style={{ color: stat.color || '#16A9D8' }}>{stat.value}</p>
-                    <p className="mt-1 text-[9px] font-bold uppercase tracking-wider text-white/55 sm:text-[10px]">{stat.label}</p>
-                  </div>
-                ))}
+              <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                {heroStats.map((stat) => {
+                  const Icon = summerStatIcon(stat);
+                  const display = summerStatDisplay(stat);
+                  return (
+                    <div key={`${display.label}-${display.value}`} className="flex min-h-[106px] flex-col rounded-2xl border border-white/70 bg-white/5 px-4 py-3.5 shadow-sm backdrop-blur">
+                      <div className="mb-2 flex items-center gap-1.5 text-[#16A9D8]">
+                        <Icon size={15} className="shrink-0" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/60">{display.label}</span>
+                      </div>
+                      <p className="text-[13.5px] font-extrabold leading-snug text-white sm:text-sm">{display.value}</p>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div className="mt-4 flex flex-col gap-2 sm:mt-5 sm:flex-row sm:gap-3">
