@@ -1,5 +1,5 @@
 import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Clock, GraduationCap, Sparkles, Users, Music, BookOpen, Eye, Brain, Globe, Zap, Mic, MessageCircle, Star, Cpu, FlaskConical, Trophy, Target, Lightbulb, Hand, X, type LucideIcon } from 'lucide-react';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { memo, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
 import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, WON_LEAD_STATUS, leadStatuses, resolveCourseDealSizeForProgram } from '@/lib/constants';
@@ -329,6 +329,114 @@ const heroStatLabelClass = 'mb-2 flex min-w-0 items-center gap-1.5 text-[#16A9D8
 const heroStatLabelTextClass = 'truncate text-[10px] font-bold uppercase tracking-wider text-white/60';
 const heroStatValueClass = 'min-w-0 break-words text-[13.5px] font-extrabold leading-snug text-white sm:text-sm';
 
+type SummerHeroSlide = SummerModule & {
+  imageSrc: string;
+  displayTag: string;
+};
+
+const SummerHeroBackdrop = memo(function SummerHeroBackdrop({
+  slides,
+  activeIndex,
+}: {
+  slides: SummerHeroSlide[];
+  activeIndex: number;
+}) {
+  return (
+    <div className="absolute inset-0">
+      {slides.map((slide, index) => (
+        <img
+          key={`${slide.imageSrc}-${index}`}
+          src={slide.imageSrc}
+          alt=""
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-[1400ms] ease-out will-change-opacity ${index === activeIndex ? 'opacity-100' : 'opacity-0'}`}
+          loading={index <= 1 ? 'eager' : 'lazy'}
+          decoding="async"
+        />
+      ))}
+      <div className="absolute inset-0 hidden md:block" style={{ background: 'linear-gradient(90deg, rgba(8,45,82,0.88) 0%, rgba(8,45,82,0.62) 45%, rgba(8,45,82,0.18) 100%)' }} />
+      <div className="absolute inset-0 md:hidden" style={{ background: 'linear-gradient(180deg, rgba(8,45,82,0.84) 0%, rgba(8,45,82,0.74) 62%, rgba(8,45,82,0.58) 100%)' }} />
+    </div>
+  );
+});
+
+const SummerHeroContent = memo(function SummerHeroContent({
+  program,
+  subtitle,
+  chips,
+  heroStats,
+  onCtaClick,
+  onRegisterClick,
+}: {
+  program: ProgramCms;
+  subtitle: string;
+  chips: string[];
+  heroStats: SummerStat[];
+  onCtaClick: () => void;
+  onRegisterClick: () => void;
+}) {
+  return (
+    <div
+      className="w-full max-w-[680px] p-5 sm:p-7 lg:p-8"
+      style={{
+        background: 'linear-gradient(135deg, rgba(8,36,74,0.95), rgba(0,59,122,0.9))',
+        border: '1px solid rgba(255,255,255,0.22)',
+        borderRadius: '24px',
+        boxShadow: '0 24px 70px -36px rgba(0,0,0,0.55)',
+      }}
+    >
+      <Link to="/#programs" className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/70 transition-colors hover:text-white sm:mb-6">
+        <ArrowLeft size={18} /> Quay lại chương trình học
+      </Link>
+      {program.eyebrow && (
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#F45A0A]/25 bg-[#F45A0A]/15 px-3.5 py-2 sm:mb-5">
+          <Sparkles size={15} className="text-[#F45A0A]" />
+          <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#F45A0A]">{program.eyebrow}</span>
+        </div>
+      )}
+      <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] text-white md:text-5xl">
+        {program.title}
+      </h1>
+      {subtitle && <p className="mt-3 max-w-2xl text-base font-bold leading-7 text-white md:text-lg">{subtitle}</p>}
+      {program.description && <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75 md:text-base md:leading-7">{program.description}</p>}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {chips.map((chip) => (
+          <span key={chip} className="rounded-full border border-white/16 bg-white/10 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm sm:px-4 sm:py-2 sm:text-sm">
+            {chip}
+          </span>
+        ))}
+      </div>
+      <div
+        className={heroStats.length > 0
+          ? `mt-5 grid min-h-[112px] grid-cols-1 gap-2.5 ${heroStats.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`
+          : 'mt-5 min-h-[112px]'}
+        aria-hidden={heroStats.length === 0}
+      >
+        {heroStats.map((stat) => {
+          const Icon = summerStatIcon(stat);
+          const display = summerStatDisplay(stat);
+          return (
+            <div key={`${display.label}-${display.value}`} className={heroStatCardClass}>
+              <div className={heroStatLabelClass}>
+                <Icon size={15} className="shrink-0" />
+                <span className={heroStatLabelTextClass}>{display.label}</span>
+              </div>
+              <p className={heroStatValueClass}>{display.value}</p>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4 flex flex-col gap-2 sm:mt-5 sm:flex-row sm:gap-3">
+        <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-orange-600 sm:py-3.5 sm:text-sm">
+          Tư vấn chương trình <ArrowRight size={18} />
+        </button>
+        <button type="button" onClick={onRegisterClick} className="inline-flex items-center justify-center rounded-2xl border-2 border-white/50 bg-white/5 px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#003B7A] sm:py-3.5 sm:text-sm">
+          Đăng ký ngay
+        </button>
+      </div>
+    </div>
+  );
+});
+
 function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCtaClick: () => void }) {
   const [showPlan, setShowPlan] = useState(false);
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
@@ -337,9 +445,13 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
 
   // Nội dung lấy từ CMS, fallback về SUMMER_DEFAULTS nếu chưa nhập
   const subtitle = program.summerSubtitle || SUMMER_DEFAULTS.subtitle;
-  const chips = program.summerChips?.length ? program.summerChips : SUMMER_DEFAULTS.chips;
-  const heroStats = (program.summerHeroStats ?? SUMMER_DEFAULTS.heroStats)
-    .filter((stat) => stat.value.trim() || stat.label.trim());
+  const chips = useMemo(() => (
+    program.summerChips?.length ? program.summerChips : SUMMER_DEFAULTS.chips
+  ), [program.summerChips]);
+  const heroStats = useMemo(() => (
+    (program.summerHeroStats ?? SUMMER_DEFAULTS.heroStats)
+      .filter((stat) => stat.value.trim() || stat.label.trim())
+  ), [program.summerHeroStats]);
   const heroImage = program.image || program.images?.[0] || SUMMER_DEFAULTS.showcaseImage;
   const overviewEyebrow = program.summerOverviewEyebrow || SUMMER_DEFAULTS.overviewEyebrow;
   const overviewTitle = program.summerOverviewTitle || SUMMER_DEFAULTS.overviewTitle;
@@ -348,7 +460,9 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
   const audience = program.summerAudience?.length ? program.summerAudience : SUMMER_DEFAULTS.audience;
   const modulesEyebrow = program.summerModulesEyebrow || SUMMER_DEFAULTS.modulesEyebrow;
   const modulesTitle = program.summerModulesTitle || SUMMER_DEFAULTS.modulesTitle;
-  const modules = program.summerModules?.length ? program.summerModules : SUMMER_DEFAULTS.modules;
+  const modules = useMemo(() => (
+    program.summerModules?.length ? program.summerModules : SUMMER_DEFAULTS.modules
+  ), [program.summerModules]);
   const roadmapEyebrow = program.summerRoadmapEyebrow || SUMMER_DEFAULTS.roadmapEyebrow;
   const roadmapTitle = program.summerRoadmapTitle || SUMMER_DEFAULTS.roadmapTitle;
   const stages = program.summerStages?.length ? program.summerStages : SUMMER_DEFAULTS.stages;
@@ -375,14 +489,18 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
   const ctaBody = program.summerCtaBody || SUMMER_DEFAULTS.ctaBody;
   const sectionVisibility = { ...SUMMER_DEFAULTS.sectionVisibility, ...program.summerSectionVisibility };
   const showSection = (section: SummerSectionKey) => sectionVisibility[section] !== false;
-  const heroSlides: SummerModule[] = modules.length ? modules : [{
+  const heroSlides = useMemo<SummerHeroSlide[]>(() => (modules.length ? modules : [{
     icon: 'Sparkles',
     color: '#F45A0A',
     title: program.title,
     description: program.description,
     image: heroImage,
     tag: program.eyebrow || program.title,
-  }];
+  }]).map((slide, index) => ({
+    ...slide,
+    imageSrc: summerModuleImage(slide, index),
+    displayTag: summerModuleTag(slide),
+  })), [heroImage, modules, program.description, program.eyebrow, program.title]);
   const activeHeroIndex = heroSlides.length ? Math.min(heroSlideIndex, heroSlides.length - 1) : 0;
   const activeShowcaseIndex = showcaseImages.length ? Math.min(showcaseSlideIndex, showcaseImages.length - 1) : 0;
   const activeShowcaseImage = showcaseImages[activeShowcaseIndex];
@@ -390,6 +508,14 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
   useEffect(() => {
     if (heroSlides.length > 0 && heroSlideIndex >= heroSlides.length) setHeroSlideIndex(0);
   }, [heroSlideIndex, heroSlides.length]);
+
+  useEffect(() => {
+    heroSlides.forEach((slide) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.src = slide.imageSrc;
+    });
+  }, [heroSlides]);
 
   useEffect(() => {
     if (showcaseImages.length > 0 && showcaseSlideIndex >= showcaseImages.length) setShowcaseSlideIndex(0);
@@ -416,93 +542,34 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
       return (current + direction + showcaseImages.length) % showcaseImages.length;
     });
   }, [showcaseImages.length]);
+  const openRegistration = useCallback(() => setRegistrationOpen(true), []);
 
   return (
     <main className="bg-white">
       {/* ── Hero ── */}
       {showSection('hero') && (
-      <section className="relative overflow-hidden" style={{ minHeight: 'clamp(620px, 43vw, 820px)' }}>
-        <div className="absolute inset-0">
-          {heroSlides.map((slide, index) => (
-            <img
-              key={`${summerModuleTag(slide)}-${index}`}
-              src={summerModuleImage(slide, index)}
-              alt=""
-              className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-1000 ${index === activeHeroIndex ? 'opacity-100' : 'opacity-0'}`}
-            />
-          ))}
-          <div className="absolute inset-0 hidden md:block" style={{ background: 'linear-gradient(90deg, rgba(8,45,82,0.88) 0%, rgba(8,45,82,0.62) 45%, rgba(8,45,82,0.18) 100%)' }} />
-          <div className="absolute inset-0 md:hidden" style={{ background: 'linear-gradient(180deg, rgba(8,45,82,0.84) 0%, rgba(8,45,82,0.74) 62%, rgba(8,45,82,0.58) 100%)' }} />
-        </div>
+      <section className="relative overflow-hidden" style={{ minHeight: 'clamp(700px, 48vw, 860px)' }}>
+        <SummerHeroBackdrop slides={heroSlides} activeIndex={activeHeroIndex} />
         <div className="relative z-10 mx-auto flex max-w-[1180px] flex-col px-5 pb-16 pt-20 sm:pt-24 lg:px-4 lg:pt-28">
-          <div
-            className="w-full max-w-[620px] p-5 sm:p-7 lg:p-8"
-            style={{
-              background: 'rgba(255,255,255,0.08)',
-              border: '1px solid rgba(255,255,255,0.18)',
-              borderRadius: '24px',
-              backdropFilter: 'blur(10px)',
-              WebkitBackdropFilter: 'blur(10px)',
-            }}
-          >
-            <Link to="/#programs" className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/70 transition-colors hover:text-white sm:mb-6">
-              <ArrowLeft size={18} /> Quay lại chương trình học
-            </Link>
-            {program.eyebrow && (
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#F45A0A]/25 bg-[#F45A0A]/15 px-3.5 py-2 sm:mb-5">
-                <Sparkles size={15} className="text-[#F45A0A]" />
-                <span className="text-[12px] font-bold uppercase tracking-[0.12em] text-[#F45A0A]">{program.eyebrow}</span>
-              </div>
-            )}
-            <h1 className="max-w-3xl text-4xl font-extrabold leading-[1.05] text-white md:text-5xl">
-              {program.title}
-            </h1>
-            {subtitle && <p className="mt-3 max-w-2xl text-base font-bold leading-7 text-white md:text-lg">{subtitle}</p>}
-            {program.description && <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75 md:text-base md:leading-7">{program.description}</p>}
-            <div className="mt-4 flex flex-wrap gap-2">
-              {chips.map((chip) => (
-                <span key={chip} className="rounded-full border border-white/16 bg-white/10 px-3 py-1.5 text-xs font-extrabold text-white shadow-sm backdrop-blur sm:px-4 sm:py-2 sm:text-sm">
-                  {chip}
-                </span>
-              ))}
-            </div>
-            {heroStats.length > 0 && (
-              <div className={`mt-5 grid grid-cols-1 gap-2.5 ${heroStats.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
-                {heroStats.map((stat) => {
-                  const Icon = summerStatIcon(stat);
-                  const display = summerStatDisplay(stat);
-                  return (
-                    <div key={`${display.label}-${display.value}`} className={heroStatCardClass}>
-                      <div className={heroStatLabelClass}>
-                        <Icon size={15} className="shrink-0" />
-                        <span className={heroStatLabelTextClass}>{display.label}</span>
-                      </div>
-                      <p className={heroStatValueClass}>{display.value}</p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div className="mt-4 flex flex-col gap-2 sm:mt-5 sm:flex-row sm:gap-3">
-              <button type="button" onClick={onCtaClick} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F45A0A] px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-orange-600 sm:py-3.5 sm:text-sm">
-                Tư vấn chương trình <ArrowRight size={18} />
-              </button>
-              <button type="button" onClick={() => setRegistrationOpen(true)} className="inline-flex items-center justify-center rounded-2xl border-2 border-white/50 bg-white/5 px-6 py-3 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#003B7A] sm:py-3.5 sm:text-sm">
-                Đăng ký ngay
-              </button>
-            </div>
-          </div>
+          <SummerHeroContent
+            program={program}
+            subtitle={subtitle}
+            chips={chips}
+            heroStats={heroStats}
+            onCtaClick={onCtaClick}
+            onRegisterClick={openRegistration}
+          />
         </div>
 
         {heroSlides.length > 1 && (
           <div className="absolute bottom-12 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2">
             {heroSlides.map((slide, index) => (
               <button
-                key={summerModuleTag(slide)}
+                key={slide.displayTag}
                 type="button"
                 onClick={() => setHeroSlideIndex(index)}
                 className={`h-2.5 rounded-full transition-all ${index === activeHeroIndex ? 'w-8 bg-white' : 'w-2.5 bg-white/45 hover:bg-white/70'}`}
-                aria-label={`Chọn ảnh ${summerModuleTag(slide)}`}
+                aria-label={`Chọn ảnh ${slide.displayTag}`}
               />
             ))}
           </div>
