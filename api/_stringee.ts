@@ -100,6 +100,56 @@ export async function stringeePccCallout(input: {
   return { payload, request: body };
 }
 
+export async function stringeePhoneBridgeCallout(input: {
+  agentPhoneNumber: string;
+  customerNumber: string;
+  fromNumber?: string;
+  answerUrl: string;
+  eventUrl?: string;
+  customData?: Record<string, unknown>;
+}) {
+  const fromNumber = normalizePhone(input.fromNumber || process.env.STRINGEE_FROM_NUMBER || DEFAULT_STRINGEE_FROM_NUMBER);
+  const agentPhoneNumber = normalizePhone(input.agentPhoneNumber);
+  const customerNumber = normalizePhone(input.customerNumber);
+  if (!agentPhoneNumber) throw new Error('Missing agent phone number');
+  if (!customerNumber) throw new Error('Missing customer phone number');
+  if (!fromNumber) throw new Error('Missing Stringee from number');
+  if (!input.answerUrl) throw new Error('Missing Stringee answer URL');
+
+  const body = {
+    from: { type: 'external', number: fromNumber, alias: 'METTA Academy' },
+    to: [{ type: 'external', number: agentPhoneNumber, alias: agentPhoneNumber }],
+    answer_url: input.answerUrl,
+    event_url: input.eventUrl,
+    customData: JSON.stringify({
+      direction: 'outbound',
+      fromNumber,
+      agentPhoneNumber,
+      customerNumber,
+      ...(input.customData || {}),
+    }),
+  };
+
+  const response = await fetch('https://api.stringee.com/v1/call2/callout', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'X-STRINGEE-AUTH': stringeeRestToken(),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(`Stringee phone bridge callout HTTP ${response.status}`);
+  }
+  const result = Number(payload?.r);
+  if (Number.isFinite(result) && result !== 0) {
+    throw new Error(String(payload?.message || payload?.msg || `Stringee phone bridge callout failed (${result})`));
+  }
+  return { payload, request: body };
+}
+
 export async function stringeePccAgentByUserId(userId: string) {
   const target = String(userId || '').trim();
   if (!target) return null;

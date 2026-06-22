@@ -1,3 +1,4 @@
+import answerHandler from '../../server/call/answer.js';
 import eventHandler from '../../server/call/event.js';
 import finishHandler from '../../server/call/finish.js';
 import outboundHandler from '../../server/call/outbound.js';
@@ -15,6 +16,7 @@ type VercelResponse = {
 };
 
 const handlers: Record<string, (req: any, res: any) => Promise<unknown>> = {
+  answer: answerHandler,
   event: eventHandler,
   finish: finishHandler,
   outbound: outboundHandler,

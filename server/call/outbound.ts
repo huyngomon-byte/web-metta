@@ -1,6 +1,12 @@
 import { adminDb } from '../../api/_firebaseAdmin.js';
 import { ApiError, requireApiUser } from '../../api/_apiAuth.js';
-import { normalizePhone, stringeePccAgentByUserId, stringeePccCallout } from '../../api/_stringee.js';
+import {
+  normalizePhone,
+  requestBaseUrl,
+  stringeePccAgentByUserId,
+  stringeePccCallout,
+  stringeePhoneBridgeCallout,
+} from '../../api/_stringee.js';
 import { acquireCallLock, CallLockBusyError, releaseCallLock, updateCallLock } from './lock.js';
 
 type VercelRequest = {
@@ -213,17 +219,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     lockAcquired = true;
 
     const agentRouting = await resolveAgentRouting(stringeeUserId, requestedMapping || fallbackMapping);
-    const result = await stringeePccCallout({
-      agentUserId: stringeeUserId,
+    const baseUrl = requestBaseUrl(req);
+    const callMetadata = {
+      providerCallId,
+      clientCallId: providerCallId,
+      leadId: lead.id,
+      leadName,
+      agentId: crmUserId,
+      agentName,
+      stringeeAgentId: stringeeUserId,
+      routedAgentId: routedCrmId,
+      routedAgentName,
       customerNumber,
       fromNumber,
-      toAgentFromNumberDisplay: `Call-out-from-${fromNumber}`,
-      toAgentFromNumberDisplayAlias: `Call-out-from-${fromNumber}-Alias`,
-    });
+    };
+    let result: { payload: any; request: unknown };
+    let calloutMode = '';
+    let calloutEventType = '';
+
+    if (agentRouting.agentPhoneNumber) {
+      const params = new URLSearchParams();
+      Object.entries(callMetadata).forEach(([key, value]) => {
+        const text = String(value || '').trim();
+        if (text) params.set(key, text);
+      });
+      result = await stringeePhoneBridgeCallout({
+        agentPhoneNumber: agentRouting.agentPhoneNumber,
+        customerNumber,
+        fromNumber,
+        answerUrl: `${baseUrl}/api/call/answer?${params.toString()}`,
+        eventUrl: `${baseUrl}/api/call/event`,
+        customData: callMetadata,
+      });
+      calloutMode = 'phone_bridge_answer_url';
+      calloutEventType = 'phone_bridge_callout_requested';
+    } else {
+      result = await stringeePccCallout({
+        agentUserId: stringeeUserId,
+        customerNumber,
+        fromNumber,
+        toAgentFromNumberDisplay: `Call-out-from-${fromNumber}`,
+        toAgentFromNumberDisplayAlias: `Call-out-from-${fromNumber}-Alias`,
+      });
+      calloutMode = 'pcc_rest_callout';
+      calloutEventType = 'pcc_callout_requested';
+    }
 
     const stringeeCallId = stringeeCallIdFromPayload(result.payload);
     const logId = stringeeCallId || providerCallId;
-    const calloutMode = 'pcc_rest_callout';
     const startedAt = new Date().toISOString();
 
     await updateCallLock(db, {
@@ -254,7 +297,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       startedAt,
       startTime: startedAt,
       rawEvent: {
-        type: 'pcc_callout_requested',
+        type: calloutEventType,
         calloutMode,
         fallbackUsed: !requestedMapping && Boolean(fallbackMapping),
         agentRouting,
