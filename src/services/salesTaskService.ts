@@ -14,6 +14,16 @@ import { currentUser } from '@/services/authService';
 
 export type TaskStatus = 'open' | 'done';
 export type TaskPriority = 'low' | 'normal' | 'high';
+export type TaskCategory = 'center_consulting' | 'telesales' | 'seeding' | 'flyering' | 'page_care' | 'class_management';
+
+export const TASK_CATEGORIES: Array<{ value: TaskCategory; label: string }> = [
+  { value: 'center_consulting', label: 'Tư vấn tại trung tâm' },
+  { value: 'telesales', label: 'Telesales' },
+  { value: 'seeding', label: 'Seeding' },
+  { value: 'flyering', label: 'Phát tờ rơi' },
+  { value: 'page_care', label: 'Chăm sóc page' },
+  { value: 'class_management', label: 'Quản lý lớp' },
+];
 
 export type ManualTask = {
   id: string;
@@ -23,8 +33,13 @@ export type ManualTask = {
   assignedTo: string;
   assignedToName: string;
   leadId?: string;
+  category: TaskCategory;
   status: TaskStatus;
   priority: TaskPriority;
+  proofImages: string[];
+  completedAt?: string;
+  completedBy?: string;
+  completedByName?: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
@@ -45,6 +60,18 @@ function now() {
   return new Date().toISOString();
 }
 
+function normalizeCategory(value?: string): TaskCategory {
+  return TASK_CATEGORIES.some((item) => item.value === value) ? value as TaskCategory : 'telesales';
+}
+
+function normalizeProofImages(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
 function normalizeTask(task: Partial<ManualTask>): ManualTask {
   const timestamp = now();
   return {
@@ -55,8 +82,13 @@ function normalizeTask(task: Partial<ManualTask>): ManualTask {
     assignedTo: String(task.assignedTo || '').trim(),
     assignedToName: String(task.assignedToName || '').trim(),
     leadId: String(task.leadId || '').trim(),
+    category: normalizeCategory(task.category),
     status: task.status || 'open',
     priority: task.priority || 'normal',
+    proofImages: normalizeProofImages(task.proofImages),
+    completedAt: String(task.completedAt || '').trim() || undefined,
+    completedBy: String(task.completedBy || '').trim() || undefined,
+    completedByName: String(task.completedByName || '').trim() || undefined,
     createdAt: task.createdAt || timestamp,
     updatedAt: task.updatedAt || timestamp,
     createdBy: String(task.createdBy || '').trim() || undefined,

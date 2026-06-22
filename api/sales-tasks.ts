@@ -2,6 +2,7 @@ import { adminAuth, adminDb } from './_firebaseAdmin.js';
 
 type TaskStatus = 'open' | 'done';
 type TaskPriority = 'low' | 'normal' | 'high';
+type TaskCategory = 'center_consulting' | 'telesales' | 'seeding' | 'flyering' | 'page_care' | 'class_management';
 
 type VercelRequest = {
   method?: string;
@@ -29,8 +30,13 @@ type ManualTask = {
   assignedTo: string;
   assignedToName: string;
   leadId?: string;
+  category: TaskCategory;
   status: TaskStatus;
   priority: TaskPriority;
+  proofImages: string[];
+  completedAt?: string;
+  completedBy?: string;
+  completedByName?: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
@@ -41,6 +47,7 @@ const COL = 'salesManualTasks';
 const TASK_PAGE_SIZE = 50;
 const priorities = ['low', 'normal', 'high'];
 const statuses = ['open', 'done'];
+const categories = ['center_consulting', 'telesales', 'seeding', 'flyering', 'page_care', 'class_management'];
 
 function bearer(req: VercelRequest) {
   const raw = req.headers?.authorization;
@@ -82,10 +89,24 @@ function visibleForUser(task: ManualTask, user: AuthUser) {
   return canManageAll(user) || task.assignedTo === user.id;
 }
 
+function cleanCategory(value: unknown): TaskCategory {
+  return categories.includes(String(value)) ? String(value) as TaskCategory : 'telesales';
+}
+
+function cleanProofImages(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
 function cleanTask(input: Partial<ManualTask>, user: AuthUser, assignedUser: { id: string; fullName: string }): ManualTask {
   const now = new Date().toISOString();
   const priority = priorities.includes(String(input.priority)) ? input.priority as TaskPriority : 'normal';
-  const status = statuses.includes(String(input.status)) ? input.status as TaskStatus : 'open';
+  const proofImages = cleanProofImages(input.proofImages);
+  const requestedStatus = statuses.includes(String(input.status)) ? input.status as TaskStatus : 'open';
+  const status = requestedStatus === 'done' && proofImages.length ? 'done' : 'open';
   return {
     id: String(input.id || `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
     title: String(input.title || '').trim(),
@@ -94,8 +115,13 @@ function cleanTask(input: Partial<ManualTask>, user: AuthUser, assignedUser: { i
     assignedTo: assignedUser.id,
     assignedToName: assignedUser.fullName,
     leadId: String(input.leadId || '').trim(),
+    category: cleanCategory(input.category),
     status,
     priority,
+    proofImages,
+    completedAt: status === 'done' ? (input.completedAt || now) : undefined,
+    completedBy: status === 'done' ? (input.completedBy || user.id) : undefined,
+    completedByName: status === 'done' ? (input.completedByName || user.fullName) : undefined,
     createdAt: input.createdAt || now,
     updatedAt: now,
     createdBy: input.createdBy || user.id,
@@ -169,6 +195,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const patch: Partial<ManualTask> = {};
       if (req.body?.status && statuses.includes(String(req.body.status))) patch.status = req.body.status;
       if (req.body?.priority && priorities.includes(String(req.body.priority))) patch.priority = req.body.priority;
+      if (req.body?.category !== undefined) patch.category = cleanCategory(req.body.category);
+      if (req.body?.proofImages !== undefined) patch.proofImages = cleanProofImages(req.body.proofImages);
       if (req.body?.title !== undefined) patch.title = String(req.body.title || '').trim();
       if (req.body?.notes !== undefined) patch.notes = String(req.body.notes || '').trim();
       if (req.body?.dueAt) patch.dueAt = new Date(String(req.body.dueAt)).toISOString();
@@ -178,6 +206,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!assignedUser) return res.status(400).json({ error: 'Task must be assigned to an active sales user' });
         patch.assignedTo = assignedUser.id;
         patch.assignedToName = assignedUser.fullName;
+      }
+      const proofImages = patch.proofImages ?? cleanProofImages(existing.proofImages);
+      if (patch.status === 'done') {
+        if (!proofImages.length) return res.status(400).json({ error: 'Task must have at least one proof image before completion' });
+        patch.proofImages = proofImages;
+        patch.completedAt = req.body?.completedAt ? new Date(String(req.body.completedAt)).toISOString() : new Date().toISOString();
+        patch.completedBy = user.id;
+        patch.completedByName = user.fullName;
+      }
+      if (patch.status === 'open') {
+        patch.completedAt = '';
+        patch.completedBy = '';
+        patch.completedByName = '';
       }
       patch.updatedAt = new Date().toISOString();
       await ref.set(stripUndefined(patch), { merge: true });

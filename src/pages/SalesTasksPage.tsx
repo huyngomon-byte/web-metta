@@ -1,9 +1,11 @@
 import {
   ArrowDown,
   ArrowUp,
+  BarChart3,
   CalendarCheck,
   CheckCircle2,
   Clock,
+  ImagePlus,
   LayoutGrid,
   List,
   ListTodo,
@@ -17,7 +19,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,7 +38,7 @@ import { appointmentService } from '@/services/appointmentService';
 import { callCenterService } from '@/services/callCenterService';
 import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
-import { salesTaskService, type ManualTask, type TaskPriority } from '@/services/salesTaskService';
+import { TASK_CATEGORIES, salesTaskService, type ManualTask, type TaskCategory, type TaskPriority } from '@/services/salesTaskService';
 import { userService } from '@/services/userService';
 import type { CallLog } from '@/types/call';
 import type { Appointment, Lead, LeadCenterConfig } from '@/types/crm';
@@ -63,10 +65,27 @@ type SalesTask = {
   assignedToName: string;
   status: TaskStatus;
   priority: TaskPriority;
+  category: TaskCategory;
+  proofImages: string[];
+  completedAt?: string;
+  completedByName?: string;
+  createdByName?: string;
+  createdBy?: string;
 };
 
 const ACTIVE_STATUSES = leadStatuses.filter((status) => ![WON_LEAD_STATUS, LOST_LEAD_STATUS].includes(status));
 const priorityWeight: Record<TaskPriority, number> = { high: 3, normal: 2, low: 1 };
+const TASK_CATEGORY_LABELS = Object.fromEntries(TASK_CATEGORIES.map((item) => [item.value, item.label])) as Record<TaskCategory, string>;
+const TASK_STATUS_LABELS: Record<TaskStatus, string> = { open: 'Đang mở', done: 'Hoàn thành' };
+const MAX_TASK_PROOF_IMAGES = 6;
+
+function taskCategoryLabel(category?: string) {
+  return TASK_CATEGORY_LABELS[category as TaskCategory] || 'Telesales';
+}
+
+function percent(part: number, total: number) {
+  return total ? Math.round((part / total) * 100) : 0;
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -82,6 +101,50 @@ function localInputValue(value?: string) {
 
 function fromLocalInput(value: string) {
   return value ? new Date(value).toISOString() : '';
+}
+
+async function resizeTaskProof(file: File, maxWidth = 1280, quality = 0.72): Promise<string> {
+  const imageUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = imageUrl;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('Không đọc được ảnh minh chứng.'));
+    });
+    const ratio = Math.min(1, maxWidth / image.width);
+    const width = Math.max(1, Math.round(image.width * ratio));
+    const height = Math.max(1, Math.round(image.height * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Trình duyệt không hỗ trợ xử lý ảnh.');
+    context.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', quality);
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+}
+
+async function uploadTaskProofAsset(file: File): Promise<string> {
+  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+  const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+  if (cloudName && uploadPreset) {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('upload_preset', uploadPreset);
+    form.append('folder', 'metta-task-proofs');
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) throw new Error('Upload ảnh minh chứng không thành công.');
+    const data = await response.json() as { secure_url?: string };
+    if (!data.secure_url) throw new Error('Không nhận được URL ảnh minh chứng.');
+    return data.secure_url;
+  }
+  return resizeTaskProof(file);
 }
 
 function addHours(value: string, hours: number) {
@@ -209,6 +272,8 @@ function buildTasks(
         assignedToName,
         status: 'open',
         priority: inferPriority({ type: 'follow_up', dueAt: lead.followUpDate, lead }),
+        category: 'telesales',
+        proofImages: [],
       });
     }
 
@@ -229,6 +294,8 @@ function buildTasks(
         assignedToName,
         status: 'open',
         priority: inferPriority({ type: 'retry_call', dueAt, lead }),
+        category: 'telesales',
+        proofImages: [],
       });
     }
 
@@ -248,6 +315,8 @@ function buildTasks(
         assignedToName,
         status: 'open',
         priority: inferPriority({ type: 'quote', dueAt, lead, warmth: lead.pendingWarmthPercent }),
+        category: 'telesales',
+        proofImages: [],
       });
     }
   });
@@ -268,6 +337,8 @@ function buildTasks(
       assignedToName: item.assignedToName || item.assignedTo,
       status: 'open',
       priority: inferPriority({ type: 'appointment', dueAt: item.startTime, lead, appointmentStatus: item.status }),
+      category: 'center_consulting',
+      proofImages: [],
     });
   });
 
@@ -287,6 +358,12 @@ function buildTasks(
       assignedToName: item.assignedToName,
       status: item.status,
       priority: item.priority,
+      category: item.category || 'telesales',
+      proofImages: item.proofImages || [],
+      completedAt: item.completedAt,
+      completedByName: item.completedByName,
+      createdBy: item.createdBy,
+      createdByName: item.createdByName,
     });
   });
 
@@ -349,6 +426,8 @@ export default function SalesTasksPage() {
   const [manualTaskLoadingMore, setManualTaskLoadingMore] = useState(false);
   const [quickTaskBusy, setQuickTaskBusy] = useState(false);
   const [quickTaskError, setQuickTaskError] = useState('');
+  const [taskActionError, setTaskActionError] = useState('');
+  const [taskBusyId, setTaskBusyId] = useState('');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
@@ -368,6 +447,7 @@ export default function SalesTasksPage() {
     assignedTo: '',
     leadIds: [] as string[],
     priority: 'normal' as TaskPriority,
+    category: 'telesales' as TaskCategory,
   });
 
   const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
@@ -428,10 +508,10 @@ export default function SalesTasksPage() {
       if (!canViewAll && task.assignedTo !== user?.id) return false;
       if (sales && task.assignedTo !== sales && task.assignedToName !== sales) return false;
       if (status && task.status !== status) return false;
-      if (type && task.type !== type) return false;
+      if (type && task.type !== type && task.category !== type) return false;
       if (priority && task.priority !== priority) return false;
       if (!isTaskInDatePreset(task, datePreset, dateFrom, dateTo)) return false;
-      if (keyword && !`${task.title} ${task.detail} ${task.leadName || ''} ${task.parentName || ''} ${task.phone || ''} ${task.assignedToName}`.toLowerCase().includes(keyword)) return false;
+      if (keyword && !`${task.title} ${task.detail} ${taskCategoryLabel(task.category)} ${task.leadName || ''} ${task.parentName || ''} ${task.phone || ''} ${task.assignedToName}`.toLowerCase().includes(keyword)) return false;
       return true;
     });
   }, [allTasks, canViewAll, dateFrom, datePreset, dateTo, priority, query, sales, status, type, user?.id]);
@@ -455,6 +535,43 @@ export default function SalesTasksPage() {
     const overdue = open.filter((task) => new Date(task.dueAt).getTime() < Date.now());
     const high = open.filter((task) => task.priority === 'high');
     return { open: open.length, today: today.length, overdue: overdue.length, high: high.length };
+  }, [filteredTasks]);
+
+  const report = useMemo(() => {
+    const total = filteredTasks.length;
+    const done = filteredTasks.filter((task) => task.status === 'done').length;
+    const bySales = new Map<string, { id: string; label: string; total: number; open: number; done: number }>();
+    const byCategory = new Map<string, { id: string; label: string; total: number; open: number; done: number }>();
+    const byStatus = new Map<TaskStatus, { id: TaskStatus; label: string; total: number }>();
+
+    filteredTasks.forEach((task) => {
+      const salesId = task.assignedTo || task.assignedToName || 'unassigned';
+      const salesLabel = task.assignedToName || task.assignedTo || 'Chưa có sales';
+      const salesItem = bySales.get(salesId) || { id: salesId, label: salesLabel, total: 0, open: 0, done: 0 };
+      salesItem.total += 1;
+      salesItem[task.status] += 1;
+      bySales.set(salesId, salesItem);
+
+      const categoryId = task.category || 'telesales';
+      const categoryItem = byCategory.get(categoryId) || { id: categoryId, label: taskCategoryLabel(categoryId), total: 0, open: 0, done: 0 };
+      categoryItem.total += 1;
+      categoryItem[task.status] += 1;
+      byCategory.set(categoryId, categoryItem);
+
+      const statusItem = byStatus.get(task.status) || { id: task.status, label: TASK_STATUS_LABELS[task.status], total: 0 };
+      statusItem.total += 1;
+      byStatus.set(task.status, statusItem);
+    });
+
+    return {
+      total,
+      done,
+      open: total - done,
+      completionRate: percent(done, total),
+      bySales: Array.from(bySales.values()).sort((a, b) => b.total - a.total),
+      byCategory: Array.from(byCategory.values()).sort((a, b) => b.total - a.total),
+      byStatus: Array.from(byStatus.values()).sort((a, b) => b.total - a.total),
+    };
   }, [filteredTasks]);
 
   function cycleSort(field: SortField) {
@@ -502,8 +619,10 @@ export default function SalesTasksPage() {
         assignedTo: assignedUser.id,
         assignedToName: assignedUser.fullName,
         leadId,
+        category: draft.category,
         priority: draft.priority,
         status: 'open' as TaskStatus,
+        proofImages: [],
         createdAt: timestamp,
         updatedAt: timestamp,
         createdBy: user?.id || '',
@@ -518,6 +637,7 @@ export default function SalesTasksPage() {
         assignedTo: assignedUser.id,
         leadIds: [],
         priority: 'normal',
+        category: draft.category,
       });
     } catch (error) {
       setQuickTaskError(error instanceof Error ? error.message : 'Không tạo được task.');
@@ -528,6 +648,63 @@ export default function SalesTasksPage() {
 
   async function updateManual(id: string, patch: Partial<ManualTask>) {
     setManualTasks(await salesTaskService.updateTask(id, patch));
+  }
+
+  async function addProofImages(task: SalesTask, files: FileList | File[]) {
+    if (task.type !== 'manual') return;
+    setTaskActionError('');
+    const selected = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (!selected.length) return;
+    const currentImages = task.proofImages || [];
+    const slots = Math.max(0, MAX_TASK_PROOF_IMAGES - currentImages.length);
+    if (!slots) {
+      setTaskActionError('Task này đã đủ số ảnh minh chứng tối đa.');
+      return;
+    }
+    setTaskBusyId(task.id);
+    try {
+      const urls = await Promise.all(selected.slice(0, slots).map(uploadTaskProofAsset));
+      await updateManual(task.id, { proofImages: [...currentImages, ...urls] });
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : 'Không upload được ảnh minh chứng.');
+    } finally {
+      setTaskBusyId('');
+    }
+  }
+
+  async function removeProofImage(task: SalesTask, index: number) {
+    if (task.type !== 'manual') return;
+    setTaskActionError('');
+    setTaskBusyId(task.id);
+    try {
+      await updateManual(task.id, { proofImages: (task.proofImages || []).filter((_, itemIndex) => itemIndex !== index) });
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : 'Không xóa được ảnh minh chứng.');
+    } finally {
+      setTaskBusyId('');
+    }
+  }
+
+  async function completeManualTask(task: SalesTask) {
+    if (task.type !== 'manual') return;
+    setTaskActionError('');
+    if (!task.proofImages?.length) {
+      setTaskActionError('Sales cần upload ít nhất 1 ảnh minh chứng trước khi xác nhận hoàn thành task.');
+      return;
+    }
+    setTaskBusyId(task.id);
+    try {
+      await updateManual(task.id, {
+        status: 'done',
+        completedAt: nowIso(),
+        completedBy: user?.id || '',
+        completedByName: user?.fullName || '',
+      });
+    } catch (error) {
+      setTaskActionError(error instanceof Error ? error.message : 'Không xác nhận hoàn thành task.');
+    } finally {
+      setTaskBusyId('');
+    }
   }
 
   async function deleteManual(id: string) {
@@ -580,12 +757,13 @@ export default function SalesTasksPage() {
             <option value="done">Đã xong</option>
           </Select>
           <Select value={type} onChange={(event) => setType(event.target.value)}>
-            <option value="">Tất cả loại task</option>
-            <option value="follow_up">Follow-up</option>
-            <option value="retry_call">Gọi lại</option>
-            <option value="quote">Báo giá/chốt</option>
-            <option value="appointment">Lịch hẹn</option>
-            <option value="manual">To-do</option>
+            <option value="">Tất cả nhóm công việc</option>
+            {TASK_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            <option value="follow_up">Auto: Follow-up</option>
+            <option value="retry_call">Auto: Gọi lại</option>
+            <option value="quote">Auto: Báo giá/chốt</option>
+            <option value="appointment">Auto: Lịch hẹn</option>
+            <option value="manual">Task tự tạo</option>
           </Select>
           <Select value={priority} onChange={(event) => setPriority(event.target.value)}>
             <option value="">Tất cả priority</option>
@@ -619,10 +797,15 @@ export default function SalesTasksPage() {
         <MetricCard label="Ưu tiên cao" value={metrics.high} tone="orange" />
       </div>
 
+      <TaskReportCard report={report} canViewAll={canViewAll} />
+
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Plus size={18} /> Tạo to-do nhanh</CardTitle></CardHeader>
-        <CardContent className="grid gap-3 lg:grid-cols-[1.2fr_minmax(280px,1fr)_220px_180px_150px_auto]">
-          <Input placeholder="Ví dụ: gửi báo giá cho phụ huynh" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+        <CardContent className="grid gap-3 lg:grid-cols-[1.1fr_210px_minmax(260px,1fr)_210px_180px_150px_auto]">
+          <Input placeholder="Ví dụ: Seeding 5 nhóm hàng ngày" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+          <Select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as TaskCategory })}>
+            {TASK_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </Select>
           <LeadMultiSelect leads={leads} selectedIds={draft.leadIds} onChange={(leadIds) => setDraft({ ...draft, leadIds })} />
           <Input type="datetime-local" value={draft.dueAt} onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })} />
           <Select value={draft.assignedTo} onChange={(event) => setDraft({ ...draft, assignedTo: event.target.value })} disabled={!canViewAll}>
@@ -635,17 +818,17 @@ export default function SalesTasksPage() {
             <option value="low">Low</option>
           </Select>
           <Button onClick={() => void saveManualTask()} disabled={quickTaskBusy || !taskAssigneeOptions.length}><Plus /> {quickTaskBusy ? 'Đang thêm' : 'Thêm'}</Button>
-          <Textarea className="lg:col-span-6" rows={2} placeholder="Note chi tiết" value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} />
-          {quickTaskError && <p className="lg:col-span-6 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">{quickTaskError}</p>}
+          <Textarea className="lg:col-span-7" rows={2} placeholder="Note chi tiết: yêu cầu, địa điểm, nội dung seeding, checklist ảnh minh chứng..." value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} />
+          {quickTaskError && <p className="lg:col-span-7 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">{quickTaskError}</p>}
           {hasMore && (
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-7">
               <Button type="button" variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
                 <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải thêm lead' : 'Tải thêm lead cho task'}
               </Button>
             </div>
           )}
           {manualTaskHasMore && (
-            <div className="lg:col-span-6">
+            <div className="lg:col-span-7">
               <Button type="button" variant="outline" onClick={() => void loadMoreManualTasks()} disabled={manualTaskLoadingMore}>
                 <RefreshCcw className={manualTaskLoadingMore ? 'animate-spin' : ''} /> {manualTaskLoadingMore ? 'Đang tải thêm task' : 'Tải thêm manual task'}
               </Button>
@@ -659,6 +842,7 @@ export default function SalesTasksPage() {
           <CardTitle className="flex items-center gap-2"><ListTodo size={18} /> Danh sách task</CardTitle>
         </CardHeader>
         <CardContent>
+          {taskActionError && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">{taskActionError}</p>}
           {view === 'list' ? (
             <TaskTable
               tasks={visibleTasks}
@@ -666,15 +850,21 @@ export default function SalesTasksPage() {
               sortDirection={sortDirection}
               onSort={cycleSort}
               onOpenLead={setActiveLeadId}
-              onDone={(id, patch) => void updateManual(id, patch)}
+              onAddProof={(task, files) => void addProofImages(task, files)}
+              onRemoveProof={(task, index) => void removeProofImage(task, index)}
+              onComplete={(task) => void completeManualTask(task)}
               onDelete={(id) => void deleteManual(id)}
+              busyTaskId={taskBusyId}
             />
           ) : (
             <TaskKanban
               groups={groupedTasks}
               onOpenLead={setActiveLeadId}
-              onDone={(id, patch) => void updateManual(id, patch)}
+              onAddProof={(task, files) => void addProofImages(task, files)}
+              onRemoveProof={(task, index) => void removeProofImage(task, index)}
+              onComplete={(task) => void completeManualTask(task)}
               onDelete={(id) => void deleteManual(id)}
+              busyTaskId={taskBusyId}
             />
           )}
         </CardContent>
@@ -805,22 +995,182 @@ function LeadMultiSelect({
   );
 }
 
+function TaskProofPanel({
+  task,
+  busy,
+  compact = false,
+  onAddProof,
+  onRemoveProof,
+}: {
+  task: SalesTask;
+  busy: boolean;
+  compact?: boolean;
+  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
+  onRemoveProof: (task: SalesTask, index: number) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const canAddMore = task.proofImages.length < MAX_TASK_PROOF_IMAGES && task.status !== 'done';
+  return (
+    <div className={`w-full ${compact ? '' : 'min-w-[260px]'}`}>
+      <div className="flex flex-wrap justify-end gap-1">
+        {task.proofImages.map((src, index) => (
+          <div key={`${src}-${index}`} className="group relative h-12 w-12 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+            <a href={src} target="_blank" rel="noreferrer" title="Mở ảnh minh chứng">
+              <img src={src} alt={`Ảnh minh chứng ${index + 1}`} className="h-full w-full object-cover" />
+            </a>
+            {task.status !== 'done' && (
+              <button
+                type="button"
+                onClick={() => onRemoveProof(task, index)}
+                className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white opacity-0 transition group-hover:opacity-100"
+                aria-label="Xóa ảnh minh chứng"
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
+        ))}
+        {canAddMore && (
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={busy}
+            className="flex h-12 w-12 items-center justify-center rounded-md border border-dashed border-slate-300 bg-white text-slate-500 transition hover:border-[#003B7A] hover:text-[#003B7A] disabled:opacity-50"
+            title="Upload ảnh minh chứng"
+          >
+            {busy ? <RefreshCcw size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+          </button>
+        )}
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(event) => {
+          if (event.target.files?.length) onAddProof(task, event.target.files);
+          event.target.value = '';
+        }}
+      />
+      {!compact && task.status !== 'done' && (
+        <p className="mt-1 text-right text-[11px] font-semibold text-slate-400">
+          Cần ít nhất 1 ảnh để xác nhận hoàn thành.
+        </p>
+      )}
+    </div>
+  );
+}
+
+type ReportGroup = { id: string; label: string; total: number; open?: number; done?: number };
+
+function TaskReportCard({
+  report,
+  canViewAll,
+}: {
+  report: {
+    total: number;
+    done: number;
+    open: number;
+    completionRate: number;
+    bySales: ReportGroup[];
+    byCategory: ReportGroup[];
+    byStatus: Array<{ id: TaskStatus; label: string; total: number }>;
+  };
+  canViewAll: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BarChart3 size={18} /> {canViewAll ? 'Báo cáo task team Sales' : 'Báo cáo task cá nhân'}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <ReportMetric label="Tổng task" value={report.total} />
+          <ReportMetric label="Đang mở" value={report.open} tone="blue" />
+          <ReportMetric label="Hoàn thành" value={report.done} tone="green" />
+          <ReportMetric label="Tỷ lệ hoàn thành" value={`${report.completionRate}%`} tone="orange" />
+        </div>
+        <div className="grid gap-4 xl:grid-cols-3">
+          <ReportBreakdown title="Theo sales" rows={report.bySales} total={report.total} showCompletion />
+          <ReportBreakdown title="Theo nhóm công việc" rows={report.byCategory} total={report.total} showCompletion />
+          <ReportBreakdown title="Theo trạng thái" rows={report.byStatus.map((item) => ({ ...item, open: item.id === 'open' ? item.total : 0, done: item.id === 'done' ? item.total : 0 }))} total={report.total} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReportMetric({ label, value, tone = 'slate' }: { label: string; value: number | string; tone?: 'slate' | 'blue' | 'green' | 'orange' }) {
+  const toneClass = {
+    slate: 'text-slate-950',
+    blue: 'text-blue-700',
+    green: 'text-emerald-700',
+    orange: 'text-orange-600',
+  }[tone];
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-bold uppercase text-slate-400">{label}</p>
+      <p className={`mt-1 text-2xl font-extrabold ${toneClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function ReportBreakdown({ title, rows, total, showCompletion = false }: { title: string; rows: ReportGroup[]; total: number; showCompletion?: boolean }) {
+  return (
+    <div className="rounded-lg border border-slate-200 p-3">
+      <p className="mb-3 text-xs font-extrabold uppercase text-slate-500">{title}</p>
+      <div className="space-y-3">
+        {rows.slice(0, 8).map((row) => {
+          const share = percent(row.total, total);
+          const completion = percent(row.done || 0, row.total);
+          return (
+            <div key={row.id}>
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="truncate font-bold text-slate-800">{row.label}</span>
+                <span className="shrink-0 text-xs font-extrabold text-slate-500">{row.total} task · {share}%</span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-[#003B7A]" style={{ width: `${share}%` }} />
+              </div>
+              {showCompletion && (
+                <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                  Mở {row.open || 0} · Hoàn thành {row.done || 0} · Tỷ lệ xong {completion}%
+                </p>
+              )}
+            </div>
+          );
+        })}
+        {!rows.length && <p className="rounded-lg border border-dashed border-slate-200 py-6 text-center text-xs font-semibold text-slate-400">Chưa có dữ liệu task.</p>}
+      </div>
+    </div>
+  );
+}
+
 function TaskTable({
   tasks,
   sortField,
   sortDirection,
   onSort,
   onOpenLead,
-  onDone,
+  onAddProof,
+  onRemoveProof,
+  onComplete,
   onDelete,
+  busyTaskId,
 }: {
   tasks: SalesTask[];
   sortField: SortField;
   sortDirection: SortDirection;
   onSort: (field: SortField) => void;
   onOpenLead: (leadId: string) => void;
-  onDone: (id: string, patch: Partial<ManualTask>) => void;
+  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
+  onRemoveProof: (task: SalesTask, index: number) => void;
+  onComplete: (task: SalesTask) => void;
   onDelete: (id: string) => void;
+  busyTaskId: string;
 }) {
   return (
     <div className="overflow-x-auto">
@@ -845,7 +1195,16 @@ function TaskTable({
         </thead>
         <tbody>
           {tasks.map((task) => (
-            <TaskRow key={task.id} task={task} onOpenLead={onOpenLead} onDone={onDone} onDelete={onDelete} />
+            <TaskRow
+              key={task.id}
+              task={task}
+              onOpenLead={onOpenLead}
+              onAddProof={onAddProof}
+              onRemoveProof={onRemoveProof}
+              onComplete={onComplete}
+              onDelete={onDelete}
+              busy={busyTaskId === task.id}
+            />
           ))}
           {!tasks.length && (
             <tr><td colSpan={6} className="py-10 text-center text-sm font-semibold text-slate-400">Không có task phù hợp.</td></tr>
@@ -859,13 +1218,19 @@ function TaskTable({
 function TaskRow({
   task,
   onOpenLead,
-  onDone,
+  onAddProof,
+  onRemoveProof,
+  onComplete,
   onDelete,
+  busy,
 }: {
   task: SalesTask;
   onOpenLead: (leadId: string) => void;
-  onDone: (id: string, patch: Partial<ManualTask>) => void;
+  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
+  onRemoveProof: (task: SalesTask, index: number) => void;
+  onComplete: (task: SalesTask) => void;
   onDelete: (id: string) => void;
+  busy: boolean;
 }) {
   return (
     <tr className="border-b border-slate-100 align-top">
@@ -875,7 +1240,13 @@ function TaskRow({
           <div>
             <p className="font-extrabold text-slate-900">{task.title}</p>
             <p className="mt-1 line-clamp-2 text-xs text-slate-500">{task.detail || '-'}</p>
-            <Badge tone={task.status === 'done' ? 'green' : taskDueTone(task.dueAt)} className="mt-2">{task.status === 'done' ? 'Đã xong' : taskLabel(task.type)}</Badge>
+            <div className="mt-2 flex flex-wrap gap-1">
+              <Badge tone={task.status === 'done' ? 'green' : taskDueTone(task.dueAt)}>{task.status === 'done' ? 'Hoàn thành' : taskLabel(task.type)}</Badge>
+              <Badge tone="purple">{taskCategoryLabel(task.category)}</Badge>
+              {task.createdByName && <Badge tone="gray">Tạo bởi {task.createdByName}</Badge>}
+              {task.proofImages.length > 0 && <Badge tone="green">{task.proofImages.length} ảnh</Badge>}
+            </div>
+            {task.completedAt && <p className="mt-1 text-[11px] font-semibold text-emerald-700">Hoàn thành: {formatDate(task.completedAt, true)}{task.completedByName ? ` · ${task.completedByName}` : ''}</p>}
           </div>
         </div>
       </td>
@@ -895,10 +1266,17 @@ function TaskRow({
       <td className="px-3 py-3">
         <div className="flex justify-end gap-2">
           {task.type === 'manual' && (
-            <>
-              {task.status !== 'done' && <Button size="sm" variant="outline" onClick={() => onDone(task.id, { status: 'done' })}><CheckCircle2 /> Done</Button>}
+            <div className="flex max-w-[360px] flex-col items-end gap-2">
+              <TaskProofPanel task={task} busy={busy} onAddProof={onAddProof} onRemoveProof={onRemoveProof} />
+              <div className="flex justify-end gap-2">
+                {task.status !== 'done' && (
+                  <Button size="sm" variant="outline" onClick={() => onComplete(task)} disabled={busy || !task.proofImages.length}>
+                    <CheckCircle2 /> Xác nhận xong
+                  </Button>
+                )}
               <Button size="sm" variant="outline" onClick={() => onDelete(task.id)}><Trash2 /> Xóa</Button>
-            </>
+              </div>
+            </div>
           )}
           {task.leadId && (
             <Button size="sm" variant="outline" onClick={() => onOpenLead(task.leadId!)}>Mở lead</Button>
@@ -912,13 +1290,19 @@ function TaskRow({
 function TaskKanban({
   groups,
   onOpenLead,
-  onDone,
+  onAddProof,
+  onRemoveProof,
+  onComplete,
   onDelete,
+  busyTaskId,
 }: {
   groups: Record<string, SalesTask[]>;
   onOpenLead: (leadId: string) => void;
-  onDone: (id: string, patch: Partial<ManualTask>) => void;
+  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
+  onRemoveProof: (task: SalesTask, index: number) => void;
+  onComplete: (task: SalesTask) => void;
   onDelete: (id: string) => void;
+  busyTaskId: string;
 }) {
   const columns = [
     ['overdue', 'Quá hạn'],
@@ -939,7 +1323,16 @@ function TaskKanban({
             </div>
             <div className="space-y-3">
               {groups[key].map((task) => (
-                <TaskKanbanCard key={task.id} task={task} onOpenLead={onOpenLead} onDone={onDone} onDelete={onDelete} />
+                <TaskKanbanCard
+                  key={task.id}
+                  task={task}
+                  onOpenLead={onOpenLead}
+                  onAddProof={onAddProof}
+                  onRemoveProof={onRemoveProof}
+                  onComplete={onComplete}
+                  onDelete={onDelete}
+                  busy={busyTaskId === task.id}
+                />
               ))}
               {!groups[key].length && <div className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-xs font-semibold text-slate-400">Trống</div>}
             </div>
@@ -953,13 +1346,19 @@ function TaskKanban({
 function TaskKanbanCard({
   task,
   onOpenLead,
-  onDone,
+  onAddProof,
+  onRemoveProof,
+  onComplete,
   onDelete,
+  busy,
 }: {
   task: SalesTask;
   onOpenLead: (leadId: string) => void;
-  onDone: (id: string, patch: Partial<ManualTask>) => void;
+  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
+  onRemoveProof: (task: SalesTask, index: number) => void;
+  onComplete: (task: SalesTask) => void;
   onDelete: (id: string) => void;
+  busy: boolean;
 }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
@@ -974,6 +1373,8 @@ function TaskKanbanCard({
       <div className="mt-3 flex flex-wrap gap-1">
         <PriorityBadge value={task.priority} />
         <Badge tone="gray">{taskLabel(task.type)}</Badge>
+        <Badge tone="purple">{taskCategoryLabel(task.category)}</Badge>
+        {task.proofImages.length > 0 && <Badge tone="green">{task.proofImages.length} ảnh</Badge>}
       </div>
       <div className="mt-3 border-t border-slate-100 pt-3">
         {task.leadId && (
@@ -983,10 +1384,18 @@ function TaskKanbanCard({
         )}
         <p className="mt-1 text-xs text-slate-500">{task.assignedToName || task.assignedTo || '-'}</p>
       </div>
+      {task.completedAt && <p className="mt-2 text-[11px] font-semibold text-emerald-700">Hoàn thành: {formatDate(task.completedAt, true)}</p>}
       {task.type === 'manual' && (
-        <div className="mt-3 flex gap-2">
-          {task.status !== 'done' && <Button size="sm" variant="outline" onClick={() => onDone(task.id, { status: 'done' })}><CheckCircle2 /> Done</Button>}
-          <Button size="sm" variant="outline" onClick={() => onDelete(task.id)}><Trash2 /> Xóa</Button>
+        <div className="mt-3 space-y-2">
+          <TaskProofPanel task={task} busy={busy} compact onAddProof={onAddProof} onRemoveProof={onRemoveProof} />
+          <div className="flex gap-2">
+            {task.status !== 'done' && (
+              <Button size="sm" variant="outline" onClick={() => onComplete(task)} disabled={busy || !task.proofImages.length}>
+                <CheckCircle2 /> Xong
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => onDelete(task.id)}><Trash2 /> Xóa</Button>
+          </div>
         </div>
       )}
     </div>
