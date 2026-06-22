@@ -147,6 +147,12 @@ function taskAssigneeSummary(task: SalesTask) {
   return `${assignees.length} sales`;
 }
 
+function taskTitleFromDraft(title: string, notes: string) {
+  const titleValue = title.trim();
+  if (titleValue) return titleValue;
+  return notes.trim().split(/\r?\n/)[0]?.slice(0, 90).trim() || '';
+}
+
 function canEditAssigneeProof(assigneeId: string, currentUserId?: string, canViewAll = false) {
   return canViewAll || assigneeId === currentUserId;
 }
@@ -691,7 +697,8 @@ export default function SalesTasksPage() {
 
   async function saveManualTask() {
     setQuickTaskError('');
-    if (!draft.title.trim()) return setQuickTaskError('Vui lòng nhập nội dung task.');
+    const taskTitle = taskTitleFromDraft(draft.title, draft.notes);
+    if (!taskTitle) return setQuickTaskError('Vui lòng nhập tên task hoặc note chi tiết.');
     if (!draft.dueAt) return setQuickTaskError('Vui lòng chọn hạn xử lý.');
     const assignedUsers = draft.assigneeIds
       .map((id) => taskAssigneeOptions.find((item) => item.id === id))
@@ -705,7 +712,7 @@ export default function SalesTasksPage() {
       const primaryAssignee = assignedUsers[0];
       const tasks = leadIds.map((leadId, index) => ({
         id: `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-        title: draft.title.trim(),
+        title: taskTitle,
         notes: draft.notes.trim(),
         dueAt: fromLocalInput(draft.dueAt),
         assignedTo: primaryAssignee.id,
@@ -905,25 +912,46 @@ export default function SalesTasksPage() {
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Plus size={18} /> Tạo to-do nhanh</CardTitle></CardHeader>
         <CardContent className="grid gap-3 lg:grid-cols-[1.1fr_210px_minmax(260px,1fr)_210px_180px_150px_auto]">
-          <Input placeholder="Ví dụ: Seeding 5 nhóm hàng ngày" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
-          <Select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as TaskCategory })}>
+          <Input placeholder="Tên task (có thể bỏ trống nếu đã nhập note)" value={draft.title} onChange={(event) => {
+            setQuickTaskError('');
+            setDraft({ ...draft, title: event.target.value });
+          }} />
+          <Select value={draft.category} onChange={(event) => {
+            setQuickTaskError('');
+            setDraft({ ...draft, category: event.target.value as TaskCategory });
+          }}>
             {TASK_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </Select>
-          <LeadMultiSelect leads={leads} selectedIds={draft.leadIds} onChange={(leadIds) => setDraft({ ...draft, leadIds })} />
-          <Input type="datetime-local" value={draft.dueAt} onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })} />
+          <LeadMultiSelect leads={leads} selectedIds={draft.leadIds} onChange={(leadIds) => {
+            setQuickTaskError('');
+            setDraft({ ...draft, leadIds });
+          }} />
+          <Input type="datetime-local" value={draft.dueAt} onChange={(event) => {
+            setQuickTaskError('');
+            setDraft({ ...draft, dueAt: event.target.value });
+          }} />
           <SalesMultiSelect
             salesOptions={taskAssigneeOptions}
             selectedIds={draft.assigneeIds}
             disabled={!canViewAll}
-            onChange={(assigneeIds) => setDraft({ ...draft, assigneeIds })}
+            onChange={(assigneeIds) => {
+              setQuickTaskError('');
+              setDraft({ ...draft, assigneeIds });
+            }}
           />
-          <Select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as TaskPriority })}>
+          <Select value={draft.priority} onChange={(event) => {
+            setQuickTaskError('');
+            setDraft({ ...draft, priority: event.target.value as TaskPriority });
+          }}>
             <option value="normal">Normal</option>
             <option value="high">High</option>
             <option value="low">Low</option>
           </Select>
           <Button onClick={() => void saveManualTask()} disabled={quickTaskBusy || !taskAssigneeOptions.length}><Plus /> {quickTaskBusy ? 'Đang thêm' : 'Thêm'}</Button>
-          <Textarea className="lg:col-span-7" rows={2} placeholder="Note chi tiết: yêu cầu, địa điểm, nội dung seeding, checklist ảnh minh chứng..." value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} />
+          <Textarea className="lg:col-span-7" rows={2} placeholder="Nội dung / note chi tiết: yêu cầu, địa điểm, checklist ảnh minh chứng..." value={draft.notes} onChange={(event) => {
+            setQuickTaskError('');
+            setDraft({ ...draft, notes: event.target.value });
+          }} />
           {quickTaskError && <p className="lg:col-span-7 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">{quickTaskError}</p>}
           {hasMore && (
             <div className="lg:col-span-7">
@@ -1023,8 +1051,31 @@ function SalesMultiSelect({
   onChange: (salesIds: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedSales = useMemo(() => selectedIds.map((id) => salesOptions.find((item) => item.id === id)).filter(Boolean) as AdminUser[], [salesOptions, selectedIds]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   function toggleSales(id: string) {
     if (disabled) return;
@@ -1038,7 +1089,7 @@ function SalesMultiSelect({
     : 'Chọn sales';
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
         type="button"
         onClick={() => !disabled && setOpen((value) => !value)}
@@ -1065,6 +1116,12 @@ function SalesMultiSelect({
       )}
       {open && !disabled && (
         <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+            <span className="text-xs font-extrabold uppercase text-slate-500">Chọn sales</span>
+            <button type="button" className="text-xs font-bold text-[#003B7A] hover:underline" onClick={() => setOpen(false)}>
+              Xong
+            </button>
+          </div>
           <div className="max-h-72 overflow-y-auto p-1">
             {salesOptions.map((item) => {
               const checked = selectedSet.has(item.id);
