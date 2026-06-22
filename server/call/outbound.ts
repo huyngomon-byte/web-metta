@@ -84,6 +84,33 @@ async function writeInitialLog(db: ReturnType<typeof adminDb>, data: Record<stri
   }), { merge: true }).catch(() => {});
 }
 
+function stringeeCallIdFromPayload(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return '';
+  const seen = new Set<unknown>();
+  const stack = [payload as Record<string, unknown>];
+  const preferred = ['callId', 'call_id', 'uuid', 'id'];
+  while (stack.length) {
+    const item = stack.shift();
+    if (!item || seen.has(item)) continue;
+    seen.add(item);
+    for (const key of preferred) {
+      const value = item[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    }
+    Object.values(item).forEach((value) => {
+      if (Array.isArray(value)) {
+        value.forEach((entry) => {
+          if (entry && typeof entry === 'object') stack.push(entry as Record<string, unknown>);
+        });
+      } else if (value && typeof value === 'object') {
+        stack.push(value as Record<string, unknown>);
+      }
+    });
+  }
+  return '';
+}
+
 function assignmentExpired(lead: Record<string, any>, nowMs = Date.now()) {
   if (!lead.assignedTo || lead.assignedStatus === 'returned') return true;
   if (lead.assignedStatus === 'accepted') return false;
@@ -178,7 +205,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         toAgentFromNumberDisplayAlias: `Call-out-from-${fromNumber}-Alias`,
       });
 
-    const stringeeCallId = String(result.payload?.callId || '').trim();
+    const stringeeCallId = stringeeCallIdFromPayload(result.payload);
     const logId = stringeeCallId || providerCallId;
     const calloutMode = agentPhoneNumber ? 'phone_bridge' : 'pcc_app_sip';
     const startedAt = new Date().toISOString();

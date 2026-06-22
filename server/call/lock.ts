@@ -15,6 +15,18 @@ export class CallLockBusyError extends Error {
   }
 }
 
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, stripUndefined(item)]),
+    ) as T;
+  }
+  return value;
+}
+
 function lockTtlMs() {
   const value = Number(process.env.CALL_LOCK_TTL_MS || 0);
   return Number.isFinite(value) && value >= 30_000 ? value : DEFAULT_LOCK_TTL_MS;
@@ -91,10 +103,10 @@ export async function acquireCallLock(db: Firestore, data: Record<string, unknow
 
 export async function updateCallLock(db: Firestore, data: Record<string, unknown>) {
   const ref = db.collection('callLocks').doc(LOCK_ID);
-  await ref.set({
+  await ref.set(stripUndefined({
     ...data,
     updatedAt: nowIso(),
-  }, { merge: true }).catch(() => {});
+  }), { merge: true }).catch(() => {});
 }
 
 export async function updateMatchingCallLock(db: Firestore, callId?: string | string[], data: Record<string, unknown> = {}) {
@@ -104,10 +116,10 @@ export async function updateMatchingCallLock(db: Firestore, callId?: string | st
   const existing = snap.data() || {};
   if (existing.status !== 'active') return;
   if (!callIdMatches(existing, callId)) return;
-  await ref.set({
+  await ref.set(stripUndefined({
     ...data,
     updatedAt: nowIso(),
-  }, { merge: true }).catch(() => {});
+  }), { merge: true }).catch(() => {});
 }
 
 export async function releaseCallLock(db: Firestore, callId?: string | string[], patch: Record<string, unknown> = {}) {
@@ -118,10 +130,10 @@ export async function releaseCallLock(db: Firestore, callId?: string | string[],
   if (existing.status !== 'active') return;
   if (!callIdMatches(existing, callId)) return;
   const timestamp = nowIso();
-  await ref.set({
+  await ref.set(stripUndefined({
     ...patch,
     status: 'released',
     releasedAt: timestamp,
     updatedAt: timestamp,
-  }, { merge: true }).catch(() => {});
+  }), { merge: true }).catch(() => {});
 }

@@ -129,6 +129,19 @@ async function recentLogByCustomer(db: ReturnType<typeof adminDb>, customerNumbe
     .sort((a, b) => String(b.data.startedAt || b.data.createdAt || '').localeCompare(String(a.data.startedAt || a.data.createdAt || '')))[0] || null;
 }
 
+async function recentLogByAgentPhone(db: ReturnType<typeof adminDb>, agentPhoneNumber: string) {
+  if (!agentPhoneNumber) return null;
+  const snap = await db.collection('callLogs').where('agentPhoneNumber', '==', agentPhoneNumber).limit(20).get().catch(() => null);
+  const nowMs = Date.now();
+  return snap?.docs
+    .map((item) => ({ ref: item.ref, data: item.data() as Record<string, any> }))
+    .filter((item) => {
+      const startedAt = new Date(String(item.data.startedAt || item.data.createdAt || '')).getTime();
+      return Number.isFinite(startedAt) && nowMs - startedAt < 20 * 60 * 1000;
+    })
+    .sort((a, b) => String(b.data.startedAt || b.data.createdAt || '').localeCompare(String(a.data.startedAt || a.data.createdAt || '')))[0] || null;
+}
+
 async function addOrUpdateCallActivity(db: ReturnType<typeof adminDb>, callLog: Record<string, any>) {
   const leadId = String(callLog.leadId || '');
   if (!leadId) return;
@@ -180,6 +193,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let existingSnap = await ref.get().catch(() => null);
   if (!existingSnap?.exists) {
     const recent = await recentLogByCustomer(db, eventCustomerNumber);
+    if (recent) {
+      ref = recent.ref;
+      existingSnap = await ref.get().catch(() => null);
+    }
+  }
+  if (!existingSnap?.exists) {
+    const recent = await recentLogByAgentPhone(db, eventCustomerNumber);
     if (recent) {
       ref = recent.ref;
       existingSnap = await ref.get().catch(() => null);
