@@ -1,7 +1,8 @@
 import type { Firestore } from 'firebase-admin/firestore';
 
 const LOCK_ID = 'stringee-main';
-const DEFAULT_LOCK_TTL_MS = 2 * 60 * 60 * 1000;
+const DEFAULT_LOCK_TTL_MS = 30 * 60 * 1000;
+const DEFAULT_RINGING_LOCK_TTL_MS = 5 * 60 * 1000;
 
 export class CallLockBusyError extends Error {
   lock: Record<string, unknown>;
@@ -17,6 +18,11 @@ export class CallLockBusyError extends Error {
 function lockTtlMs() {
   const value = Number(process.env.CALL_LOCK_TTL_MS || 0);
   return Number.isFinite(value) && value >= 30_000 ? value : DEFAULT_LOCK_TTL_MS;
+}
+
+function ringingLockTtlMs() {
+  const value = Number(process.env.CALL_RINGING_LOCK_TTL_MS || 0);
+  return Number.isFinite(value) && value >= 30_000 ? value : DEFAULT_RINGING_LOCK_TTL_MS;
 }
 
 function nowIso(ms = Date.now()) {
@@ -43,7 +49,10 @@ export async function acquireCallLock(db: Firestore, data: Record<string, unknow
   await db.runTransaction(async (transaction) => {
     const snap = await transaction.get(ref);
     const existing = snap.exists ? snap.data() || {} : {};
-    const active = existing.status === 'active' && Number(existing.expiresAtMs || 0) > nowMs;
+    const lockAgeMs = Number(existing.acquiredAtMs || 0) ? nowMs - Number(existing.acquiredAtMs || 0) : 0;
+    const existingCallStatus = String(existing.callStatus || '').toLowerCase();
+    const ringingStale = existingCallStatus !== 'answered' && lockAgeMs >= ringingLockTtlMs();
+    const active = existing.status === 'active' && Number(existing.expiresAtMs || 0) > nowMs && !ringingStale;
     if (active) throw new CallLockBusyError(existing);
 
     transaction.set(ref, {
@@ -60,6 +69,19 @@ export async function acquireCallLock(db: Firestore, data: Record<string, unknow
 
 export async function updateCallLock(db: Firestore, data: Record<string, unknown>) {
   const ref = db.collection('callLocks').doc(LOCK_ID);
+  await ref.set({
+    ...data,
+    updatedAt: nowIso(),
+  }, { merge: true }).catch(() => {});
+}
+
+export async function updateMatchingCallLock(db: Firestore, callId?: string | string[], data: Record<string, unknown> = {}) {
+  const ref = db.collection('callLocks').doc(LOCK_ID);
+  const snap = await ref.get().catch(() => null);
+  if (!snap?.exists) return;
+  const existing = snap.data() || {};
+  if (existing.status !== 'active') return;
+  if (!callIdMatches(existing, callId)) return;
   await ref.set({
     ...data,
     updatedAt: nowIso(),

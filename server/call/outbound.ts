@@ -30,6 +30,7 @@ type CallSettings = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_STRINGEE_FROM_NUMBER = '842488921797';
 
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
@@ -126,7 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!customerNumber) return res.status(400).json({ error: 'Lead phone is required' });
 
   const config = await settings(db);
-  const fromNumber = normalizePhone(String(config.fromNumber || process.env.STRINGEE_FROM_NUMBER || '842471058267'));
+  const fromNumber = normalizePhone(String(config.fromNumber || process.env.STRINGEE_FROM_NUMBER || DEFAULT_STRINGEE_FROM_NUMBER));
   const fallbackCrmId = process.env.CALL_FALLBACK_AGENT_ID || config.fallbackAgentId || '';
   const requestedMapping = mappingForCrm(crmUserId, config);
   const fallbackMapping = fallbackCrmId ? mappingForCrm(fallbackCrmId, config) : undefined;

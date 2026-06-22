@@ -445,6 +445,11 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
   }, [connect, user]);
 
   const startOutboundCall = useCallback(async (lead: Lead) => {
+    if (activeCallRef.current) {
+      setError('Đang có cuộc gọi đang xử lý. Vui lòng kết thúc cuộc gọi hiện tại trước khi gọi lead khác.');
+      return;
+    }
+
     try {
       setError('');
       const phone = normalizePhoneForCall(lead.phone);
@@ -454,25 +459,12 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
 
       if (settings.pccMode !== false) {
         const providerCallId = `pcc-out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const pendingSession: CallSession = {
-          id: providerCallId,
-          providerCallId,
-          direction: 'outbound',
-          status: 'ringing',
-          phone,
-          leadId: lead.id,
-          leadName: leadName(lead),
-          startedAt,
-        };
-        activeCallRef.current = pendingSession;
-        setActiveCall(pendingSession);
-        setIncomingCall(null);
-
         const result = await callCenterService.startPccOutboundCall(lead, user, providerCallId);
         const resolvedCallId = result.providerCallId || providerCallId;
         const localLog = await callCenterService.saveLog({
           id: resolvedCallId,
           providerCallId: resolvedCallId,
+          clientCallId: result.clientCallId || providerCallId,
           direction: 'outbound',
           status: 'ringing',
           leadId: lead.id,
@@ -488,24 +480,24 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
             message: result.message,
             stringeeUserId: result.userId,
           },
+        }).catch((logError) => {
+          console.warn('[CallCenter] Cannot persist local PCC call log:', logError);
+          return undefined as CallLog | undefined;
         });
-        const current = activeCallRef.current;
         const nextSession: CallSession = {
-          ...(current || pendingSession),
           id: resolvedCallId,
           providerCallId: resolvedCallId,
           direction: 'outbound',
-          status: current?.status || 'ringing',
+          status: 'ringing',
           phone,
           leadId: lead.id,
           leadName: leadName(lead),
           startedAt,
-          answeredAt: current?.answeredAt,
-          sdkCall: current?.sdkCall,
           log: localLog,
         };
         activeCallRef.current = nextSession;
         setActiveCall(nextSession);
+        setIncomingCall(null);
         return;
       }
 
@@ -562,6 +554,9 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
         setActiveCall(session);
       });
     } catch (err) {
+      activeCallRef.current = null;
+      setActiveCall(null);
+      setIncomingCall(null);
       setError(err instanceof Error ? err.message : 'Không khởi tạo được cuộc gọi.');
     }
   }, [attachCallEvents, connectionState, user]);

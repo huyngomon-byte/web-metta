@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 type HeaderValue = string | string[] | undefined;
+const DEFAULT_STRINGEE_FROM_NUMBER = '842488921797';
 
 export function firstHeader(value: HeaderValue) {
   return Array.isArray(value) ? value[0] : value;
@@ -61,7 +62,7 @@ export async function stringeePccCallout(input: {
   toAgentFromNumberDisplay?: string;
   toAgentFromNumberDisplayAlias?: string;
 }) {
-  const fromNumber = normalizePhone(input.fromNumber || process.env.STRINGEE_FROM_NUMBER || '842471058267');
+  const fromNumber = normalizePhone(input.fromNumber || process.env.STRINGEE_FROM_NUMBER || DEFAULT_STRINGEE_FROM_NUMBER);
   const customerNumber = normalizePhone(input.customerNumber);
   if (!input.agentUserId) throw new Error('Missing Stringee agentUserId');
   if (!customerNumber) throw new Error('Missing customer phone number');
@@ -127,7 +128,7 @@ export async function stringeePhoneBridgeCallout(input: {
   customerNumber: string;
   fromNumber?: string;
 }) {
-  const fromNumber = normalizePhone(input.fromNumber || process.env.STRINGEE_FROM_NUMBER || '842471058267');
+  const fromNumber = normalizePhone(input.fromNumber || process.env.STRINGEE_FROM_NUMBER || DEFAULT_STRINGEE_FROM_NUMBER);
   const agentPhoneNumber = normalizePhone(input.agentPhoneNumber);
   const customerNumber = normalizePhone(input.customerNumber);
   if (!fromNumber) throw new Error('Missing Stringee from number');
@@ -221,7 +222,7 @@ export function sccoConnectToUser(userId: string, eventUrl: string) {
   return {
     action: 'connect',
     eventUrl,
-    from: { type: 'external', number: process.env.STRINGEE_FROM_NUMBER || '842471058267', alias: 'METTA Academy' },
+    from: { type: 'external', number: process.env.STRINGEE_FROM_NUMBER || DEFAULT_STRINGEE_FROM_NUMBER, alias: 'METTA Academy' },
     to: { type: 'internal', number: userId, alias: userId },
   };
 }
@@ -230,7 +231,7 @@ export function sccoConnectToPhone(phone: string, eventUrl: string) {
   return {
     action: 'connect',
     eventUrl,
-    from: { type: 'external', number: process.env.STRINGEE_FROM_NUMBER || '842471058267', alias: 'METTA Academy' },
+    from: { type: 'external', number: process.env.STRINGEE_FROM_NUMBER || DEFAULT_STRINGEE_FROM_NUMBER, alias: 'METTA Academy' },
     to: { type: 'external', number: normalizePhone(phone), alias: normalizePhone(phone) },
   };
 }

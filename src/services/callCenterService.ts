@@ -29,6 +29,7 @@ const COL_AGENT_PRESENCE = 'agentPresence';
 const SETTINGS_DOC_ID = 'stringee';
 const DEFAULT_CALL_LOG_PAGE_SIZE = 100;
 const DEFAULT_CALL_LOG_SINCE_DAYS = 30;
+const DEFAULT_STRINGEE_FROM_NUMBER = '842488921797';
 let cachedLogs: CallLog[] = [];
 let cachedSettings: CallCenterSettings | null = null;
 
@@ -99,7 +100,7 @@ export function defaultCallCenterSettings(): CallCenterSettings {
     provider: 'stringee',
     enabled: true,
     pccMode: true,
-    fromNumber: '842471058267',
+    fromNumber: DEFAULT_STRINGEE_FROM_NUMBER,
     fallbackAgentId: firstSales?.id || '',
     fallbackAgentName: firstSales?.fullName || 'Sales lead',
     userMappings: defaultUserMappings(),
@@ -244,7 +245,7 @@ export const callCenterService = {
         fromNumber: settings.fromNumber,
       }),
     });
-    const payload = await response.json().catch(() => ({})) as { ok?: boolean; providerCallId?: string; userId?: string; message?: string; error?: string };
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; providerCallId?: string; clientCallId?: string; userId?: string; message?: string; error?: string };
     if (!response.ok || !payload.ok) throw new Error(payload.error || 'Stringee PCC chưa tạo được cuộc gọi.');
     return payload;
   },

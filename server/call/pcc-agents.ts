@@ -146,8 +146,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const assignedCrmId = lead?.assignedTo || '';
     const assignedPresenceOnline = await agentOnline(db, assignedCrmId);
     const assignedMapping = assignedCrmId ? mappingForCrm(assignedCrmId, config) : undefined;
-    const targetCrmId = assignedMapping?.crmUserId || fallbackMapping?.crmUserId || '';
-    const targetMapping = assignedMapping || fallbackMapping;
+    const onlineAssignedMapping = assignedPresenceOnline ? assignedMapping : undefined;
+    const targetCrmId = onlineAssignedMapping?.crmUserId || fallbackMapping?.crmUserId || '';
+    const targetMapping = onlineAssignedMapping || fallbackMapping;
     const agentEntries = await Promise.all(
       [targetMapping, fallbackMapping]
         .filter((mapping, index, items): mapping is NonNullable<typeof targetMapping> =>
@@ -175,7 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         leadMatched: Boolean(lead),
         assignedCrmId,
         assignedPresenceOnline,
-        assignedMappingReturned: Boolean(assignedMapping),
+        assignedMappingReturned: Boolean(onlineAssignedMapping),
       },
     });
 

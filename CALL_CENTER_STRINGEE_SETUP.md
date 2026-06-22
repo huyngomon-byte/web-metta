@@ -8,19 +8,22 @@ Set these on Vercel Project Settings > Environment Variables, and in local `.env
 STRINGEE_API_SID=
 STRINGEE_API_SECRET=
 STRINGEE_PROJECT_ID=
-STRINGEE_FROM_NUMBER=
+STRINGEE_FROM_NUMBER=842488921797
 CALL_FALLBACK_AGENT_ID=
 CALL_FALLBACK_AGENT_NAME=
 PUBLIC_APP_URL=https://www.metta.edu.vn
 REQUIRE_RECORDING_AUTH=true
-CALL_LOCK_TTL_MS=7200000
+CALL_LOCK_TTL_MS=1800000
+CALL_RINGING_LOCK_TTL_MS=300000
 ```
 
 Do not add real SID, API secret, or signing secret to Git.
 
 Recording playback is protected by Firebase role checks in the CRM. Only Admin and Manager can stream recordings from `/api/call/recording` or `/crm/calls/{call_id}/recording`.
 
-`CALL_LOCK_TTL_MS` controls the global outbound lock duration. Keep the default near 2 hours so only one Sales can use the shared hotline at a time, while abandoned locks still expire.
+`CALL_LOCK_TTL_MS` controls the global outbound lock duration. The recommended default is 30 minutes so only one Sales can use the shared hotline at a time, while abandoned locks still expire quickly if Stringee does not send a terminal event.
+
+`CALL_RINGING_LOCK_TTL_MS` controls how long an unanswered/ringing lock can block the shared hotline. The recommended default is 5 minutes; answered calls still use `CALL_LOCK_TTL_MS`.
 
 `STRINGEE_SIGNING_SECRET` is optional for now. Leave it empty unless Stringee provides the exact webhook signature format for PCC callbacks.
 
@@ -55,7 +58,7 @@ Open Admin > Settings > Call Center Stringee and copy the Queue `get_list_agents
 ## 4. PCC setup in Stringee
 
 1. Project `Metta` has PCC enabled.
-2. Hotline `842471058267` belongs to the same project.
+2. Hotline `842488921797` belongs to the same project.
 3. Add Agents with the real Stringee user IDs for each active CRM sales account.
 4. Add agents into a Sales group.
 5. Create a Queue, enable recording, and assign the Sales group.

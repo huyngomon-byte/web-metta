@@ -1,6 +1,6 @@
 import { adminDb } from '../../api/_firebaseAdmin.js';
 import { normalizePhone, verifyStringeeSignature } from '../../api/_stringee.js';
-import { releaseCallLock } from './lock.js';
+import { releaseCallLock, updateMatchingCallLock } from './lock.js';
 
 type VercelRequest = {
   method?: string;
@@ -231,6 +231,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const safePatch = stripUndefined(patch);
   await ref.set(safePatch, { merge: true });
   if (safePatch.endedAt || safePatch.recordingUrl) await addOrUpdateCallActivity(db, { ...existing, ...safePatch });
+  if (nextStatus === 'answered') {
+    await updateMatchingCallLock(db, [providerCallId, stringeeCallId, existing.clientCallId].filter(Boolean), {
+      providerCallId,
+      stringeeCallId,
+      callStatus: 'answered',
+      answeredAt: answeredAt || timestamp,
+    });
+  }
   if (isTerminalStatus(nextStatus)) {
     await releaseCallLock(db, [providerCallId, stringeeCallId, existing.clientCallId].filter(Boolean), {
       providerCallId,
