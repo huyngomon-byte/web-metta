@@ -29,7 +29,7 @@ import { purgeDemoDataOnServerOnce } from '@/services/demoDataPurgeService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { delay, store } from '@/services/store';
 import { userService } from '@/services/userService';
-import type { Appointment, InterestedCourse, Lead, LeadActivity } from '@/types/crm';
+import type { Appointment, InterestedCourse, Lead, LeadActivity, LeadPriorityLevel, LeadSourceConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
 const now = () => new Date().toISOString();
@@ -141,16 +141,36 @@ function activeSalesUsers() {
 }
 
 function normalizedSalesKey(value?: string) {
-  return String(value || '').trim().toLowerCase();
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function uniqueSalesMatch(candidates: AdminUser[]) {
+  const unique = Array.from(new Map(candidates.map((sales) => [sales.id, sales])).values());
+  return unique.length === 1 ? unique[0] : undefined;
 }
 
 function salesUserFromAssignment(idOrName?: string, displayName?: string) {
   const idKey = String(idOrName || '').trim();
-  const nameKey = normalizedSalesKey(displayName);
-  const assignedKey = normalizedSalesKey(idOrName);
+  const rawKeys = [idOrName, displayName]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const normalizedKeys = rawKeys.map(normalizedSalesKey).filter(Boolean);
   const salesUsers = activeSalesUsers();
   return salesUsers.find((sales) => sales.id === idKey)
-    || salesUsers.find((sales) => normalizedSalesKey(sales.fullName) === nameKey || normalizedSalesKey(sales.fullName) === assignedKey);
+    || salesUsers.find((sales) => rawKeys.some((key) => key.toLowerCase() === sales.email.toLowerCase()))
+    || salesUsers.find((sales) => normalizedKeys.some((key) => normalizedSalesKey(sales.fullName) === key))
+    || uniqueSalesMatch(salesUsers.filter((sales) => {
+      const name = normalizedSalesKey(sales.fullName);
+      const tokens = name.split(' ').filter(Boolean);
+      return normalizedKeys.some((key) => key.length >= 2 && (tokens.includes(key) || name.endsWith(` ${key}`)));
+    }));
 }
 
 function shouldNormalizeSales(idOrName: string | undefined, displayName: string | undefined, sales: AdminUser) {
@@ -183,6 +203,28 @@ function assignmentFieldsChanged(before: Partial<Lead>, after: Partial<Lead>) {
     || before.assignedToName !== after.assignedToName
     || before.failedAssignedTo !== after.failedAssignedTo
     || before.failedAssignedToName !== after.failedAssignedToName;
+}
+
+function importedAssignmentLabel(lead: Partial<Lead>) {
+  return String(lead.assignedToName || lead.assignedTo || '').trim();
+}
+
+function validateRequestedSalesAssignment(lead: Partial<Lead>) {
+  const requested = importedAssignmentLabel(lead);
+  if (!requested) return;
+  if (lead.assignedTo && activeSalesUsers().some((sales) => sales.id === lead.assignedTo)) return;
+  throw new Error(`Không tìm thấy sales active khớp với "${requested}". Vui lòng nhập Sales ID hoặc tên sales đúng trong file import.`);
+}
+
+function explicitPriority(value: unknown): LeadPriorityLevel | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.min(Math.max(Math.round(parsed), 1), 5) as LeadPriorityLevel;
+}
+
+function resolvedPriority(configs: LeadSourceConfig[], source?: string, value?: unknown) {
+  return explicitPriority(value) || sourcePriority(configs, source, value);
 }
 
 async function refreshUsersForAssignmentRepair(user: AdminUser | null) {
@@ -794,6 +836,7 @@ export const leadService = {
     await refreshUsersForAssignmentRepair(user);
     const sourceConfigs = await sourceConfigService.getConfigs();
     lead = normalizeSalesAssignmentFields(lead);
+    validateRequestedSalesAssignment(lead);
     if (lead.interestedCourse) lead = { ...lead, interestedCourse: normalizeCourse(lead.interestedCourse) as InterestedCourse | '' };
     lead = normalizeDealFields(lead);
     const displayName = leadDisplayName(lead);
@@ -802,7 +845,7 @@ export const leadService = {
     lead = {
       ...lead,
       ...(displayName ? { fullName: displayName } : {}),
-      ...((lead.source || !lead.id) ? { priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel) } : {}),
+      ...((lead.source || lead.priorityLevel !== undefined || !lead.id) ? { priorityLevel: resolvedPriority(sourceConfigs, leadSource, lead.priorityLevel) } : {}),
       ...(warmthPercent !== undefined ? { pendingWarmthPercent: warmthPercent } : {}),
     };
     let assignmentNotification: { salesId: string; assignedByName?: string; auto?: boolean } | null = null;
@@ -935,7 +978,7 @@ export const leadService = {
         source: leadSource,
         referralPhone: lead.referralPhone || '',
         centerName: lead.centerName || '',
-        priorityLevel: sourcePriority(sourceConfigs, leadSource, lead.priorityLevel),
+        priorityLevel: resolvedPriority(sourceConfigs, leadSource, lead.priorityLevel),
         status: lead.status || leadStatuses[0],
         assignedTo,
         assignedToName,

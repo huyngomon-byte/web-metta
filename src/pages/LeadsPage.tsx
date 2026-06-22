@@ -17,7 +17,7 @@ import { useCourseCatalog } from '@/hooks/useCms';
 import { useLeads } from '@/hooks/useLeads';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, discountPercentOptions, leadSources, leadStatuses, lostReasons, pendingReasonOptions } from '@/lib/constants';
 import { expectedRevenueAmount, financeDefaultsForLead, revenueAmount, type CourseDealSizeRule, type FinanceDefaultOptions } from '@/lib/leadFinance';
-import type { ParsedLeadImportResult } from '@/lib/leadExcel';
+import { downloadWorkbook, makeLeadTemplateWorkbook, parseLeadWorkbook, type ParsedLeadImportResult } from '@/lib/leadExcel';
 import { buildLeadTimeline } from '@/lib/leadTimeline';
 import { canAssignLead, canCreateLead } from '@/lib/permissions';
 import { exportCsv, formatCurrency, formatDate } from '@/lib/utils';
@@ -690,7 +690,6 @@ export default function LeadsPage() {
     setSaveMessage('');
     setLeadImportBusy(true);
     try {
-      const { downloadWorkbook, makeLeadTemplateWorkbook } = await import('@/lib/leadExcel');
       downloadWorkbook(makeLeadTemplateWorkbook(), 'metta-lead-import-template.xlsx');
       setSaveMessage('Đã tải file mẫu import leads.');
     } catch (err) {
@@ -711,7 +710,6 @@ export default function LeadsPage() {
     setLeadImportBusy(true);
     setLeadImportOpen(true);
     try {
-      const { parseLeadWorkbook } = await import('@/lib/leadExcel');
       const visibleReferenceLeads = await leadService.getLeads();
       const result = await parseLeadWorkbook(file, visibleReferenceLeads);
       setLeadImportParsed(result);

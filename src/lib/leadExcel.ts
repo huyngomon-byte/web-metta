@@ -278,10 +278,11 @@ export async function parseLeadWorkbook(file: File, existingLeads: Lead[]): Prom
     lead.phone = phone;
     const contactType = String(lead.contactType || '');
     const assignedStatus = String(lead.assignedStatus || '');
+    const hasImportedAssignment = Boolean(String(lead.assignedTo || lead.assignedToName || '').trim());
     lead.contactType = CONTACT_TYPES.includes(contactType as ContactType) ? contactType as Lead['contactType'] : 'parent';
     lead.assignedStatus = ASSIGNMENT_STATUSES.includes(assignedStatus as AssignmentStatus)
       ? assignedStatus as Lead['assignedStatus']
-      : lead.assignedTo ? 'active' : 'unassigned';
+      : hasImportedAssignment ? 'active' : 'unassigned';
     lead.status = (lead.status || leadStatuses[0]) as Lead['status'];
     lead.dealCurrency = lead.dealCurrency || DEFAULT_DEAL_CURRENCY;
     lead.enrollmentType = lead.enrollmentType || 'new';
