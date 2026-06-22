@@ -269,7 +269,7 @@ export const callCenterService = {
       }),
     });
     const payload = await response.json().catch(() => ({})) as { ok?: boolean; callId?: string; status?: string; error?: string };
-    if (!response.ok || !payload.ok) throw new Error(payload.error || 'CRM chÆ°a giáº£i phÃ³ng Ä‘Æ°á»£c lock cuá»™c gá»i.');
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'CRM chưa giải phóng được lock cuộc gọi.');
     return payload;
   },
 
