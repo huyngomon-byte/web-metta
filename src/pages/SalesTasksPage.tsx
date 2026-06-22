@@ -5,6 +5,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   Clock,
+  Eye,
   ImagePlus,
   LayoutGrid,
   List,
@@ -17,6 +18,7 @@ import {
   Search,
   Send,
   Trash2,
+  Users,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -38,7 +40,7 @@ import { appointmentService } from '@/services/appointmentService';
 import { callCenterService } from '@/services/callCenterService';
 import { centerConfigService } from '@/services/centerConfigService';
 import { leadService } from '@/services/leadService';
-import { TASK_CATEGORIES, salesTaskService, type ManualTask, type TaskCategory, type TaskPriority } from '@/services/salesTaskService';
+import { TASK_CATEGORIES, salesTaskService, type ManualTask, type TaskAssignee, type TaskCategory, type TaskPriority } from '@/services/salesTaskService';
 import { userService } from '@/services/userService';
 import type { CallLog } from '@/types/call';
 import type { Appointment, Lead, LeadCenterConfig } from '@/types/crm';
@@ -63,6 +65,8 @@ type SalesTask = {
   phone?: string;
   assignedTo: string;
   assignedToName: string;
+  assigneeIds: string[];
+  assignees: TaskAssignee[];
   status: TaskStatus;
   priority: TaskPriority;
   category: TaskCategory;
@@ -71,6 +75,8 @@ type SalesTask = {
   completedByName?: string;
   createdByName?: string;
   createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 const ACTIVE_STATUSES = leadStatuses.filter((status) => ![WON_LEAD_STATUS, LOST_LEAD_STATUS].includes(status));
@@ -81,6 +87,68 @@ const MAX_TASK_PROOF_IMAGES = 6;
 
 function taskCategoryLabel(category?: string) {
   return TASK_CATEGORY_LABELS[category as TaskCategory] || 'Telesales';
+}
+
+function makeTaskAssignees(assignedTo?: string, assignedToName?: string, proofImages: string[] = [], status: TaskStatus = 'open'): TaskAssignee[] {
+  const id = String(assignedTo || '').trim();
+  if (!id) return [];
+  return [{
+    id,
+    name: String(assignedToName || assignedTo || '').trim(),
+    proofImages,
+    status,
+  }];
+}
+
+function normalizeTaskAssignees(task: Pick<SalesTask, 'assignedTo' | 'assignedToName' | 'assigneeIds' | 'assignees' | 'proofImages' | 'status' | 'completedAt' | 'completedByName'>): TaskAssignee[] {
+  const byId = new Map<string, TaskAssignee>();
+  (task.assignees || []).forEach((item) => {
+    const id = String(item.id || '').trim();
+    if (!id) return;
+    byId.set(id, {
+      id,
+      name: String(item.name || id).trim(),
+      proofImages: Array.isArray(item.proofImages) ? item.proofImages.filter(Boolean) : [],
+      status: item.status === 'done' ? 'done' : 'open',
+      completedAt: item.completedAt,
+      completedBy: item.completedBy,
+      completedByName: item.completedByName,
+    });
+  });
+  if (task.assignedTo && !byId.has(task.assignedTo)) {
+    byId.set(task.assignedTo, {
+      id: task.assignedTo,
+      name: task.assignedToName || task.assignedTo,
+      proofImages: task.proofImages || [],
+      status: task.status,
+      completedAt: task.completedAt,
+      completedByName: task.completedByName,
+    });
+  }
+  (task.assigneeIds || []).forEach((id) => {
+    if (id && !byId.has(id)) byId.set(id, { id, name: id, proofImages: [], status: 'open' });
+  });
+  return Array.from(byId.values());
+}
+
+function taskProofCount(task: SalesTask) {
+  const count = normalizeTaskAssignees(task).reduce((total, assignee) => total + assignee.proofImages.length, 0);
+  return count || task.proofImages.length;
+}
+
+function taskDoneCount(task: SalesTask) {
+  return normalizeTaskAssignees(task).filter((assignee) => assignee.status === 'done').length;
+}
+
+function taskAssigneeSummary(task: SalesTask) {
+  const assignees = normalizeTaskAssignees(task);
+  if (!assignees.length) return 'Chưa có sales';
+  if (assignees.length === 1) return assignees[0].name || assignees[0].id;
+  return `${assignees.length} sales`;
+}
+
+function canEditAssigneeProof(assigneeId: string, currentUserId?: string, canViewAll = false) {
+  return canViewAll || assigneeId === currentUserId;
 }
 
 function percent(part: number, total: number) {
@@ -270,6 +338,8 @@ function buildTasks(
         phone: lead.phone,
         assignedTo,
         assignedToName,
+        assigneeIds: assignedTo ? [assignedTo] : [],
+        assignees: makeTaskAssignees(assignedTo, assignedToName),
         status: 'open',
         priority: inferPriority({ type: 'follow_up', dueAt: lead.followUpDate, lead }),
         category: 'telesales',
@@ -292,6 +362,8 @@ function buildTasks(
         phone: lead.phone,
         assignedTo,
         assignedToName,
+        assigneeIds: assignedTo ? [assignedTo] : [],
+        assignees: makeTaskAssignees(assignedTo, assignedToName),
         status: 'open',
         priority: inferPriority({ type: 'retry_call', dueAt, lead }),
         category: 'telesales',
@@ -313,6 +385,8 @@ function buildTasks(
         phone: lead.phone,
         assignedTo,
         assignedToName,
+        assigneeIds: assignedTo ? [assignedTo] : [],
+        assignees: makeTaskAssignees(assignedTo, assignedToName),
         status: 'open',
         priority: inferPriority({ type: 'quote', dueAt, lead, warmth: lead.pendingWarmthPercent }),
         category: 'telesales',
@@ -335,6 +409,8 @@ function buildTasks(
       phone: lead?.phone || item.title.match(/0\d{8,}/)?.[0],
       assignedTo: item.assignedTo,
       assignedToName: item.assignedToName || item.assignedTo,
+      assigneeIds: item.assignedTo ? [item.assignedTo] : [],
+      assignees: makeTaskAssignees(item.assignedTo, item.assignedToName || item.assignedTo),
       status: 'open',
       priority: inferPriority({ type: 'appointment', dueAt: item.startTime, lead, appointmentStatus: item.status }),
       category: 'center_consulting',
@@ -356,6 +432,8 @@ function buildTasks(
       phone: lead?.phone,
       assignedTo: item.assignedTo,
       assignedToName: item.assignedToName,
+      assigneeIds: item.assigneeIds || (item.assignedTo ? [item.assignedTo] : []),
+      assignees: item.assignees || makeTaskAssignees(item.assignedTo, item.assignedToName, item.proofImages || [], item.status),
       status: item.status,
       priority: item.priority,
       category: item.category || 'telesales',
@@ -364,6 +442,8 @@ function buildTasks(
       completedByName: item.completedByName,
       createdBy: item.createdBy,
       createdByName: item.createdByName,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
     });
   });
 
@@ -444,11 +524,12 @@ export default function SalesTasksPage() {
     title: '',
     notes: '',
     dueAt: localInputValue(addHours(nowIso(), 2)),
-    assignedTo: '',
+    assigneeIds: [] as string[],
     leadIds: [] as string[],
     priority: 'normal' as TaskPriority,
     category: 'telesales' as TaskCategory,
   });
+  const [activeTaskId, setActiveTaskId] = useState('');
 
   const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
 
@@ -492,8 +573,9 @@ export default function SalesTasksPage() {
   useEffect(() => {
     setDraft((item) => {
       if (!defaultTaskAssigneeId) return item;
-      if (taskAssigneeOptions.some((option) => option.id === item.assignedTo)) return item;
-      return { ...item, assignedTo: defaultTaskAssigneeId };
+      const validIds = item.assigneeIds.filter((id) => taskAssigneeOptions.some((option) => option.id === id));
+      if (validIds.length) return validIds.length === item.assigneeIds.length ? item : { ...item, assigneeIds: validIds };
+      return { ...item, assigneeIds: [defaultTaskAssigneeId] };
     });
   }, [defaultTaskAssigneeId, taskAssigneeOptions]);
   const leadOptions = useMemo(() => ({
@@ -502,16 +584,20 @@ export default function SalesTasksPage() {
     courses: Array.from(new Set(leads.map((lead) => lead.interestedCourse || '').filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')),
   }), [centerConfigs, leads]);
   const allTasks = useMemo(() => buildTasks(leads, appointments, callLogs, manualTasks, courseDealSizes), [appointments, callLogs, courseDealSizes, leads, manualTasks]);
+  const activeTask = useMemo(() => allTasks.find((task) => task.id === activeTaskId), [activeTaskId, allTasks]);
   const filteredTasks = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return allTasks.filter((task) => {
-      if (!canViewAll && task.assignedTo !== user?.id) return false;
-      if (sales && task.assignedTo !== sales && task.assignedToName !== sales) return false;
+      const assignees = normalizeTaskAssignees(task);
+      const assigneeIds = assignees.map((assignee) => assignee.id);
+      const assigneeNames = assignees.map((assignee) => assignee.name);
+      if (!canViewAll && !assigneeIds.includes(user?.id || '') && task.assignedTo !== user?.id) return false;
+      if (sales && !assigneeIds.includes(sales) && task.assignedTo !== sales && task.assignedToName !== sales) return false;
       if (status && task.status !== status) return false;
       if (type && task.type !== type && task.category !== type) return false;
       if (priority && task.priority !== priority) return false;
       if (!isTaskInDatePreset(task, datePreset, dateFrom, dateTo)) return false;
-      if (keyword && !`${task.title} ${task.detail} ${taskCategoryLabel(task.category)} ${task.leadName || ''} ${task.parentName || ''} ${task.phone || ''} ${task.assignedToName}`.toLowerCase().includes(keyword)) return false;
+      if (keyword && !`${task.title} ${task.detail} ${taskCategoryLabel(task.category)} ${task.leadName || ''} ${task.parentName || ''} ${task.phone || ''} ${task.assignedToName} ${assigneeNames.join(' ')}`.toLowerCase().includes(keyword)) return false;
       return true;
     });
   }, [allTasks, canViewAll, dateFrom, datePreset, dateTo, priority, query, sales, status, type, user?.id]);
@@ -545,12 +631,15 @@ export default function SalesTasksPage() {
     const byStatus = new Map<TaskStatus, { id: TaskStatus; label: string; total: number }>();
 
     filteredTasks.forEach((task) => {
-      const salesId = task.assignedTo || task.assignedToName || 'unassigned';
-      const salesLabel = task.assignedToName || task.assignedTo || 'Chưa có sales';
-      const salesItem = bySales.get(salesId) || { id: salesId, label: salesLabel, total: 0, open: 0, done: 0 };
-      salesItem.total += 1;
-      salesItem[task.status] += 1;
-      bySales.set(salesId, salesItem);
+      const assignees = normalizeTaskAssignees(task);
+      (assignees.length ? assignees : [{ id: 'unassigned', name: 'Chưa có sales', proofImages: [], status: task.status }]).forEach((assignee) => {
+        const salesId = assignee.id || 'unassigned';
+        const salesLabel = assignee.name || salesId;
+        const salesItem = bySales.get(salesId) || { id: salesId, label: salesLabel, total: 0, open: 0, done: 0 };
+        salesItem.total += 1;
+        salesItem[assignee.status] += 1;
+        bySales.set(salesId, salesItem);
+      });
 
       const categoryId = task.category || 'telesales';
       const categoryItem = byCategory.get(categoryId) || { id: categoryId, label: taskCategoryLabel(categoryId), total: 0, open: 0, done: 0 };
@@ -604,20 +693,30 @@ export default function SalesTasksPage() {
     setQuickTaskError('');
     if (!draft.title.trim()) return setQuickTaskError('Vui lòng nhập nội dung task.');
     if (!draft.dueAt) return setQuickTaskError('Vui lòng chọn hạn xử lý.');
-    const assignedUser = taskAssigneeOptions.find((item) => item.id === draft.assignedTo);
-    if (!assignedUser) return setQuickTaskError('Vui lòng chọn sales phụ trách task.');
+    const assignedUsers = draft.assigneeIds
+      .map((id) => taskAssigneeOptions.find((item) => item.id === id))
+      .filter(Boolean) as AdminUser[];
+    if (!assignedUsers.length) return setQuickTaskError('Vui lòng chọn ít nhất 1 sales phụ trách task.');
 
     setQuickTaskBusy(true);
     try {
       const timestamp = nowIso();
       const leadIds = draft.leadIds.length ? draft.leadIds : [''];
+      const primaryAssignee = assignedUsers[0];
       const tasks = leadIds.map((leadId, index) => ({
         id: `task-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
         title: draft.title.trim(),
         notes: draft.notes.trim(),
         dueAt: fromLocalInput(draft.dueAt),
-        assignedTo: assignedUser.id,
-        assignedToName: assignedUser.fullName,
+        assignedTo: primaryAssignee.id,
+        assignedToName: primaryAssignee.fullName,
+        assigneeIds: assignedUsers.map((item) => item.id),
+        assignees: assignedUsers.map((item) => ({
+          id: item.id,
+          name: item.fullName,
+          proofImages: [],
+          status: 'open' as TaskStatus,
+        })),
         leadId,
         category: draft.category,
         priority: draft.priority,
@@ -634,7 +733,7 @@ export default function SalesTasksPage() {
         title: '',
         notes: '',
         dueAt: localInputValue(addHours(nowIso(), 2)),
-        assignedTo: assignedUser.id,
+        assigneeIds: assignedUsers.map((item) => item.id),
         leadIds: [],
         priority: 'normal',
         category: draft.category,
@@ -650,12 +749,13 @@ export default function SalesTasksPage() {
     setManualTasks(await salesTaskService.updateTask(id, patch));
   }
 
-  async function addProofImages(task: SalesTask, files: FileList | File[]) {
+  async function addProofImages(task: SalesTask, assigneeId: string, files: FileList | File[]) {
     if (task.type !== 'manual') return;
     setTaskActionError('');
     const selected = Array.from(files).filter((file) => file.type.startsWith('image/'));
     if (!selected.length) return;
-    const currentImages = task.proofImages || [];
+    const assignee = normalizeTaskAssignees(task).find((item) => item.id === assigneeId);
+    const currentImages = assignee?.proofImages || [];
     const slots = Math.max(0, MAX_TASK_PROOF_IMAGES - currentImages.length);
     if (!slots) {
       setTaskActionError('Task này đã đủ số ảnh minh chứng tối đa.');
@@ -664,7 +764,7 @@ export default function SalesTasksPage() {
     setTaskBusyId(task.id);
     try {
       const urls = await Promise.all(selected.slice(0, slots).map(uploadTaskProofAsset));
-      await updateManual(task.id, { proofImages: [...currentImages, ...urls] });
+      await updateManual(task.id, { assigneeId, proofImages: [...currentImages, ...urls] } as Partial<ManualTask> & { assigneeId: string });
     } catch (error) {
       setTaskActionError(error instanceof Error ? error.message : 'Không upload được ảnh minh chứng.');
     } finally {
@@ -672,12 +772,13 @@ export default function SalesTasksPage() {
     }
   }
 
-  async function removeProofImage(task: SalesTask, index: number) {
+  async function removeProofImage(task: SalesTask, assigneeId: string, index: number) {
     if (task.type !== 'manual') return;
     setTaskActionError('');
     setTaskBusyId(task.id);
     try {
-      await updateManual(task.id, { proofImages: (task.proofImages || []).filter((_, itemIndex) => itemIndex !== index) });
+      const assignee = normalizeTaskAssignees(task).find((item) => item.id === assigneeId);
+      await updateManual(task.id, { assigneeId, proofImages: (assignee?.proofImages || []).filter((_, itemIndex) => itemIndex !== index) } as Partial<ManualTask> & { assigneeId: string });
     } catch (error) {
       setTaskActionError(error instanceof Error ? error.message : 'Không xóa được ảnh minh chứng.');
     } finally {
@@ -685,21 +786,23 @@ export default function SalesTasksPage() {
     }
   }
 
-  async function completeManualTask(task: SalesTask) {
+  async function completeManualTask(task: SalesTask, assigneeId: string) {
     if (task.type !== 'manual') return;
     setTaskActionError('');
-    if (!task.proofImages?.length) {
+    const assignee = normalizeTaskAssignees(task).find((item) => item.id === assigneeId);
+    if (!assignee?.proofImages?.length) {
       setTaskActionError('Sales cần upload ít nhất 1 ảnh minh chứng trước khi xác nhận hoàn thành task.');
       return;
     }
     setTaskBusyId(task.id);
     try {
       await updateManual(task.id, {
+        assigneeId,
         status: 'done',
         completedAt: nowIso(),
         completedBy: user?.id || '',
         completedByName: user?.fullName || '',
-      });
+      } as Partial<ManualTask> & { assigneeId: string });
     } catch (error) {
       setTaskActionError(error instanceof Error ? error.message : 'Không xác nhận hoàn thành task.');
     } finally {
@@ -808,10 +911,12 @@ export default function SalesTasksPage() {
           </Select>
           <LeadMultiSelect leads={leads} selectedIds={draft.leadIds} onChange={(leadIds) => setDraft({ ...draft, leadIds })} />
           <Input type="datetime-local" value={draft.dueAt} onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })} />
-          <Select value={draft.assignedTo} onChange={(event) => setDraft({ ...draft, assignedTo: event.target.value })} disabled={!canViewAll}>
-            <option value="">Chọn sales</option>
-            {taskAssigneeOptions.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
-          </Select>
+          <SalesMultiSelect
+            salesOptions={taskAssigneeOptions}
+            selectedIds={draft.assigneeIds}
+            disabled={!canViewAll}
+            onChange={(assigneeIds) => setDraft({ ...draft, assigneeIds })}
+          />
           <Select value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.target.value as TaskPriority })}>
             <option value="normal">Normal</option>
             <option value="high">High</option>
@@ -850,9 +955,7 @@ export default function SalesTasksPage() {
               sortDirection={sortDirection}
               onSort={cycleSort}
               onOpenLead={setActiveLeadId}
-              onAddProof={(task, files) => void addProofImages(task, files)}
-              onRemoveProof={(task, index) => void removeProofImage(task, index)}
-              onComplete={(task) => void completeManualTask(task)}
+              onOpenTask={setActiveTaskId}
               onDelete={(id) => void deleteManual(id)}
               busyTaskId={taskBusyId}
             />
@@ -860,9 +963,7 @@ export default function SalesTasksPage() {
             <TaskKanban
               groups={groupedTasks}
               onOpenLead={setActiveLeadId}
-              onAddProof={(task, files) => void addProofImages(task, files)}
-              onRemoveProof={(task, index) => void removeProofImage(task, index)}
-              onComplete={(task) => void completeManualTask(task)}
+              onOpenTask={setActiveTaskId}
               onDelete={(id) => void deleteManual(id)}
               busyTaskId={taskBusyId}
             />
@@ -884,6 +985,107 @@ export default function SalesTasksPage() {
           onSave={saveLeadFromModal}
           onCall={callLeadFromModal}
         />
+      )}
+
+      {activeTask && (
+        <TaskDetailModal
+          task={activeTask}
+          leads={leads}
+          salesOptions={taskAssigneeOptions}
+          canViewAll={canViewAll}
+          currentUserId={user?.id || ''}
+          busy={taskBusyId === activeTask.id}
+          onClose={() => setActiveTaskId('')}
+          onSave={(id, patch) => updateManual(id, patch)}
+          onDelete={(id) => {
+            void deleteManual(id);
+            setActiveTaskId('');
+          }}
+          onOpenLead={setActiveLeadId}
+          onAddProof={(task, assigneeId, files) => void addProofImages(task, assigneeId, files)}
+          onRemoveProof={(task, assigneeId, index) => void removeProofImage(task, assigneeId, index)}
+          onComplete={(task, assigneeId) => void completeManualTask(task, assigneeId)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SalesMultiSelect({
+  salesOptions,
+  selectedIds,
+  disabled = false,
+  onChange,
+}: {
+  salesOptions: AdminUser[];
+  selectedIds: string[];
+  disabled?: boolean;
+  onChange: (salesIds: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedSales = useMemo(() => selectedIds.map((id) => salesOptions.find((item) => item.id === id)).filter(Boolean) as AdminUser[], [salesOptions, selectedIds]);
+
+  function toggleSales(id: string) {
+    if (disabled) return;
+    onChange(selectedSet.has(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
+  }
+
+  const summary = selectedSales.length
+    ? selectedSales.length === 1
+      ? selectedSales[0].fullName
+      : `${selectedSales.length} sales đã chọn`
+    : 'Chọn sales';
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen((value) => !value)}
+        disabled={disabled}
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 focus:border-[#003B7A] focus:outline-none focus:ring-2 focus:ring-[#003B7A]/15 disabled:bg-slate-50 disabled:text-slate-500"
+      >
+        <span className={`truncate ${selectedSales.length ? 'text-slate-900' : 'text-slate-400'}`}>{summary}</span>
+        <Users size={16} className="shrink-0 text-slate-400" />
+      </button>
+      {selectedSales.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {selectedSales.slice(0, 3).map((item) => (
+            <span key={item.id} className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+              <span className="truncate">{item.fullName}</span>
+              {!disabled && (
+                <button type="button" onClick={() => toggleSales(item.id)} aria-label="Bỏ chọn sales">
+                  <X size={12} />
+                </button>
+              )}
+            </span>
+          ))}
+          {selectedSales.length > 3 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500">+{selectedSales.length - 3}</span>}
+        </div>
+      )}
+      {open && !disabled && (
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+          <div className="max-h-72 overflow-y-auto p-1">
+            {salesOptions.map((item) => {
+              const checked = selectedSet.has(item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => toggleSales(item.id)}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-slate-50 ${checked ? 'bg-blue-50' : ''}`}
+                >
+                  <input type="checkbox" checked={checked} readOnly />
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-extrabold text-slate-900">{item.fullName}</span>
+                    <span className="block truncate text-xs text-slate-500">{item.email}</span>
+                  </span>
+                </button>
+              );
+            })}
+            {!salesOptions.length && <p className="py-6 text-center text-xs font-semibold text-slate-400">Chưa có sales active.</p>}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -996,32 +1198,34 @@ function LeadMultiSelect({
 }
 
 function TaskProofPanel({
-  task,
+  proofImages,
   busy,
   compact = false,
+  disabled = false,
   onAddProof,
   onRemoveProof,
 }: {
-  task: SalesTask;
+  proofImages: string[];
   busy: boolean;
   compact?: boolean;
-  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
-  onRemoveProof: (task: SalesTask, index: number) => void;
+  disabled?: boolean;
+  onAddProof: (files: FileList | File[]) => void;
+  onRemoveProof: (index: number) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const canAddMore = task.proofImages.length < MAX_TASK_PROOF_IMAGES && task.status !== 'done';
+  const canAddMore = !disabled && proofImages.length < MAX_TASK_PROOF_IMAGES;
   return (
     <div className={`w-full ${compact ? '' : 'min-w-[260px]'}`}>
-      <div className="flex flex-wrap justify-end gap-1">
-        {task.proofImages.map((src, index) => (
-          <div key={`${src}-${index}`} className="group relative h-12 w-12 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+      <div className="flex flex-wrap gap-2">
+        {proofImages.map((src, index) => (
+          <div key={`${src}-${index}`} className={`${compact ? 'h-12 w-12' : 'h-20 w-20'} group relative overflow-hidden rounded-md border border-slate-200 bg-slate-100`}>
             <a href={src} target="_blank" rel="noreferrer" title="Mở ảnh minh chứng">
               <img src={src} alt={`Ảnh minh chứng ${index + 1}`} className="h-full w-full object-cover" />
             </a>
-            {task.status !== 'done' && (
+            {!disabled && (
               <button
                 type="button"
-                onClick={() => onRemoveProof(task, index)}
+                onClick={() => onRemoveProof(index)}
                 className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white opacity-0 transition group-hover:opacity-100"
                 aria-label="Xóa ảnh minh chứng"
               >
@@ -1049,14 +1253,17 @@ function TaskProofPanel({
         multiple
         className="hidden"
         onChange={(event) => {
-          if (event.target.files?.length) onAddProof(task, event.target.files);
+          if (event.target.files?.length) onAddProof(event.target.files);
           event.target.value = '';
         }}
       />
-      {!compact && task.status !== 'done' && (
-        <p className="mt-1 text-right text-[11px] font-semibold text-slate-400">
+      {!compact && !disabled && (
+        <p className="mt-1 text-[11px] font-semibold text-slate-400">
           Cần ít nhất 1 ảnh để xác nhận hoàn thành.
         </p>
+      )}
+      {!proofImages.length && disabled && (
+        <p className="rounded-lg border border-dashed border-slate-200 py-5 text-center text-xs font-semibold text-slate-400">Chưa có ảnh minh chứng.</p>
       )}
     </div>
   );
@@ -1149,15 +1356,277 @@ function ReportBreakdown({ title, rows, total, showCompletion = false }: { title
   );
 }
 
+function TaskDetailModal({
+  task,
+  leads,
+  salesOptions,
+  canViewAll,
+  currentUserId,
+  busy,
+  onClose,
+  onSave,
+  onDelete,
+  onOpenLead,
+  onAddProof,
+  onRemoveProof,
+  onComplete,
+}: {
+  task: SalesTask;
+  leads: Lead[];
+  salesOptions: AdminUser[];
+  canViewAll: boolean;
+  currentUserId: string;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (id: string, patch: Partial<ManualTask>) => Promise<void>;
+  onDelete: (id: string) => void;
+  onOpenLead: (leadId: string) => void;
+  onAddProof: (task: SalesTask, assigneeId: string, files: FileList | File[]) => void;
+  onRemoveProof: (task: SalesTask, assigneeId: string, index: number) => void;
+  onComplete: (task: SalesTask, assigneeId: string) => void;
+}) {
+  const editable = task.type === 'manual';
+  const assignees = normalizeTaskAssignees(task);
+  const assigneeSelectOptions = useMemo(() => {
+    const map = new Map(salesOptions.map((item) => [item.id, item]));
+    assignees.forEach((assignee) => {
+      if (!map.has(assignee.id)) {
+        map.set(assignee.id, {
+          id: assignee.id,
+          fullName: assignee.name || assignee.id,
+          email: '',
+          role: 'sales',
+          active: true,
+          createdAt: '',
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [assignees, salesOptions]);
+  const [draft, setDraft] = useState({
+    title: task.title,
+    notes: task.detail || '',
+    dueAt: localInputValue(task.dueAt),
+    leadId: task.leadId || '',
+    category: task.category,
+    priority: task.priority,
+    assigneeIds: assignees.map((item) => item.id),
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const nextAssignees = normalizeTaskAssignees(task);
+    setDraft({
+      title: task.title,
+      notes: task.detail || '',
+      dueAt: localInputValue(task.dueAt),
+      leadId: task.leadId || '',
+      category: task.category,
+      priority: task.priority,
+      assigneeIds: nextAssignees.map((item) => item.id),
+    });
+    setError('');
+  }, [task]);
+
+  async function save() {
+    if (!editable) return;
+    setError('');
+    if (!draft.title.trim()) return setError('Vui lòng nhập nội dung task.');
+    if (!draft.dueAt) return setError('Vui lòng chọn hạn xử lý.');
+    const selectedSales = draft.assigneeIds.map((id) => assigneeSelectOptions.find((item) => item.id === id)).filter(Boolean) as AdminUser[];
+    if (!selectedSales.length) return setError('Vui lòng chọn ít nhất 1 sales phụ trách.');
+
+    setSaving(true);
+    try {
+      await onSave(task.id, {
+        title: draft.title.trim(),
+        notes: draft.notes.trim(),
+        dueAt: fromLocalInput(draft.dueAt),
+        leadId: draft.leadId,
+        category: draft.category,
+        priority: draft.priority,
+        assignedTo: selectedSales[0].id,
+        assignedToName: selectedSales[0].fullName,
+        assigneeIds: selectedSales.map((item) => item.id),
+      });
+      onClose();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Không cập nhật được task.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function confirmDelete() {
+    if (!editable) return;
+    if (window.confirm('Xóa task này?')) onDelete(task.id);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+      <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-extrabold text-slate-950">{task.title || 'Task'}</h2>
+              <Badge tone={task.status === 'done' ? 'green' : taskDueTone(task.dueAt)}>{task.status === 'done' ? 'Hoàn thành' : 'Đang mở'}</Badge>
+              <Badge tone="purple">{taskCategoryLabel(task.category)}</Badge>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              {taskAssigneeSummary(task)} · {formatDate(task.dueAt, true)} · {taskProofCount(task)} ảnh minh chứng
+            </p>
+          </div>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Đóng popup"><X size={18} /></Button>
+        </div>
+
+        <div className="grid max-h-[calc(92vh-146px)] gap-5 overflow-y-auto p-5 xl:grid-cols-[1fr_380px]">
+          <div className="space-y-4">
+            {!editable && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
+                Task này được sinh tự động từ lead/lịch hẹn, có thể xem chi tiết tại đây nhưng không sửa trực tiếp trong task.
+              </div>
+            )}
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field className="md:col-span-2" label="Nội dung task">
+                <Input value={draft.title} disabled={!editable} onChange={(event) => setDraft((item) => ({ ...item, title: event.target.value }))} />
+              </Field>
+              <Field label="Nhóm công việc">
+                <Select value={draft.category} disabled={!editable} onChange={(event) => setDraft((item) => ({ ...item, category: event.target.value as TaskCategory }))}>
+                  {TASK_CATEGORIES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </Select>
+              </Field>
+              <Field label="Priority">
+                <Select value={draft.priority} disabled={!editable} onChange={(event) => setDraft((item) => ({ ...item, priority: event.target.value as TaskPriority }))}>
+                  <option value="normal">Normal</option>
+                  <option value="high">High</option>
+                  <option value="low">Low</option>
+                </Select>
+              </Field>
+              <Field label="Hạn xử lý">
+                <Input type="datetime-local" value={draft.dueAt} disabled={!editable} onChange={(event) => setDraft((item) => ({ ...item, dueAt: event.target.value }))} />
+              </Field>
+              <Field label="Lead liên quan">
+                <Select value={draft.leadId} disabled={!editable} onChange={(event) => setDraft((item) => ({ ...item, leadId: event.target.value }))}>
+                  <option value="">Không link lead</option>
+                  {leads.slice(0, 200).map((lead) => (
+                    <option key={lead.id} value={lead.id}>{leadName(lead) || lead.phone || lead.id}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field className="md:col-span-2" label="Sales phụ trách">
+                <SalesMultiSelect
+                  salesOptions={assigneeSelectOptions}
+                  selectedIds={draft.assigneeIds}
+                  disabled={!editable || !canViewAll}
+                  onChange={(assigneeIds) => setDraft((item) => ({ ...item, assigneeIds }))}
+                />
+              </Field>
+              <Field className="md:col-span-2" label="Note chi tiết">
+                <Textarea rows={5} value={draft.notes} disabled={!editable} onChange={(event) => setDraft((item) => ({ ...item, notes: event.target.value }))} />
+              </Field>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 p-4">
+              <p className="text-xs font-extrabold uppercase text-slate-500">Thông tin task</p>
+              <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                <div>
+                  <p className="text-xs font-bold uppercase text-slate-400">Tạo bởi</p>
+                  <p className="font-semibold text-slate-800">{task.createdByName || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase text-slate-400">Hoàn thành</p>
+                  <p className="font-semibold text-slate-800">{task.completedAt ? formatDate(task.completedAt, true) : '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase text-slate-400">Lead</p>
+                  {task.leadId ? (
+                    <button type="button" className="font-bold text-[#003B7A] hover:underline" onClick={() => onOpenLead(task.leadId!)}>
+                      {task.leadName || task.parentName || task.phone || task.leadId}
+                    </button>
+                  ) : <p className="font-semibold text-slate-800">-</p>}
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase text-slate-400">Trạng thái sales</p>
+                  <p className="font-semibold text-slate-800">{taskDoneCount(task)}/{assignees.length || 1} hoàn thành</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <h3 className="font-extrabold text-slate-950">Bằng chứng kết quả</h3>
+              <p className="text-sm text-slate-500">Mỗi sales có khu vực ảnh minh chứng và nút xác nhận riêng.</p>
+            </div>
+            {assignees.map((assignee) => {
+              const canEditProof = editable && canEditAssigneeProof(assignee.id, currentUserId, canViewAll);
+              const locked = !canEditProof || assignee.status === 'done';
+              return (
+                <div key={assignee.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-extrabold text-slate-900">{assignee.name || assignee.id}</p>
+                      <p className="text-xs font-semibold text-slate-500">{assignee.proofImages.length} ảnh minh chứng</p>
+                    </div>
+                    <Badge tone={assignee.status === 'done' ? 'green' : 'orange'}>{assignee.status === 'done' ? 'Hoàn thành' : 'To-do'}</Badge>
+                  </div>
+                  <TaskProofPanel
+                    proofImages={assignee.proofImages}
+                    busy={busy}
+                    disabled={locked}
+                    onAddProof={(files) => onAddProof(task, assignee.id, files)}
+                    onRemoveProof={(index) => onRemoveProof(task, assignee.id, index)}
+                  />
+                  {assignee.completedAt && (
+                    <p className="mt-2 text-xs font-semibold text-emerald-700">
+                      Xác nhận: {formatDate(assignee.completedAt, true)}{assignee.completedByName ? ` · ${assignee.completedByName}` : ''}
+                    </p>
+                  )}
+                  {canEditProof && assignee.status !== 'done' && (
+                    <Button className="mt-3 w-full" size="sm" variant="secondary" onClick={() => onComplete(task, assignee.id)} disabled={busy || !assignee.proofImages.length}>
+                      <CheckCircle2 size={16} /> Xác nhận đã hoàn thành
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+            {!assignees.length && (
+              <div className="rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm font-semibold text-slate-400">
+                Chưa có sales phụ trách task.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap justify-between gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+          <div>
+            {editable && (
+              <Button type="button" variant="destructive" onClick={confirmDelete} disabled={busy || saving}><Trash2 size={16} /> Xóa task</Button>
+            )}
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            {error && <p className="self-center rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-600">{error}</p>}
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy || saving}>Đóng</Button>
+            {editable && (
+              <Button type="button" onClick={() => void save()} disabled={busy || saving}>
+                <Save size={16} /> {saving ? 'Đang lưu' : 'Lưu task'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TaskTable({
   tasks,
   sortField,
   sortDirection,
   onSort,
   onOpenLead,
-  onAddProof,
-  onRemoveProof,
-  onComplete,
+  onOpenTask,
   onDelete,
   busyTaskId,
 }: {
@@ -1166,9 +1635,7 @@ function TaskTable({
   sortDirection: SortDirection;
   onSort: (field: SortField) => void;
   onOpenLead: (leadId: string) => void;
-  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
-  onRemoveProof: (task: SalesTask, index: number) => void;
-  onComplete: (task: SalesTask) => void;
+  onOpenTask: (taskId: string) => void;
   onDelete: (id: string) => void;
   busyTaskId: string;
 }) {
@@ -1199,9 +1666,7 @@ function TaskTable({
               key={task.id}
               task={task}
               onOpenLead={onOpenLead}
-              onAddProof={onAddProof}
-              onRemoveProof={onRemoveProof}
-              onComplete={onComplete}
+              onOpenTask={onOpenTask}
               onDelete={onDelete}
               busy={busyTaskId === task.id}
             />
@@ -1218,22 +1683,20 @@ function TaskTable({
 function TaskRow({
   task,
   onOpenLead,
-  onAddProof,
-  onRemoveProof,
-  onComplete,
+  onOpenTask,
   onDelete,
   busy,
 }: {
   task: SalesTask;
   onOpenLead: (leadId: string) => void;
-  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
-  onRemoveProof: (task: SalesTask, index: number) => void;
-  onComplete: (task: SalesTask) => void;
+  onOpenTask: (taskId: string) => void;
   onDelete: (id: string) => void;
   busy: boolean;
 }) {
+  const proofCount = taskProofCount(task);
+  const assignees = normalizeTaskAssignees(task);
   return (
-    <tr className="border-b border-slate-100 align-top">
+    <tr className="cursor-pointer border-b border-slate-100 align-top transition hover:bg-slate-50" onClick={() => onOpenTask(task.id)}>
       <td className="py-3 pr-3">
         <div className="flex items-start gap-3">
           <TaskIcon type={task.type} />
@@ -1243,8 +1706,9 @@ function TaskRow({
             <div className="mt-2 flex flex-wrap gap-1">
               <Badge tone={task.status === 'done' ? 'green' : taskDueTone(task.dueAt)}>{task.status === 'done' ? 'Hoàn thành' : taskLabel(task.type)}</Badge>
               <Badge tone="purple">{taskCategoryLabel(task.category)}</Badge>
+              {assignees.length > 1 && <Badge tone="blue">{taskDoneCount(task)}/{assignees.length} sales xong</Badge>}
               {task.createdByName && <Badge tone="gray">Tạo bởi {task.createdByName}</Badge>}
-              {task.proofImages.length > 0 && <Badge tone="green">{task.proofImages.length} ảnh</Badge>}
+              {proofCount > 0 && <Badge tone="green">{proofCount} ảnh</Badge>}
             </div>
             {task.completedAt && <p className="mt-1 text-[11px] font-semibold text-emerald-700">Hoàn thành: {formatDate(task.completedAt, true)}{task.completedByName ? ` · ${task.completedByName}` : ''}</p>}
           </div>
@@ -1252,34 +1716,22 @@ function TaskRow({
       </td>
       <td className="px-3 py-3">
         {task.leadId ? (
-          <button type="button" className="font-bold text-[#003B7A] hover:underline" onClick={() => onOpenLead(task.leadId!)}>
+          <button type="button" className="font-bold text-[#003B7A] hover:underline" onClick={(event) => { event.stopPropagation(); onOpenLead(task.leadId!); }}>
             {task.leadName || task.parentName || task.phone || 'Mở lead'}
           </button>
         ) : '-'}
         {task.phone && <p className="mt-1 text-xs text-slate-500">{task.phone}</p>}
       </td>
-      <td className="px-3 py-3 font-semibold text-slate-700">{task.assignedToName || task.assignedTo || '-'}</td>
+      <td className="px-3 py-3 font-semibold text-slate-700">{taskAssigneeSummary(task)}</td>
       <td className="px-3 py-3">
         <p className={`font-bold ${taskDueTone(task.dueAt) === 'red' ? 'text-red-600' : 'text-slate-800'}`}>{formatDate(task.dueAt, true)}</p>
       </td>
       <td className="px-3 py-3"><PriorityBadge value={task.priority} /></td>
       <td className="px-3 py-3">
         <div className="flex justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); onOpenTask(task.id); }}><Eye /> Chi tiết</Button>
           {task.type === 'manual' && (
-            <div className="flex max-w-[360px] flex-col items-end gap-2">
-              <TaskProofPanel task={task} busy={busy} onAddProof={onAddProof} onRemoveProof={onRemoveProof} />
-              <div className="flex justify-end gap-2">
-                {task.status !== 'done' && (
-                  <Button size="sm" variant="outline" onClick={() => onComplete(task)} disabled={busy || !task.proofImages.length}>
-                    <CheckCircle2 /> Xác nhận xong
-                  </Button>
-                )}
-              <Button size="sm" variant="outline" onClick={() => onDelete(task.id)}><Trash2 /> Xóa</Button>
-              </div>
-            </div>
-          )}
-          {task.leadId && (
-            <Button size="sm" variant="outline" onClick={() => onOpenLead(task.leadId!)}>Mở lead</Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={(event) => { event.stopPropagation(); onDelete(task.id); }}><Trash2 /> Xóa</Button>
           )}
         </div>
       </td>
@@ -1290,17 +1742,13 @@ function TaskRow({
 function TaskKanban({
   groups,
   onOpenLead,
-  onAddProof,
-  onRemoveProof,
-  onComplete,
+  onOpenTask,
   onDelete,
   busyTaskId,
 }: {
   groups: Record<string, SalesTask[]>;
   onOpenLead: (leadId: string) => void;
-  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
-  onRemoveProof: (task: SalesTask, index: number) => void;
-  onComplete: (task: SalesTask) => void;
+  onOpenTask: (taskId: string) => void;
   onDelete: (id: string) => void;
   busyTaskId: string;
 }) {
@@ -1327,9 +1775,7 @@ function TaskKanban({
                   key={task.id}
                   task={task}
                   onOpenLead={onOpenLead}
-                  onAddProof={onAddProof}
-                  onRemoveProof={onRemoveProof}
-                  onComplete={onComplete}
+                  onOpenTask={onOpenTask}
                   onDelete={onDelete}
                   busy={busyTaskId === task.id}
                 />
@@ -1346,22 +1792,20 @@ function TaskKanban({
 function TaskKanbanCard({
   task,
   onOpenLead,
-  onAddProof,
-  onRemoveProof,
-  onComplete,
+  onOpenTask,
   onDelete,
   busy,
 }: {
   task: SalesTask;
   onOpenLead: (leadId: string) => void;
-  onAddProof: (task: SalesTask, files: FileList | File[]) => void;
-  onRemoveProof: (task: SalesTask, index: number) => void;
-  onComplete: (task: SalesTask) => void;
+  onOpenTask: (taskId: string) => void;
   onDelete: (id: string) => void;
   busy: boolean;
 }) {
+  const proofCount = taskProofCount(task);
+  const assignees = normalizeTaskAssignees(task);
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+    <div className="cursor-pointer rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition hover:border-[#003B7A]/40 hover:shadow-md" onClick={() => onOpenTask(task.id)}>
       <div className="flex items-start gap-2">
         <TaskIcon type={task.type} />
         <div className="min-w-0">
@@ -1374,27 +1818,23 @@ function TaskKanbanCard({
         <PriorityBadge value={task.priority} />
         <Badge tone="gray">{taskLabel(task.type)}</Badge>
         <Badge tone="purple">{taskCategoryLabel(task.category)}</Badge>
-        {task.proofImages.length > 0 && <Badge tone="green">{task.proofImages.length} ảnh</Badge>}
+        {assignees.length > 1 && <Badge tone="blue">{taskDoneCount(task)}/{assignees.length} sales</Badge>}
+        {proofCount > 0 && <Badge tone="green">{proofCount} ảnh</Badge>}
       </div>
       <div className="mt-3 border-t border-slate-100 pt-3">
         {task.leadId && (
-          <button type="button" className="block text-left text-sm font-bold text-[#003B7A] hover:underline" onClick={() => onOpenLead(task.leadId!)}>
+          <button type="button" className="block text-left text-sm font-bold text-[#003B7A] hover:underline" onClick={(event) => { event.stopPropagation(); onOpenLead(task.leadId!); }}>
             {task.leadName || task.parentName || task.phone || 'Mở lead'}
           </button>
         )}
-        <p className="mt-1 text-xs text-slate-500">{task.assignedToName || task.assignedTo || '-'}</p>
+        <p className="mt-1 text-xs text-slate-500">{taskAssigneeSummary(task)}</p>
       </div>
       {task.completedAt && <p className="mt-2 text-[11px] font-semibold text-emerald-700">Hoàn thành: {formatDate(task.completedAt, true)}</p>}
       {task.type === 'manual' && (
         <div className="mt-3 space-y-2">
-          <TaskProofPanel task={task} busy={busy} compact onAddProof={onAddProof} onRemoveProof={onRemoveProof} />
           <div className="flex gap-2">
-            {task.status !== 'done' && (
-              <Button size="sm" variant="outline" onClick={() => onComplete(task)} disabled={busy || !task.proofImages.length}>
-                <CheckCircle2 /> Xong
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => onDelete(task.id)}><Trash2 /> Xóa</Button>
+            <Button size="sm" variant="outline" onClick={(event) => { event.stopPropagation(); onOpenTask(task.id); }}><Eye /> Chi tiết</Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={(event) => { event.stopPropagation(); onDelete(task.id); }}><Trash2 /> Xóa</Button>
           </div>
         </div>
       )}

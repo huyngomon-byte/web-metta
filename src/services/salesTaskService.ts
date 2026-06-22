@@ -16,6 +16,16 @@ export type TaskStatus = 'open' | 'done';
 export type TaskPriority = 'low' | 'normal' | 'high';
 export type TaskCategory = 'center_consulting' | 'telesales' | 'seeding' | 'flyering' | 'page_care' | 'class_management';
 
+export type TaskAssignee = {
+  id: string;
+  name: string;
+  proofImages: string[];
+  status: TaskStatus;
+  completedAt?: string;
+  completedBy?: string;
+  completedByName?: string;
+};
+
 export const TASK_CATEGORIES: Array<{ value: TaskCategory; label: string }> = [
   { value: 'center_consulting', label: 'Tư vấn tại trung tâm' },
   { value: 'telesales', label: 'Telesales' },
@@ -32,6 +42,8 @@ export type ManualTask = {
   dueAt: string;
   assignedTo: string;
   assignedToName: string;
+  assigneeIds: string[];
+  assignees: TaskAssignee[];
   leadId?: string;
   category: TaskCategory;
   status: TaskStatus;
@@ -72,20 +84,73 @@ function normalizeProofImages(value: unknown) {
     .slice(0, 8);
 }
 
+function normalizeTaskStatus(value?: string): TaskStatus {
+  return value === 'done' ? 'done' : 'open';
+}
+
+function normalizeAssignees(task: Partial<ManualTask>): TaskAssignee[] {
+  const byId = new Map<string, TaskAssignee>();
+  const rawAssignees = Array.isArray(task.assignees) ? task.assignees : [];
+
+  rawAssignees.forEach((item) => {
+    const id = String(item?.id || '').trim();
+    if (!id) return;
+    byId.set(id, {
+      id,
+      name: String(item?.name || id).trim(),
+      proofImages: normalizeProofImages(item?.proofImages),
+      status: normalizeTaskStatus(item?.status),
+      completedAt: String(item?.completedAt || '').trim() || undefined,
+      completedBy: String(item?.completedBy || '').trim() || undefined,
+      completedByName: String(item?.completedByName || '').trim() || undefined,
+    });
+  });
+
+  const legacyId = String(task.assignedTo || '').trim();
+  if (legacyId && !byId.has(legacyId)) {
+    byId.set(legacyId, {
+      id: legacyId,
+      name: String(task.assignedToName || legacyId).trim(),
+      proofImages: normalizeProofImages(task.proofImages),
+      status: normalizeTaskStatus(task.status),
+      completedAt: String(task.completedAt || '').trim() || undefined,
+      completedBy: String(task.completedBy || '').trim() || undefined,
+      completedByName: String(task.completedByName || '').trim() || undefined,
+    });
+  }
+
+  const assigneeIds = Array.isArray(task.assigneeIds) ? task.assigneeIds : [];
+  assigneeIds.forEach((item) => {
+    const id = String(item || '').trim();
+    if (!id || byId.has(id)) return;
+    byId.set(id, { id, name: id, proofImages: [], status: 'open' });
+  });
+
+  return Array.from(byId.values()).slice(0, 20);
+}
+
 function normalizeTask(task: Partial<ManualTask>): ManualTask {
   const timestamp = now();
+  const assignees = normalizeAssignees(task);
+  const primaryAssignee = assignees[0];
+  const proofImages = normalizeProofImages(task.proofImages);
+  const status = assignees.length
+    ? assignees.every((item) => item.status === 'done') ? 'done' : 'open'
+    : normalizeTaskStatus(task.status);
   return {
     id: task.id || `task-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: String(task.title || '').trim(),
     notes: String(task.notes || '').trim(),
     dueAt: task.dueAt || timestamp,
-    assignedTo: String(task.assignedTo || '').trim(),
-    assignedToName: String(task.assignedToName || '').trim(),
+    assignedTo: String(task.assignedTo || primaryAssignee?.id || '').trim(),
+    assignedToName: String(task.assignedToName || primaryAssignee?.name || '').trim(),
+    assigneeIds: assignees.map((item) => item.id),
+    assignees,
     leadId: String(task.leadId || '').trim(),
     category: normalizeCategory(task.category),
-    status: task.status || 'open',
+    status,
     priority: task.priority || 'normal',
-    proofImages: normalizeProofImages(task.proofImages),
+    proofImages: proofImages.length ? proofImages : primaryAssignee?.proofImages || [],
     completedAt: String(task.completedAt || '').trim() || undefined,
     completedBy: String(task.completedBy || '').trim() || undefined,
     completedByName: String(task.completedByName || '').trim() || undefined,
@@ -161,6 +226,11 @@ export const salesTaskService = {
     }
 
     const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
+    if (!canViewAll) {
+      const tasks = await salesTaskService.getTasks();
+      return cursorUpdatedAt ? tasks.filter((task) => task.updatedAt < cursorUpdatedAt).slice(0, safePageSize) : tasks.slice(0, safePageSize);
+    }
+
     const taskQuery = canViewAll
       ? query(
         collection(db!, COL_MANUAL_TASKS),
@@ -168,13 +238,7 @@ export const salesTaskService = {
         ...(cursorUpdatedAt ? [startAfter(cursorUpdatedAt)] : []),
         limit(safePageSize),
       )
-      : query(
-        collection(db!, COL_MANUAL_TASKS),
-        where('assignedTo', '==', user?.id || ''),
-        orderBy('updatedAt', 'desc'),
-        ...(cursorUpdatedAt ? [startAfter(cursorUpdatedAt)] : []),
-        limit(safePageSize),
-      );
+      : query(collection(db!, COL_MANUAL_TASKS), limit(safePageSize));
     const snap = await getDocs(taskQuery);
     const page = mergeTasks(snap.docs.map((item) => ({ id: item.id, ...item.data() } as ManualTask)));
     writeLocalTasks(cursorUpdatedAt ? [...cachedTasks, ...page] : page, false);
@@ -189,9 +253,38 @@ export const salesTaskService = {
     }
 
     const canViewAll = Boolean(user && ['admin', 'manager'].includes(user.role));
-    const taskQuery = canViewAll
-      ? query(collection(db!, COL_MANUAL_TASKS), orderBy('updatedAt', 'desc'), limit(TASK_PAGE_SIZE))
-      : query(collection(db!, COL_MANUAL_TASKS), where('assignedTo', '==', user?.id || ''), orderBy('updatedAt', 'desc'), limit(TASK_PAGE_SIZE));
+    if (!canViewAll) {
+      const uid = user?.id || '';
+      let legacyTasks: ManualTask[] = [];
+      let multiTasks: ManualTask[] = [];
+      const emit = () => {
+        dispatchRealtimeOk();
+        const tasks = mergeTasks([...legacyTasks, ...multiTasks]);
+        writeLocalTasks(tasks, false);
+        callback(tasks);
+      };
+      const legacyQuery = query(collection(db!, COL_MANUAL_TASKS), where('assignedTo', '==', uid), limit(TASK_PAGE_SIZE));
+      const multiQuery = query(collection(db!, COL_MANUAL_TASKS), where('assigneeIds', 'array-contains', uid), limit(TASK_PAGE_SIZE));
+      const handleError = (error: unknown) => {
+        console.warn('[SalesTasks] Realtime listener failed:', error);
+        dispatchRealtimeError('Tasks realtime Ä‘ang fallback');
+        onError?.(error);
+      };
+      const unsubLegacy = onSnapshot(legacyQuery, (snap) => {
+        legacyTasks = snap.docs.map((item) => ({ id: item.id, ...item.data() } as ManualTask));
+        emit();
+      }, handleError);
+      const unsubMulti = onSnapshot(multiQuery, (snap) => {
+        multiTasks = snap.docs.map((item) => ({ id: item.id, ...item.data() } as ManualTask));
+        emit();
+      }, handleError);
+      return () => {
+        unsubLegacy();
+        unsubMulti();
+      };
+    }
+
+    const taskQuery = query(collection(db!, COL_MANUAL_TASKS), orderBy('updatedAt', 'desc'), limit(TASK_PAGE_SIZE));
 
     return onSnapshot(taskQuery, (snap) => {
       dispatchRealtimeOk();
