@@ -632,9 +632,10 @@ export default function LeadsPage() {
   }
 
   async function removeLead(id: string) {
-    if (!confirm('Xóa lead này?')) return;
+    if (!confirm('Xóa lead này?')) return false;
     await leadService.deleteLead(id);
     await refresh();
+    return true;
   }
 
   async function callLead(lead: Lead) {
@@ -1193,7 +1194,7 @@ export default function LeadsPage() {
       )}
 
       {view === 'table' ? (
-        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={(lead) => setEditing(toDraft(lead))} onDetail={setDetailLead} onDelete={removeLead} onCall={callLead} callLogs={callLogs} sourceConfigs={sourceConfigs} courseDealSizes={courseDealSizes} />
+        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={setDetailLead} onDetail={setDetailLead} onDelete={removeLead} onCall={callLead} callLogs={callLogs} sourceConfigs={sourceConfigs} courseDealSizes={courseDealSizes} />
       ) : (
         <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} courseOptions={courseOptions} courseDealSizes={courseDealSizes} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
       )}
@@ -1212,6 +1213,11 @@ export default function LeadsPage() {
           sourceConfigs={sourceConfigs}
           priorityForSource={priorityForSource}
           onCall={callLead}
+          onDelete={canAssign ? async (id) => {
+            const deleted = await removeLead(id);
+            if (deleted) setDetailLead(null);
+            return deleted;
+          } : undefined}
           callLogs={callLogs}
         />
       )}
@@ -1494,6 +1500,7 @@ function LeadDetailModal({
   sourceConfigs,
   priorityForSource,
   onCall,
+  onDelete,
   callLogs,
 }: {
   lead: Lead;
@@ -1508,6 +1515,7 @@ function LeadDetailModal({
   sourceConfigs: LeadSourceConfig[];
   priorityForSource: (source?: string, fallback?: number) => LeadPriorityLevel;
   onCall: (lead: Lead) => void | Promise<void>;
+  onDelete?: (id: string) => boolean | Promise<boolean>;
   callLogs: CallLog[];
 }) {
   const [draft, setDraft] = useState<LeadDraft>(() => toDraft(lead));
@@ -1517,6 +1525,7 @@ function LeadDetailModal({
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function loadRelated() {
     const [nextActivities, nextAppointments] = await Promise.all([
@@ -1633,6 +1642,20 @@ function LeadDetailModal({
     await loadRelated();
   }
 
+  async function deleteLeadFromModal() {
+    if (!onDelete || deleting || saving) return;
+    setError('');
+    setMessage('');
+    setDeleting(true);
+    try {
+      await onDelete(lead.id);
+    } catch (err) {
+      setError(err instanceof Error ? `Không xóa được lead: ${err.message}` : 'Không xóa được lead.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const timeline = buildLeadTimeline(draft as Lead, activities, appointments, courseDealSizes);
   const leadCallLogs = useMemo(() => callLogs.filter((log) => log.leadId === lead.id), [callLogs, lead.id]);
   const toneClass: Record<string, string> = {
@@ -1659,6 +1682,11 @@ function LeadDetailModal({
             <Button variant="outline" size="sm" onClick={() => void onCall(draft as Lead)} disabled={!draft.phone}>
               <PhoneCall size={16} /> Gọi
             </Button>
+            {onDelete && (
+              <Button variant="destructive" size="sm" onClick={() => void deleteLeadFromModal()} disabled={saving || deleting}>
+                <Trash2 size={16} /> {deleting ? 'Đang xóa' : 'Xóa lead'}
+              </Button>
+            )}
             <button type="button" className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900" onClick={onClose} title="Đóng">
               <X size={18} />
             </button>
