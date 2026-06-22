@@ -255,6 +255,8 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
       id: session.log?.id || session.providerCallId,
       provider: 'stringee',
       providerCallId: session.providerCallId,
+      clientCallId: session.log?.clientCallId,
+      stringeeCallId: session.log?.stringeeCallId,
       leadId: session.leadId,
       leadName: session.leadName,
       direction: session.direction,
@@ -274,9 +276,17 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
     activeCallRef.current = null;
     setActiveCall(null);
     setIncomingCall(null);
+    let finishError = '';
+    if (!session.sdkCall) {
+      await callCenterService.finishPccCall(log, status).catch((err) => {
+        console.warn('[CallCenter] Cannot release PCC call lock:', err);
+        finishError = err instanceof Error ? err.message : 'CRM chưa giải phóng được lock cuộc gọi.';
+      });
+    }
     try {
       const saved = await callCenterService.saveLog(log);
       setPendingWrapUp(saved);
+      if (finishError) setError(`Đã đóng widget cuộc gọi, nhưng ${finishError}`);
     } catch (err) {
       console.warn('[CallCenter] Cannot persist finished call log:', err);
       setPendingWrapUp(log);
@@ -465,6 +475,7 @@ export function CallCenterProvider({ children }: { children: React.ReactNode }) 
           id: resolvedCallId,
           providerCallId: resolvedCallId,
           clientCallId: result.clientCallId || providerCallId,
+          stringeeCallId: result.stringeeCallId,
           direction: 'outbound',
           status: 'ringing',
           leadId: lead.id,

@@ -41,6 +41,14 @@ function callIdMatches(lock: Record<string, unknown>, callId?: string | string[]
   ].some((value) => targets.has(String(value || '')));
 }
 
+function terminalLog(data: Record<string, unknown>) {
+  const status = String(data.status || data.callStatus || '').toLowerCase();
+  return status === 'ended'
+    || status === 'failed'
+    || status === 'missed'
+    || Boolean(data.endedAt || data.stopTime);
+}
+
 export async function acquireCallLock(db: Firestore, data: Record<string, unknown>) {
   const ref = db.collection('callLocks').doc(LOCK_ID);
   const nowMs = Date.now();
@@ -52,7 +60,21 @@ export async function acquireCallLock(db: Firestore, data: Record<string, unknow
     const lockAgeMs = Number(existing.acquiredAtMs || 0) ? nowMs - Number(existing.acquiredAtMs || 0) : 0;
     const existingCallStatus = String(existing.callStatus || '').toLowerCase();
     const ringingStale = existingCallStatus !== 'answered' && lockAgeMs >= ringingLockTtlMs();
-    const active = existing.status === 'active' && Number(existing.expiresAtMs || 0) > nowMs && !ringingStale;
+    const logIds = Array.from(new Set([
+      existing.providerCallId,
+      existing.clientCallId,
+      existing.stringeeCallId,
+      existing.id,
+    ].map((value) => String(value || '').trim()).filter(Boolean)));
+    let alreadyEnded = false;
+    for (const id of logIds) {
+      const logSnap = await transaction.get(db.collection('callLogs').doc(id));
+      if (logSnap.exists && terminalLog(logSnap.data() || {})) {
+        alreadyEnded = true;
+        break;
+      }
+    }
+    const active = existing.status === 'active' && Number(existing.expiresAtMs || 0) > nowMs && !ringingStale && !alreadyEnded;
     if (active) throw new CallLockBusyError(existing);
 
     transaction.set(ref, {

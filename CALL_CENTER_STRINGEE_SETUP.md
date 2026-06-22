@@ -46,6 +46,9 @@ Do not overwrite those with `/api/call/answer`. PCC routing is controlled by Que
 Outbound PCC callout:
 POST https://www.metta.edu.vn/api/call/outbound
 
+CRM finish/release active call lock:
+POST https://www.metta.edu.vn/api/call/finish
+
 Inbound Queue agent routing:
 https://www.metta.edu.vn/api/call/pcc-agents
 

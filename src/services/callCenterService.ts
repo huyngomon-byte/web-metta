@@ -245,8 +245,31 @@ export const callCenterService = {
         fromNumber: settings.fromNumber,
       }),
     });
-    const payload = await response.json().catch(() => ({})) as { ok?: boolean; providerCallId?: string; clientCallId?: string; userId?: string; message?: string; error?: string };
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; providerCallId?: string; clientCallId?: string; stringeeCallId?: string; userId?: string; message?: string; error?: string };
     if (!response.ok || !payload.ok) throw new Error(payload.error || 'Stringee PCC chưa tạo được cuộc gọi.');
+    return payload;
+  },
+
+  finishPccCall: async (log: Partial<CallLog>, status: 'ended' | 'failed' | 'missed' = 'ended') => {
+    const idToken = await currentFirebaseIdToken();
+    const response = await fetch('/api/call/finish', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
+      body: JSON.stringify({
+        providerCallId: log.providerCallId || log.id,
+        clientCallId: log.clientCallId,
+        stringeeCallId: log.stringeeCallId,
+        callLogId: log.id,
+        status,
+        startedAt: log.startedAt,
+        reason: 'crm_hangup',
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; callId?: string; status?: string; error?: string };
+    if (!response.ok || !payload.ok) throw new Error(payload.error || 'CRM chÆ°a giáº£i phÃ³ng Ä‘Æ°á»£c lock cuá»™c gá»i.');
     return payload;
   },
 

@@ -1,4 +1,5 @@
 import eventHandler from '../../server/call/event.js';
+import finishHandler from '../../server/call/finish.js';
 import outboundHandler from '../../server/call/outbound.js';
 import pccAgentsHandler from '../../server/call/pcc-agents.js';
 import recordingHandler from '../../server/call/recording.js';
@@ -15,6 +16,7 @@ type VercelResponse = {
 
 const handlers: Record<string, (req: any, res: any) => Promise<unknown>> = {
   event: eventHandler,
+  finish: finishHandler,
   outbound: outboundHandler,
   'pcc-agents': pccAgentsHandler,
   recording: recordingHandler,
