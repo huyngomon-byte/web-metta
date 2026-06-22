@@ -123,64 +123,6 @@ export async function stringeePccAgentByUserId(userId: string) {
   return agents.find((agent: Record<string, unknown>) => String(agent.stringee_user_id || '').trim() === target) || null;
 }
 
-export async function stringeePhoneBridgeCallout(input: {
-  agentPhoneNumber: string;
-  customerNumber: string;
-  fromNumber?: string;
-}) {
-  const fromNumber = normalizePhone(input.fromNumber || process.env.STRINGEE_FROM_NUMBER || DEFAULT_STRINGEE_FROM_NUMBER);
-  const agentPhoneNumber = normalizePhone(input.agentPhoneNumber);
-  const customerNumber = normalizePhone(input.customerNumber);
-  if (!fromNumber) throw new Error('Missing Stringee from number');
-  if (!agentPhoneNumber) throw new Error('Missing agent phone number');
-  if (!customerNumber) throw new Error('Missing customer phone number');
-
-  const body = {
-    from: {
-      type: 'external',
-      number: fromNumber,
-      alias: 'METTA Academy',
-    },
-    to: [{
-      type: 'external',
-      number: agentPhoneNumber,
-      alias: agentPhoneNumber,
-    }],
-    actions: [{
-      action: 'connect',
-      from: {
-        type: 'external',
-        number: fromNumber,
-        alias: 'METTA Academy',
-      },
-      to: {
-        type: 'external',
-        number: customerNumber,
-        alias: customerNumber,
-      },
-    }],
-  };
-
-  const response = await fetch('https://api.stringee.com/v1/call2/callout', {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      'X-STRINGEE-AUTH': stringeeRestToken(),
-    },
-    body: JSON.stringify(body),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(`Stringee phone bridge HTTP ${response.status}`);
-  }
-  const result = Number(payload?.r);
-  if (Number.isFinite(result) && result !== 0) {
-    throw new Error(String(payload?.message || payload?.msg || `Stringee phone bridge failed (${result})`));
-  }
-  return { payload, request: body };
-}
-
 export function normalizePhone(phone?: string) {
   const digits = String(phone || '').replace(/[^\d+]/g, '');
   if (!digits) return '';

@@ -245,7 +245,7 @@ export const callCenterService = {
         fromNumber: settings.fromNumber,
       }),
     });
-    const payload = await response.json().catch(() => ({})) as { ok?: boolean; providerCallId?: string; clientCallId?: string; stringeeCallId?: string; userId?: string; message?: string; error?: string };
+    const payload = await response.json().catch(() => ({})) as { ok?: boolean; providerCallId?: string; clientCallId?: string; stringeeCallId?: string; userId?: string; mode?: string; message?: string; error?: string };
     if (!response.ok || !payload.ok) throw new Error(payload.error || 'Stringee PCC chưa tạo được cuộc gọi.');
     return payload;
   },

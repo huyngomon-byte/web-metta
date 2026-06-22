@@ -1,6 +1,6 @@
 import { adminDb } from '../../api/_firebaseAdmin.js';
 import { ApiError, requireApiUser } from '../../api/_apiAuth.js';
-import { normalizePhone, stringeePccAgentByUserId, stringeePccCallout, stringeePhoneBridgeCallout } from '../../api/_stringee.js';
+import { normalizePhone, stringeePccAgentByUserId, stringeePccCallout } from '../../api/_stringee.js';
 import { acquireCallLock, CallLockBusyError, releaseCallLock, updateCallLock } from './lock.js';
 
 type VercelRequest = {
@@ -53,17 +53,39 @@ function mappingForCrm(crmUserId: string, config: CallSettings) {
   return config.userMappings?.find((item) => item.crmUserId === crmUserId && item.active !== false);
 }
 
+type ActiveUserMapping = NonNullable<CallSettings['userMappings']>[number];
+
 function mappedCrmName(crmUserId: string, config: CallSettings) {
   return config.userMappings?.find((item) => item.crmUserId === crmUserId && item.active !== false)?.crmName || '';
 }
 
-async function resolveAgentPhone(stringeeUserId: string, mapping?: NonNullable<CallSettings['userMappings']>[number]) {
+function looksLikePhoneNumber(value: string) {
+  return /^\+?\d{8,15}$/.test(String(value || '').trim());
+}
+
+async function resolveAgentRouting(stringeeUserId: string, mapping?: ActiveUserMapping) {
+  if (looksLikePhoneNumber(stringeeUserId)) {
+    throw new Error('Stringee userId trong mapping đang là số điện thoại. Hãy dùng agent userId (ví dụ u4/u5); số điện thoại agent đặt ở trường SĐT agent.');
+  }
+
   const configuredPhone = normalizePhone(mapping?.agentPhoneNumber || '');
-  if (configuredPhone) return configuredPhone;
+  const configuredRoutingType = Number(mapping?.routingType || 0);
   const agent = await stringeePccAgentByUserId(stringeeUserId).catch(() => null);
-  const routingType = Number(agent?.routing_type);
+  const stringeeRoutingType = Number(agent?.routing_type || 0);
   const agentPhone = normalizePhone(String(agent?.phone_number || ''));
-  return routingType === 2 && agentPhone ? agentPhone : '';
+  const routingType = configuredRoutingType || stringeeRoutingType || undefined;
+  const agentPhoneNumber = configuredPhone || agentPhone;
+
+  if (routingType === 2 && !agentPhoneNumber) {
+    throw new Error(`Agent Stringee ${stringeeUserId} đang route qua SĐT agent nhưng thiếu phone_number. Hãy điền SĐT agent trong CRM hoặc Stringee PCC.`);
+  }
+
+  return {
+    agentPhoneNumber,
+    routingType,
+    stringeeRoutingType: stringeeRoutingType || undefined,
+    crmRoutingType: configuredRoutingType || undefined,
+  };
 }
 
 async function writeInitialLog(db: ReturnType<typeof adminDb>, data: Record<string, unknown>) {
@@ -190,24 +212,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     lockAcquired = true;
 
-    const agentPhoneNumber = await resolveAgentPhone(stringeeUserId, requestedMapping || fallbackMapping);
-    const result = agentPhoneNumber
-      ? await stringeePhoneBridgeCallout({
-        agentPhoneNumber,
-        customerNumber,
-        fromNumber,
-      })
-      : await stringeePccCallout({
-        agentUserId: stringeeUserId,
-        customerNumber,
-        fromNumber,
-        toAgentFromNumberDisplay: `Call-out-from-${fromNumber}`,
-        toAgentFromNumberDisplayAlias: `Call-out-from-${fromNumber}-Alias`,
-      });
+    const agentRouting = await resolveAgentRouting(stringeeUserId, requestedMapping || fallbackMapping);
+    const result = await stringeePccCallout({
+      agentUserId: stringeeUserId,
+      customerNumber,
+      fromNumber,
+      toAgentFromNumberDisplay: `Call-out-from-${fromNumber}`,
+      toAgentFromNumberDisplayAlias: `Call-out-from-${fromNumber}-Alias`,
+    });
 
     const stringeeCallId = stringeeCallIdFromPayload(result.payload);
     const logId = stringeeCallId || providerCallId;
-    const calloutMode = agentPhoneNumber ? 'phone_bridge' : 'pcc_app_sip';
+    const calloutMode = 'pcc_rest_callout';
     const startedAt = new Date().toISOString();
 
     await updateCallLock(db, {
@@ -230,7 +246,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stringeeAgentId: stringeeUserId,
       routedAgentId: routedCrmId,
       routedAgentName,
-      agentPhoneNumber,
+      agentPhoneNumber: agentRouting.agentPhoneNumber,
       fromNumber,
       toNumber: customerNumber,
       customerNumber,
@@ -238,9 +254,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       startedAt,
       startTime: startedAt,
       rawEvent: {
-        type: agentPhoneNumber ? 'phone_bridge_callout_requested' : 'pcc_callout_requested',
+        type: 'pcc_callout_requested',
         calloutMode,
         fallbackUsed: !requestedMapping && Boolean(fallbackMapping),
+        agentRouting,
         stringeeResponse: result.payload,
         request: result.request,
       },
