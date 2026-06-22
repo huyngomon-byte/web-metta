@@ -378,10 +378,11 @@ const SummerHeroContent = memo(function SummerHeroContent({
     <div
       className="w-full max-w-[680px] p-5 sm:p-7 lg:p-8"
       style={{
-        background: 'linear-gradient(135deg, rgba(8,36,74,0.95), rgba(0,59,122,0.9))',
-        border: '1px solid rgba(255,255,255,0.22)',
+        background: 'rgba(255,255,255,0.08)',
+        border: '1px solid rgba(255,255,255,0.18)',
         borderRadius: '24px',
-        boxShadow: '0 24px 70px -36px rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
       }}
     >
       <Link to="/#programs" className="mb-5 inline-flex items-center gap-2 text-sm font-bold text-white/70 transition-colors hover:text-white sm:mb-6">
@@ -532,7 +533,7 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
     if (heroSlides.length <= 1) return;
     const timer = window.setInterval(() => {
       setHeroSlideIndex((current) => (current + 1) % heroSlides.length);
-    }, 4500);
+    }, 4000);
     return () => window.clearInterval(timer);
   }, [heroSlides.length]);
 
