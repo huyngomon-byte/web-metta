@@ -1328,8 +1328,11 @@ function ProgramCard({
                 onChange={(e) => {
                   const raw = e.target.value;
                   const parsed = Number(raw);
-                  set('dealSize', raw !== '' && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined);
-                  set('dealCurrency', DEFAULT_DEAL_CURRENCY);
+                  onChange({
+                    ...program,
+                    dealSize: raw !== '' && Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+                    dealCurrency: DEFAULT_DEAL_CURRENCY,
+                  });
                 }}
               />
               <p className="text-[11px] font-semibold text-slate-400">
