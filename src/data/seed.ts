@@ -519,7 +519,17 @@ export const sections: PageSection[] = [
     buttonText: 'Đăng ký ngay',
     button2Text: 'Xem lộ trình hè',
     formId: 'metta-summer-2026-landing',
-    extraData: JSON.stringify({ badge: 'METTA Summer 2026', tags: ['4–11 tuổi', '6 tuần', '24 buổi', 'Showcase cuối khóa'], imageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè' }),
+    extraData: JSON.stringify({
+      badge: 'METTA Summer 2026',
+      tags: ['4–11 tuổi', '6 tuần', '24 buổi', 'Showcase cuối khóa'],
+      imageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè',
+      slides: [
+        { src: '/brand/metta-summer-hero-4x3.jpg', title: 'Mỹ thuật', alt: 'Học viên METTA Summer 2026 trong hoạt động mỹ thuật' },
+        { src: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?auto=format&fit=crop&w=1200&q=80', title: 'Cờ vua', alt: 'Hoạt động cờ vua trong METTA Summer 2026' },
+        { src: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=1200&q=80', title: 'Thanh nhạc', alt: 'Hoạt động thanh nhạc trong METTA Summer 2026' },
+        { src: 'https://images.unsplash.com/photo-1547153760-18fc86324498?auto=format&fit=crop&w=1200&q=80', title: 'Nhảy & Múa', alt: 'Hoạt động nhảy múa trong METTA Summer 2026' },
+      ],
+    }),
   },
   {
     id: 'sec-metta-plus-benefits', pageId: 'page-metta-plus', type: 'Metta+ Benefits', order: 2, visible: true, createdAt: now, updatedAt: now,
@@ -568,7 +578,25 @@ export const sections: PageSection[] = [
     ]),
   },
   {
-    id: 'sec-metta-plus-reasons', pageId: 'page-metta-plus', type: 'Metta+ Reasons', order: 6, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-weekly-plan', pageId: 'page-metta-plus', type: 'Metta+ Weekly Plan', order: 6, visible: true, createdAt: now, updatedAt: now,
+    title: 'Lộ trình chi tiết từng tuần',
+    subtitle: 'Mỗi tuần có nội dung cụ thể theo từng bộ môn để phụ huynh dễ theo dõi.',
+    extraData: JSON.stringify({
+      warmupNote: 'Mỗi buổi học dành khoảng 10–15 phút đầu giờ cho hoạt động tiếng Anh:',
+      warmupActivities: ['Greeting Time', 'Vocabulary of the Day', 'Mini Game bằng tiếng Anh'],
+      columns: ['Tuần', 'Mỹ thuật', 'Cờ vua', 'Thanh nhạc', 'Nhảy & Múa'],
+      rows: [
+        ['Tuần 1', 'Làm quen màu sắc, hình khối và chất liệu mùa hè', 'Nhận biết bàn cờ, quân cờ và cách di chuyển cơ bản', 'Cảm thụ giai điệu, tư thế hát và luyện hơi nhẹ', 'Nhịp điệu cơ bản, làm quen chuyển động theo nhạc'],
+        ['Tuần 2', 'Vẽ tranh chủ đề mùa hè và hoàn thiện sản phẩm nhỏ', 'Luật chơi, cách bảo vệ quân và bài tập quan sát', 'Hát nhóm, giữ nhịp và phát âm lời bài hát rõ ràng', 'Động tác tay chân cơ bản và phối hợp theo nhóm'],
+        ['Tuần 3', 'Thủ công sáng tạo, phối màu và bố cục đơn giản', 'Chiến thuật khai cuộc đơn giản và tình huống mini', 'Luyện câu hát, biểu cảm và nghe bạn trong nhóm', 'Tổ hợp động tác ngắn và ghi nhớ đội hình'],
+        ['Tuần 4', 'Dự án tranh cá nhân hoặc sản phẩm thủ công nâng cao', 'Mini game, xử lý nước đi và rèn tinh thần fair-play', 'Chọn tiết mục, luyện đoạn biểu diễn chính', 'Ráp bài nhóm, nhịp chuyển đoạn và tương tác sân khấu'],
+        ['Tuần 5', 'Hoàn thiện sản phẩm trưng bày và đặt tên tác phẩm', 'Luyện mini tournament và cách bắt tay sau ván đấu', 'Tổng duyệt tiết mục hát nhóm hoặc cá nhân', 'Tổng duyệt bài nhảy/múa và biểu cảm trình diễn'],
+        ['Tuần 6', 'Chuẩn bị góc triển lãm và chia sẻ về sản phẩm', 'Giải cờ vua mini trong không khí vui vẻ', 'Biểu diễn trong METTA Summer Showcase 2026', 'Trình diễn nhóm, nhận chứng nhận và chụp ảnh cùng phụ huynh'],
+      ],
+    }),
+  },
+  {
+    id: 'sec-metta-plus-reasons', pageId: 'page-metta-plus', type: 'Metta+ Reasons', order: 7, visible: true, createdAt: now, updatedAt: now,
     title: 'Vì sao phụ huynh chọn METTA Summer?',
     subtitle: 'Lịch học rõ, bộ môn đa dạng, đầu ra có sản phẩm và sân khấu cho con.',
     extraData: JSON.stringify([
@@ -580,7 +608,7 @@ export const sections: PageSection[] = [
     ]),
   },
   {
-    id: 'sec-metta-plus-form', pageId: 'page-metta-plus', type: 'Metta+ Form', order: 7, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-form', pageId: 'page-metta-plus', type: 'Metta+ Form', order: 8, visible: true, createdAt: now, updatedAt: now,
     title: 'Đăng ký tư vấn METTA Summer 2026',
     subtitle: 'Để lại thông tin, METTA Academy sẽ tư vấn lớp hè phù hợp và hướng dẫn phụ huynh hoàn tất đăng ký.',
     buttonText: 'Đăng ký tư vấn',

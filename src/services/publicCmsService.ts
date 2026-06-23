@@ -47,6 +47,7 @@ const METTA_PLUS_SPLIT_TYPES = new Set([
   'Metta+ Age Clubs',
   'Metta+ Pass',
   'Metta+ Journey',
+  'Metta+ Weekly Plan',
   'Metta+ Reasons',
   'Metta+ Form',
 ]);
@@ -333,11 +334,19 @@ function ensureFacilitiesSection(items: PageSection[]) {
   return sortSections([...items, seed]);
 }
 
+function ensureMettaPlusWeeklyPlanSection(items: PageSection[]) {
+  if (items.some((section) => section.type === 'Metta+ Weekly Plan')) return items;
+  const seed = PUBLIC_SECTIONS.find((section) => section.id === 'sec-metta-plus-weekly-plan');
+  if (!seed) return items;
+  return sortSections([...items, seed]);
+}
+
 function sectionsForPage(pageId: string, sections = PUBLIC_SECTIONS) {
   const local = fallbackSectionsForPage(pageId, sections);
   if (pageId === 'page-home' && !hasUsableHomepageSections(local)) return fallbackSectionsForPage(pageId);
   if (pageId === 'page-phonics' && !hasEbookLanding(local)) return fallbackSectionsForPage(pageId);
   if (shouldUseMettaPlusFallback(pageId, local)) return fallbackSectionsForPage(pageId);
+  if (pageId === 'page-metta-plus') return ensureMettaPlusWeeklyPlanSection(local);
   return pageId === 'page-home' ? ensureFacilitiesSection(local) : local;
 }
 

@@ -382,6 +382,7 @@ const METTA_PLUS_SPLIT_TYPES = new Set([
   'Metta+ Age Clubs',
   'Metta+ Pass',
   'Metta+ Journey',
+  'Metta+ Weekly Plan',
   'Metta+ Reasons',
   'Metta+ Form',
 ]);
@@ -425,6 +426,13 @@ function fallbackSectionsForPage(pageId: string) {
 function ensureFacilitiesSection(items: PageSection[]) {
   if (items.some((section) => section.type === 'Facilities')) return items;
   const seed = seedSections.find((section) => section.id === 'sec-facilities');
+  if (!seed) return items;
+  return sortSections([...items, { ...seed, updatedAt: now() }]);
+}
+
+function ensureMettaPlusWeeklyPlanSection(items: PageSection[]) {
+  if (items.some((section) => section.type === 'Metta+ Weekly Plan')) return items;
+  const seed = seedSections.find((section) => section.id === 'sec-metta-plus-weekly-plan');
   if (!seed) return items;
   return sortSections([...items, { ...seed, updatedAt: now() }]);
 }
@@ -770,6 +778,7 @@ export const cmsService = {
       let nextRemote = remote;
       if (pageId === 'page-phonics' && !hasEbookLanding(nextRemote)) nextRemote = fallbackSectionsForPage(pageId);
       if (shouldUseMettaPlusFallback(pageId, nextRemote)) nextRemote = fallbackSectionsForPage(pageId);
+      else if (pageId === 'page-metta-plus') nextRemote = ensureMettaPlusWeeklyPlanSection(nextRemote);
       const otherSections = store.sections.filter((section) => section.pageId !== pageId);
       store.sections = [...otherSections, ...nextRemote];
       persistCMS();
@@ -786,6 +795,7 @@ export const cmsService = {
       persistCMS();
       return delay(fallback);
     }
+    if (pageId === 'page-metta-plus') return delay(ensureMettaPlusWeeklyPlanSection(mergedLocal));
     return delay(mergedLocal);
   },
 

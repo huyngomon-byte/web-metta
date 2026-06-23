@@ -33,7 +33,6 @@ import {
   BRAND_LOGOS,
   DEFAULT_DEAL_CURRENCY,
   PUBLIC_PROGRAMS,
-  SUMMER_DEFAULTS,
   SUMMER_ENGLISH_WARMUP_ACTIVITIES,
   SUMMER_ENGLISH_WARMUP_NOTE,
   WON_LEAD_STATUS,
@@ -61,6 +60,7 @@ const METTA_PLUS_SECTION_TYPES = [
   'Metta+ Age Clubs',
   'Metta+ Pass',
   'Metta+ Journey',
+  'Metta+ Weekly Plan',
   'Metta+ Reasons',
   'Metta+ Form',
 ] as const;
@@ -89,6 +89,12 @@ type ColorKey = 'orange' | 'green' | 'purple' | 'yellow' | 'blue' | 'pink';
 type MettaPlusCard = { title: string; desc: string; icon: IconName; color: ColorKey };
 type HeroTag = { label: string; color?: ColorKey };
 type SummerLandingHeroSlide = { src: string; title: string; alt: string };
+type SummerWeeklyPlanExtra = {
+  warmupNote?: string;
+  warmupActivities?: string[];
+  columns?: string[];
+  rows?: string[][];
+};
 
 type MettaPlusConfig = {
   heroBadge: string;
@@ -100,6 +106,7 @@ type MettaPlusConfig = {
   heroSecondaryCta: string;
   heroImage: string;
   heroImageAlt: string;
+  heroSlides: SummerLandingHeroSlide[];
   benefitsTitle: string;
   benefitsDesc: string;
   benefits: MettaPlusCard[];
@@ -182,6 +189,27 @@ const solidClasses: Record<ColorKey, string> = {
   pink: 'bg-[#FF5A9B] text-white shadow-[#FF5A9B]/25',
 };
 
+const DEFAULT_SUMMER_HERO_SLIDES: SummerLandingHeroSlide[] = [
+  { src: SUMMER_HERO_IMAGE, title: 'Mỹ thuật', alt: 'Học viên METTA Summer 2026 trong hoạt động mỹ thuật' },
+  { src: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?auto=format&fit=crop&w=1200&q=80', title: 'Cờ vua', alt: 'Hoạt động cờ vua trong METTA Summer 2026' },
+  { src: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=1200&q=80', title: 'Thanh nhạc', alt: 'Hoạt động thanh nhạc trong METTA Summer 2026' },
+  { src: 'https://images.unsplash.com/photo-1547153760-18fc86324498?auto=format&fit=crop&w=1200&q=80', title: 'Nhảy & Múa', alt: 'Hoạt động nhảy múa trong METTA Summer 2026' },
+];
+
+const DEFAULT_SUMMER_WEEKLY_PLAN: Required<SummerWeeklyPlanExtra> = {
+  warmupNote: SUMMER_ENGLISH_WARMUP_NOTE,
+  warmupActivities: [...SUMMER_ENGLISH_WARMUP_ACTIVITIES],
+  columns: ['Tuần', 'Mỹ thuật', 'Cờ vua', 'Thanh nhạc', 'Nhảy & Múa'],
+  rows: [
+    ['Tuần 1', 'Làm quen màu sắc, hình khối và chất liệu mùa hè', 'Nhận biết bàn cờ, quân cờ và cách di chuyển cơ bản', 'Cảm thụ giai điệu, tư thế hát và luyện hơi nhẹ', 'Nhịp điệu cơ bản, làm quen chuyển động theo nhạc'],
+    ['Tuần 2', 'Vẽ tranh chủ đề mùa hè và hoàn thiện sản phẩm nhỏ', 'Luật chơi, cách bảo vệ quân và bài tập quan sát', 'Hát nhóm, giữ nhịp và phát âm lời bài hát rõ ràng', 'Động tác tay chân cơ bản và phối hợp theo nhóm'],
+    ['Tuần 3', 'Thủ công sáng tạo, phối màu và bố cục đơn giản', 'Chiến thuật khai cuộc đơn giản và tình huống mini', 'Luyện câu hát, biểu cảm và nghe bạn trong nhóm', 'Tổ hợp động tác ngắn và ghi nhớ đội hình'],
+    ['Tuần 4', 'Dự án tranh cá nhân hoặc sản phẩm thủ công nâng cao', 'Mini game, xử lý nước đi và rèn tinh thần fair-play', 'Chọn tiết mục, luyện đoạn biểu diễn chính', 'Ráp bài nhóm, nhịp chuyển đoạn và tương tác sân khấu'],
+    ['Tuần 5', 'Hoàn thiện sản phẩm trưng bày và đặt tên tác phẩm', 'Luyện mini tournament và cách bắt tay sau ván đấu', 'Tổng duyệt tiết mục hát nhóm hoặc cá nhân', 'Tổng duyệt bài nhảy/múa và biểu cảm trình diễn'],
+    ['Tuần 6', 'Chuẩn bị góc triển lãm và chia sẻ về sản phẩm', 'Giải cờ vua mini trong không khí vui vẻ', 'Biểu diễn trong METTA Summer Showcase 2026', 'Trình diễn nhóm, nhận chứng nhận và chụp ảnh cùng phụ huynh'],
+  ],
+};
+
 const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
   heroBadge: 'METTA Summer 2026',
   headline: 'Mùa hè đa bộ môn để con khám phá và tỏa sáng',
@@ -197,6 +225,7 @@ const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
   heroSecondaryCta: 'Xem lộ trình hè',
   heroImage: SUMMER_HERO_IMAGE,
   heroImageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè',
+  heroSlides: DEFAULT_SUMMER_HERO_SLIDES,
   benefitsTitle: 'Con nhận được gì trong mùa hè này?',
   benefitsDesc: 'Một chương trình hè cân bằng giữa nghệ thuật, tư duy, âm nhạc và vận động.',
   benefits: [
@@ -296,7 +325,12 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
   sections.forEach((section) => {
     switch (section.type) {
       case 'Metta+ Hero': {
-        const extra = parseObj(section.extraData, { badge: config.heroBadge, tags: config.heroTags as (string | HeroTag)[], imageAlt: config.heroImageAlt });
+        const extra = parseObj(section.extraData, {
+          badge: config.heroBadge,
+          tags: config.heroTags as (string | HeroTag)[],
+          imageAlt: config.heroImageAlt,
+          slides: config.heroSlides,
+        });
         // Dùng ?? (nullish) thay || để admin xóa thành chuỗi rỗng vẫn được tôn trọng
         // (nếu dùng ||, "" sẽ rơi về default seed → field không bao giờ ẩn được).
         config.heroBadge = extra.badge ?? config.heroBadge;
@@ -304,6 +338,15 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
           config.heroTags = extra.tags.map((tag) => typeof tag === 'string' ? { label: tag } : tag);
         }
         config.heroImageAlt = extra.imageAlt ?? config.heroImageAlt;
+        if (extra.slides?.length) {
+          config.heroSlides = extra.slides
+            .filter((slide) => slide?.src)
+            .map((slide) => ({
+              src: slide.src,
+              title: slide.title || config.heroBadge,
+              alt: slide.alt || config.heroImageAlt,
+            }));
+        }
         config.headline = section.title ?? config.headline;
         config.subHeadline = section.subtitle ?? config.subHeadline;
         config.shortDescription = section.description ?? config.shortDescription;
@@ -387,85 +430,112 @@ function MiniCard({ title, desc, icon, color }: MettaPlusCard) {
   );
 }
 
-function SummerWeeklyPlanTable() {
-  const [open, setOpen] = useState(true);
-  const weeklyColumns = SUMMER_DEFAULTS.weeklyColumns;
-  const weeklyPlan = SUMMER_DEFAULTS.weeklyPlan;
+function normalizeWeeklyPlan(section: PageSection): Required<SummerWeeklyPlanExtra> {
+  const extra = parseObj<SummerWeeklyPlanExtra>(section.extraData, DEFAULT_SUMMER_WEEKLY_PLAN);
+  const columns = extra.columns?.length ? extra.columns : DEFAULT_SUMMER_WEEKLY_PLAN.columns;
+  const rows = (extra.rows?.length ? extra.rows : DEFAULT_SUMMER_WEEKLY_PLAN.rows)
+    .map((row) => columns.map((_, index) => row[index] || ''));
+  return {
+    warmupNote: extra.warmupNote ?? DEFAULT_SUMMER_WEEKLY_PLAN.warmupNote,
+    warmupActivities: extra.warmupActivities?.length ? extra.warmupActivities : DEFAULT_SUMMER_WEEKLY_PLAN.warmupActivities,
+    columns,
+    rows,
+  };
+}
 
-  if (!weeklyPlan.length) return null;
+function SummerWeeklyPlanTable({ section }: { section: PageSection }) {
+  const [open, setOpen] = useState(true);
+  const plan = normalizeWeeklyPlan(section);
+
+  if (!plan.rows.length) return null;
 
   return (
-    <div className="mt-8 overflow-hidden rounded-[28px] border border-white/15 bg-[#08244A] text-white shadow-[0_28px_60px_-32px_rgba(8,36,74,.75)]">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-extrabold sm:px-6"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-      >
-        {open ? 'Thu gọn lộ trình chi tiết từng tuần' : 'Xem lộ trình chi tiết từng tuần'}
-        <span className="text-2xl leading-none">{open ? '−' : '+'}</span>
-      </button>
-      {open && (
-        <div className="border-t border-white/15">
-          <div className="border-b border-white/15 bg-white/[0.07] px-5 py-4 sm:px-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F6B43C]/20 text-[#F6B43C]">
-                <Globe size={19} />
-              </div>
-              <div>
-                <p className="text-sm font-extrabold text-white">{SUMMER_ENGLISH_WARMUP_NOTE}</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {SUMMER_ENGLISH_WARMUP_ACTIVITIES.map((activity) => (
-                    <span key={activity} className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold text-white/80">
-                      {activity}
-                    </span>
-                  ))}
+    <section id="metta-summer-weekly-plan" className="bg-[#FFF7EC] px-5 pb-14 sm:px-6 lg:pb-18">
+      <div className="mx-auto max-w-[1180px]">
+        <div className="overflow-hidden rounded-[34px] bg-white shadow-[0_26px_65px_-36px_rgba(8,36,74,.42)] ring-1 ring-[#E8EEF7]">
+          <div className="flex flex-col gap-4 border-b border-[#E8EEF7] bg-white px-5 py-5 sm:px-7 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-[12px] font-black uppercase tracking-[0.16em] text-[#F37021]">METTA Summer 2026</p>
+              <h2 className="mt-2 font-montserrat text-[26px] font-black leading-tight text-[#08244A] sm:text-[36px]">
+                {section.title || 'Lộ trình chi tiết từng tuần'}
+              </h2>
+              {(section.subtitle || section.description) && (
+                <p className="mt-2 max-w-3xl text-[15px] font-semibold leading-6 text-[#5D6B82] sm:text-[16px]">
+                  {section.subtitle || section.description}
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-2xl border border-[#DCE9F8] bg-[#F6FAFF] px-4 text-sm font-extrabold text-[#08244A] transition hover:border-[#F37021]/35 hover:bg-[#FFF0E6]"
+              onClick={() => setOpen((current) => !current)}
+              aria-expanded={open}
+            >
+              {open ? 'Thu gọn' : 'Xem chi tiết'}
+              <span className="ml-2 text-xl leading-none">{open ? '−' : '+'}</span>
+            </button>
+          </div>
+          {open && (
+            <div>
+              <div className="border-b border-[#E8EEF7] bg-[#FFF9F2] px-5 py-4 sm:px-7">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#FFF0E6] text-[#F37021] ring-1 ring-[#FFD2B4]">
+                    <Globe size={20} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold text-[#08244A]">{plan.warmupNote}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {plan.warmupActivities.map((activity) => (
+                        <span key={activity} className="rounded-full border border-[#DCE9F8] bg-white px-3 py-1 text-xs font-bold text-[#31435F]">
+                          {activity}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px] table-fixed text-sm">
-              <colgroup>
-                <col className="w-[96px]" />
-                <col />
-                <col />
-                <col />
-                <col />
-              </colgroup>
-              <thead className="bg-white/10 text-xs tracking-widest text-white/70">
-                <tr>
-                  {weeklyColumns.map((col, index) => {
-                    const schedule = summerWeeklyColumnSchedule(col);
-                    return (
-                      <th key={col} className={index === 0 ? 'whitespace-nowrap px-4 py-3 text-center align-top' : 'px-4 py-3 text-center align-top'}>
-                        <span className="block uppercase">{col}</span>
-                        {schedule && (
-                          <span className="mt-1.5 block text-xs font-bold leading-5 tracking-normal text-white/90">
-                            {schedule}
-                          </span>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {weeklyPlan.map((row, rowIndex) => (
-                  <tr key={rowIndex} className="border-t border-white/10">
-                    {row.map((cell, cellIndex) => (
-                      <td key={cellIndex} className={cellIndex === 0 ? 'whitespace-nowrap px-4 py-4 text-center font-extrabold text-[#F6B43C]' : 'px-4 py-4 text-center text-white/80'}>
-                        {cell}
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] table-fixed text-sm">
+                  <colgroup>
+                    {plan.columns.map((column, index) => (
+                      <col key={`${column}-${index}`} className={index === 0 ? 'w-[118px]' : undefined} />
                     ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  </colgroup>
+                  <thead className="bg-[#F6FAFF] text-[12px] tracking-[0.08em] text-[#31435F]">
+                    <tr>
+                      {plan.columns.map((col, index) => {
+                        const schedule = summerWeeklyColumnSchedule(col);
+                        return (
+                          <th key={`${col}-${index}`} className="px-4 py-4 text-center align-top">
+                            <span className="block whitespace-nowrap font-black uppercase">{col}</span>
+                            {schedule && (
+                              <span className="mt-1.5 block whitespace-nowrap text-[12px] font-extrabold leading-5 tracking-normal text-[#F37021]">
+                                {schedule}
+                              </span>
+                            )}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plan.rows.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-t border-[#E8EEF7] even:bg-[#FFFCF8]">
+                        {row.map((cell, cellIndex) => (
+                          <td key={cellIndex} className={cellIndex === 0 ? 'whitespace-nowrap px-4 py-5 text-center font-black text-[#F37021]' : 'px-4 py-5 text-center font-semibold leading-6 text-[#31435F]'}>
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
-      )}
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -834,19 +904,16 @@ export default function MettaPlusLanding() {
   const config = useMemo(() => buildMettaPlusConfig(sections ?? []), [sections]);
   const heroTags = useMemo(() => config.heroTags, [config.heroTags]);
   const heroSlides = useMemo<SummerLandingHeroSlide[]>(() => {
-    const slides: SummerLandingHeroSlide[] = [
-      ...(config.heroImage ? [{ src: config.heroImage, title: 'METTA Summer 2026', alt: config.heroImageAlt }] : []),
-      ...SUMMER_DEFAULTS.modules
-        .map((module) => ({
-          src: module.image || '',
-          title: module.tag || module.title,
-          alt: `Hoạt động ${module.title} trong METTA Summer 2026`,
-        }))
-        .filter((slide) => slide.src),
-    ];
+    const editableSlides = config.heroSlides?.length ? config.heroSlides : [];
+    const slides: SummerLandingHeroSlide[] = editableSlides.length
+      ? editableSlides
+      : (config.heroImage ? [{ src: config.heroImage, title: config.heroBadge, alt: config.heroImageAlt }] : DEFAULT_SUMMER_HERO_SLIDES);
 
-    return slides.filter((slide, index, allSlides) => allSlides.findIndex((item) => item.src === slide.src) === index);
-  }, [config.heroImage, config.heroImageAlt]);
+    return slides
+      .filter((slide) => slide.src)
+      .map((slide) => ({ src: slide.src, title: slide.title || config.heroBadge, alt: slide.alt || config.heroImageAlt }))
+      .filter((slide, index, allSlides) => allSlides.findIndex((item) => item.src === slide.src) === index);
+  }, [config.heroBadge, config.heroImage, config.heroImageAlt, config.heroSlides]);
   const activeHeroIndex = heroSlides.length ? Math.min(heroSlideIndex, heroSlides.length - 1) : 0;
   const activeHeroSlide = heroSlides[activeHeroIndex] || { src: config.heroImage || HERO_IMAGE, title: config.heroBadge, alt: config.heroImageAlt };
   const openRegistration = () => setRegistrationOpen(true);
@@ -892,8 +959,8 @@ export default function MettaPlusLanding() {
 
   if (sections === null) return <MettaPlusSkeleton />;
 
-  const renderSection = (type: MettaPlusSectionType) => {
-    switch (type) {
+  const renderSection = (section: PageSection & { type: MettaPlusSectionType }) => {
+    switch (section.type) {
       case 'Metta+ Hero':
         return (
           <section id="top" className="relative">
@@ -1117,10 +1184,11 @@ export default function MettaPlusLanding() {
                   );
                 })}
               </div>
-              <SummerWeeklyPlanTable />
             </div>
           </section>
         );
+      case 'Metta+ Weekly Plan':
+        return <SummerWeeklyPlanTable section={section} />;
       case 'Metta+ Reasons':
         return (
           <section className="bg-white px-5 py-14 sm:px-6 lg:py-18">
@@ -1189,7 +1257,7 @@ export default function MettaPlusLanding() {
       <main>
         {sections
           .filter(isMettaPlusSection)
-          .map((section) => <div key={section.id}>{renderSection(section.type)}</div>)}
+          .map((section) => <div key={section.id}>{renderSection(section)}</div>)}
       </main>
 
       {registrationOpen && <SummerLandingRegistrationModal onClose={() => setRegistrationOpen(false)} />}

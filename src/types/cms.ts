@@ -23,6 +23,7 @@ export type BlockType =
   | 'Metta+ Age Clubs'
   | 'Metta+ Pass'
   | 'Metta+ Journey'
+  | 'Metta+ Weekly Plan'
   | 'Metta+ Reasons'
   | 'Metta+ Form'
   | 'Metta+ Landing';

@@ -10,6 +10,7 @@ import { pages as seedPages } from '@/data/seed';
 import { cmsService } from '@/services/cmsService';
 import { usePageSections } from '@/hooks/useCms';
 import type { BlockType, CmsPage, PageSection } from '@/types/cms';
+import { SUMMER_DEFAULTS, SUMMER_ENGLISH_WARMUP_ACTIVITIES, SUMMER_ENGLISH_WARMUP_NOTE } from '@/lib/constants';
 
 /* ── constants ────────────────────────────────────────────────────────── */
 const BLOCK_TYPES: BlockType[] = [
@@ -17,7 +18,7 @@ const BLOCK_TYPES: BlockType[] = [
   'Lead Form', 'FAQ', 'CTA', 'About', 'Contact', 'Footer',
   'Ebook Hero', 'Ebook Skills', 'Ebook Why',
   'Metta+ Hero', 'Metta+ Benefits', 'Metta+ Age Clubs', 'Metta+ Pass',
-  'Metta+ Journey', 'Metta+ Reasons', 'Metta+ Form',
+  'Metta+ Journey', 'Metta+ Weekly Plan', 'Metta+ Reasons', 'Metta+ Form',
 ];
 
 /* ── ImageUploader (full-size – dùng cho Hero, About) ───────────────── */
@@ -949,6 +950,13 @@ type MettaPlusIcon =
   | 'Send' | 'Sparkles' | 'Star' | 'Trophy' | 'Users';
 type MettaPlusCard = { title: string; desc: string; icon: MettaPlusIcon; color: MettaPlusColor };
 type HeroTagItem = { label: string; color?: MettaPlusColor };
+type MettaPlusHeroSlide = { src: string; title: string; alt?: string };
+type MettaPlusWeeklyPlanExtra = {
+  warmupNote?: string;
+  warmupActivities?: string[];
+  columns?: string[];
+  rows?: string[][];
+};
 type MettaPlusData = {
   heroBadge: string;
   headline: string;
@@ -994,6 +1002,20 @@ const METTA_PLUS_COLOR_OPTIONS: { value: MettaPlusColor; label: string }[] = [
   { value: 'blue', label: 'Xanh dương' },
   { value: 'pink', label: 'Hồng' },
 ];
+
+const DEFAULT_METTA_PLUS_HERO_SLIDES: MettaPlusHeroSlide[] = [
+  { src: '/brand/metta-summer-hero-4x3.jpg', title: 'Mỹ thuật', alt: 'Học viên METTA Summer 2026 trong hoạt động mỹ thuật' },
+  { src: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?auto=format&fit=crop&w=1200&q=80', title: 'Cờ vua', alt: 'Hoạt động cờ vua trong METTA Summer 2026' },
+  { src: 'https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=1200&q=80', title: 'Thanh nhạc', alt: 'Hoạt động thanh nhạc trong METTA Summer 2026' },
+  { src: 'https://images.unsplash.com/photo-1547153760-18fc86324498?auto=format&fit=crop&w=1200&q=80', title: 'Nhảy & Múa', alt: 'Hoạt động nhảy múa trong METTA Summer 2026' },
+];
+
+const DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA: Required<MettaPlusWeeklyPlanExtra> = {
+  warmupNote: SUMMER_ENGLISH_WARMUP_NOTE,
+  warmupActivities: [...SUMMER_ENGLISH_WARMUP_ACTIVITIES],
+  columns: [...SUMMER_DEFAULTS.weeklyColumns],
+  rows: SUMMER_DEFAULTS.weeklyPlan.map((row) => [...row]),
+};
 
 const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
   heroBadge: 'METTA Summer 2026',
@@ -1112,6 +1134,142 @@ function HeroTagsEditor({ label, items, onChange }: { label: string; items: Hero
   );
 }
 
+function normalizeMettaPlusHeroSlides(slides?: MettaPlusHeroSlide[]) {
+  const clean = Array.isArray(slides)
+    ? slides
+        .filter(Boolean)
+        .map((slide) => ({
+          src: slide.src || '',
+          title: slide.title || '',
+          alt: slide.alt || '',
+        }))
+    : [];
+  return clean.length ? clean : DEFAULT_METTA_PLUS_HERO_SLIDES;
+}
+
+function MettaPlusHeroSlidesEditor({ slides, onChange }: { slides?: MettaPlusHeroSlide[]; onChange: (next: MettaPlusHeroSlide[]) => void }) {
+  const items = normalizeMettaPlusHeroSlides(slides);
+  const update = (index: number, patch: Partial<MettaPlusHeroSlide>) => {
+    onChange(items.map((slide, i) => (i === index ? { ...slide, ...patch } : slide)));
+  };
+  const move = (index: number, direction: -1 | 1) => {
+    const next = [...items];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <Label>Slider ảnh hero <span className="text-slate-400 font-normal normal-case">— preview 4:3, chỉnh được ảnh và chữ overlay</span></Label>
+      <div className="grid gap-3 md:grid-cols-2">
+        {items.map((slide, index) => (
+          <div key={index} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="text-xs font-bold text-slate-500">Slide {index + 1}</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => move(index, -1)} className="rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50" aria-label="Đưa slide lên">
+                  <ArrowUp size={13} />
+                </button>
+                <button type="button" onClick={() => move(index, 1)} className="rounded border border-slate-200 p-1 text-slate-500 hover:bg-slate-50" aria-label="Đưa slide xuống">
+                  <ArrowDown size={13} />
+                </button>
+                <button type="button" onClick={() => onChange(items.filter((_, i) => i !== index))} className="rounded border border-red-100 p-1 text-red-400 hover:bg-red-50" aria-label="Xóa slide">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <CompactImagePicker
+                value={slide.src}
+                onChange={(src) => update(index, { src })}
+                shape="landscape"
+                sizeNote="4:3"
+              />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div>
+                  <Label>Chữ trên ảnh</Label>
+                  <Input value={slide.title} onChange={(e) => update(index, { title: e.target.value })} placeholder="VD: Mỹ thuật" className="text-sm" />
+                </div>
+                <div>
+                  <Label>Alt ảnh</Label>
+                  <Input value={slide.alt || ''} onChange={(e) => update(index, { alt: e.target.value })} placeholder="Mô tả ảnh" className="text-xs" />
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...items, { src: '', title: 'Slide mới', alt: '' }])} className="min-h-[176px] rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition hover:border-cta-orange hover:text-cta-orange">
+          <Plus size={22} className="mx-auto mb-2" />
+          <span className="text-xs font-semibold">Thêm slide</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function normalizeMettaPlusWeeklyPlan(extra: MettaPlusWeeklyPlanExtra): Required<MettaPlusWeeklyPlanExtra> {
+  const columns = extra.columns?.length ? extra.columns : DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA.columns;
+  const sourceRows = extra.rows?.length ? extra.rows : DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA.rows;
+  return {
+    warmupNote: extra.warmupNote ?? DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA.warmupNote,
+    warmupActivities: extra.warmupActivities?.length ? extra.warmupActivities : DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA.warmupActivities,
+    columns,
+    rows: sourceRows.map((row) => columns.map((_, index) => row[index] || '')),
+  };
+}
+
+function MettaPlusWeeklyRowsEditor({
+  columns,
+  rows,
+  onChange,
+}: {
+  columns: string[];
+  rows: string[][];
+  onChange: (next: string[][]) => void;
+}) {
+  const updateCell = (rowIndex: number, cellIndex: number, value: string) => {
+    onChange(rows.map((row, i) => (i === rowIndex ? columns.map((_, j) => (j === cellIndex ? value : row[j] || '')) : row)));
+  };
+
+  return (
+    <div>
+      <Label>Nội dung từng tuần</Label>
+      <div className="space-y-3">
+        {rows.map((row, rowIndex) => (
+          <div key={rowIndex} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Dòng {rowIndex + 1}</span>
+              <button type="button" onClick={() => onChange(rows.filter((_, i) => i !== rowIndex))} className="text-red-400 hover:text-red-600">
+                <Trash2 size={14} />
+              </button>
+            </div>
+            <div
+              className="grid gap-2"
+              style={{ gridTemplateColumns: columns.map((_, index) => (index === 0 ? '92px' : 'minmax(160px, 1fr)')).join(' ') }}
+            >
+              {columns.map((column, cellIndex) => (
+                <div key={`${rowIndex}-${cellIndex}`} className="min-w-0">
+                  <Label>{column || `Cột ${cellIndex + 1}`}</Label>
+                  {cellIndex === 0 ? (
+                    <Input value={row[cellIndex] || ''} onChange={(e) => updateCell(rowIndex, cellIndex, e.target.value)} className="text-xs font-semibold" />
+                  ) : (
+                    <Textarea value={row[cellIndex] || ''} onChange={(e) => updateCell(rowIndex, cellIndex, e.target.value)} className="h-20 resize-none text-xs leading-5" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...rows, columns.map((_, index) => (index === 0 ? `Tuần ${rows.length + 1}` : ''))])} className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700">
+          <Plus size={13} /> Thêm dòng tuần
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [data, setData] = useState<MettaPlusData>(() => ({ ...DEFAULT_METTA_PLUS_DATA, ...parseObj(value, DEFAULT_METTA_PLUS_DATA) }));
   function sync(next: MettaPlusData) { setData(next); onChange(JSON.stringify(next)); }
@@ -1170,7 +1328,7 @@ function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
-type MettaPlusHeroExtra = { badge?: string; tags?: (string | HeroTagItem)[]; imageAlt?: string };
+type MettaPlusHeroExtra = { badge?: string; tags?: (string | HeroTagItem)[]; imageAlt?: string; slides?: MettaPlusHeroSlide[] };
 type MettaPlusPassExtra = { passCardTitle?: string; passCardMeta?: string; passItems?: string[] };
 type MettaPlusFormExtra = { highlights?: string[] };
 
@@ -1189,6 +1347,7 @@ function MettaPlusHeroSectionEditor({ section, onChange }: { section: PageSectio
         <FieldCol><Label>Alt ảnh hero</Label><Input value={extra.imageAlt || ''} onChange={(e) => syncExtra({ imageAlt: e.target.value })} /></FieldCol>
       </div>
       <ImageUploader value={section.imageUrl || ''} onChange={(imageUrl) => onChange({ imageUrl })} sizeNote="Hero ngang 4:3 · 1200 x 900 px" label="Ảnh hero bên phải" />
+      <MettaPlusHeroSlidesEditor slides={extra.slides} onChange={(slides) => syncExtra({ slides })} />
       <HeroTagsEditor
         label="Tag nhỏ hero"
         items={(extra.tags || []).map((t) => typeof t === 'string' ? { label: t, color: 'orange' } : t)}
@@ -1257,6 +1416,32 @@ function MettaPlusFormSectionEditor({ section, onChange }: { section: PageSectio
   );
 }
 
+function MettaPlusWeeklyPlanSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
+  const parsed = parseObj<MettaPlusWeeklyPlanExtra>(section.extraData, DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA);
+  const plan = normalizeMettaPlusWeeklyPlan(parsed);
+  const syncExtra = (patch: Partial<MettaPlusWeeklyPlanExtra>) => {
+    const next = normalizeMettaPlusWeeklyPlan({ ...plan, ...patch });
+    onChange({ extraData: JSON.stringify(next) });
+  };
+  const updateColumns = (columns: string[]) => {
+    const nextColumns = columns.length ? columns : DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA.columns;
+    syncExtra({ columns: nextColumns, rows: plan.rows.map((row) => nextColumns.map((_, index) => row[index] || '')) });
+  };
+
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề bảng *</Label><Input value={section.title} onChange={(e) => onChange({ title: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả ngắn</Label><Input value={section.subtitle || section.description || ''} onChange={(e) => onChange({ subtitle: e.target.value, description: e.target.value })} /></FieldCol>
+        <FieldCol span2><Label>Dòng tiếng Anh đầu giờ</Label><Textarea value={plan.warmupNote} onChange={(e) => syncExtra({ warmupNote: e.target.value })} className="h-16" /></FieldCol>
+      </div>
+      <StringListEditor label="Hoạt động tiếng Anh" items={plan.warmupActivities} placeholder="VD: Greeting Time" onChange={(warmupActivities) => syncExtra({ warmupActivities })} />
+      <StringListEditor label="Cột trong bảng" hint="cột đầu tiên nên là Tuần" items={plan.columns} placeholder="VD: Mỹ thuật" onChange={updateColumns} />
+      <MettaPlusWeeklyRowsEditor columns={plan.columns} rows={plan.rows} onChange={(rows) => syncExtra({ rows })} />
+    </>
+  );
+}
+
 const TYPE_COLOR: Record<string, string> = {
   Hero: 'bg-orange-100 text-orange-800',
   Stats: 'bg-cyan-100 text-cyan-800',
@@ -1276,6 +1461,7 @@ const TYPE_COLOR: Record<string, string> = {
   'Metta+ Age Clubs': 'bg-purple-100 text-purple-800',
   'Metta+ Pass': 'bg-yellow-100 text-yellow-800',
   'Metta+ Journey': 'bg-blue-100 text-blue-800',
+  'Metta+ Weekly Plan': 'bg-cyan-100 text-cyan-800',
   'Metta+ Reasons': 'bg-pink-100 text-pink-800',
   'Metta+ Form': 'bg-red-100 text-red-800',
   'Metta+ Landing': 'bg-orange-100 text-orange-800',
@@ -1472,6 +1658,8 @@ function SectionEditor({
         {val.type === 'Metta+ Journey' && (
           <MettaPlusCardsSectionEditor section={val} label="4 bước hành trình" fallback={DEFAULT_METTA_PLUS_DATA.journey} onChange={set} />
         )}
+
+        {val.type === 'Metta+ Weekly Plan' && <MettaPlusWeeklyPlanSectionEditor section={val} onChange={set} />}
 
         {val.type === 'Metta+ Reasons' && (
           <MettaPlusCardsSectionEditor section={val} label="5 card: Vì sao phụ huynh chọn?" fallback={DEFAULT_METTA_PLUS_DATA.reasons} onChange={set} />
