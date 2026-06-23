@@ -19,7 +19,7 @@ import { captureLeadTracking, type PublicLeadTracking } from '@/lib/capiTracking
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
 import { financeDefaultsForLead, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
-import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired } from '@/lib/permissions';
+import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired, leadAssignmentExpiresAtMs } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
 import { chooseAutoAssignedSalesAsync } from '@/services/assignmentRuleService';
 import { currentUser } from '@/services/authService';
@@ -777,7 +777,7 @@ export const leadService = {
         const nowMs = Date.now();
         const nextExpiry = assignedLeads
           .filter((lead) => lead.assignedStatus === 'active')
-          .map((lead) => Number(lead.assignedExpiresAtMs || 0))
+          .map((lead) => leadAssignmentExpiresAtMs(lead))
           .filter((value) => value > nowMs)
           .sort((a, b) => a - b)[0];
         if (nextExpiry) {
@@ -863,6 +863,13 @@ export const leadService = {
         lead.assignedTo !== undefined &&
         lead.assignedTo !== prev.assignedTo,
       );
+      const assignmentNeedsRefresh = Boolean(
+        prev &&
+        canViewAllLeads(user) &&
+        lead.assignedTo !== undefined &&
+        lead.assignedTo &&
+        (lead.assignedTo !== prev.assignedTo || prev.assignedStatus === 'returned' || leadAssignmentExpired(prev, nowMs)),
+      );
       if (prev && statusChanged) {
         capiStatusChange = { leadId: prev.id, previousStatus: prev.status, nextStatus: lead.status! };
         activityQueue.push({
@@ -921,7 +928,7 @@ export const leadService = {
         patch.revenue = undefined;
         patch.revenueAt = undefined;
       }
-      if (assignmentChanged) {
+      if (assignmentChanged || assignmentNeedsRefresh) {
         if (lead.assignedTo) {
           patch.assignedBy = lead.assignedBy || user?.id || prev?.assignedBy || '';
           patch.assignedAt = timestamp;

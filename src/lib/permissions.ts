@@ -35,12 +35,19 @@ export function canViewAllLeads(user?: AdminUser | null) {
   return isAdmin(user) || isManager(user);
 }
 
+export function leadAssignmentExpiresAtMs(lead: Partial<Lead>) {
+  const explicitExpiresAt = Number(lead.assignedExpiresAtMs || 0);
+  if (explicitExpiresAt) return explicitExpiresAt;
+  const assignedAtMs = Number(lead.assignedAtMs || 0);
+  return assignedAtMs ? assignedAtMs + DAY_MS : 0;
+}
+
 export function leadAssignmentExpired(lead: Partial<Lead>, nowMs = Date.now()) {
   if (!lead.assignedTo || lead.assignedStatus === 'returned') return false;
   if (lead.assignedStatus === 'accepted') return false;
-  const assignedAtMs = Number(lead.assignedAtMs || 0);
-  if (!assignedAtMs) return false;
-  return nowMs - assignedAtMs >= DAY_MS;
+  const expiresAtMs = leadAssignmentExpiresAtMs(lead);
+  if (!expiresAtMs) return false;
+  return nowMs >= expiresAtMs;
 }
 
 export function canViewLead(user: AdminUser | null | undefined, lead: Partial<Lead>) {

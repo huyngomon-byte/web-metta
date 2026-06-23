@@ -78,6 +78,7 @@ type LeadDoc = Record<string, any> & {
   assignedTo?: string;
   assignedToName?: string;
   assignedStatus?: string;
+  assignedAtMs?: number;
   assignedExpiresAtMs?: number;
   stageHistory?: Array<{ status: string; enteredAt: string; exitedAt?: string }>;
   submissionHistory?: Array<Record<string, unknown>>;
@@ -412,7 +413,8 @@ function assignmentStillActive(lead: LeadDoc | null, nowMs: number) {
   if (!lead?.assignedTo) return false;
   if (lead.assignedStatus === 'returned') return false;
   if (lead.assignedStatus === 'accepted') return true;
-  const expiresAt = Number(lead.assignedExpiresAtMs || 0);
+  const assignedAtMs = Number(lead.assignedAtMs || 0);
+  const expiresAt = Number(lead.assignedExpiresAtMs || 0) || (assignedAtMs ? assignedAtMs + DAY_MS : 0);
   return !expiresAt || expiresAt > nowMs;
 }
 

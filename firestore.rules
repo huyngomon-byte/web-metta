@@ -77,9 +77,17 @@ service cloud.firestore {
       return id == "sourceEngineState" && canManageMarketing();
     }
 
+    function assignmentExpiresAtMs(data) {
+      return data.keys().hasAny(["assignedExpiresAtMs"]) && data.assignedExpiresAtMs != 0
+        ? data.assignedExpiresAtMs
+        : data.keys().hasAny(["assignedAtMs"]) && data.assignedAtMs != 0
+          ? data.assignedAtMs + 86400000
+          : 0;
+    }
+
     function assignmentReadable(data) {
       return data.assignedStatus == "accepted"
-        || (data.assignedStatus == "active" && data.assignedExpiresAtMs > request.time.toMillis());
+        || (data.assignedStatus == "active" && assignmentExpiresAtMs(data) > request.time.toMillis());
     }
 
     function salesCanReadLead(data) {
@@ -99,16 +107,30 @@ service cloud.firestore {
         && request.resource.data.assignedStatus == "accepted";
     }
 
+    function salesProtectedAssignmentFieldsUnchanged() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return !changed.hasAny([
+          "assignedTo",
+          "assignedToName",
+          "assignedBy",
+          "assignedAt",
+          "assignedAtMs",
+          "assignedExpiresAtMs",
+          "failedAssignedTo",
+          "failedAssignedToName",
+          "failedAt",
+          "failedAtMs",
+          "failedReason"
+        ])
+        && (
+          !changed.hasAny(["assignedStatus"])
+          || (resource.data.assignedStatus == "active" && request.resource.data.assignedStatus == "accepted")
+        );
+    }
+
     function salesCanUpdateLead() {
       return salesCanWorkLead(resource.data)
-        && request.resource.data.assignedTo == resource.data.assignedTo
-        && request.resource.data.assignedToName == resource.data.assignedToName
-        && request.resource.data.assignedBy == resource.data.assignedBy
-        && request.resource.data.assignedAt == resource.data.assignedAt
-        && request.resource.data.assignedAtMs == resource.data.assignedAtMs
-        && request.resource.data.assignedExpiresAtMs == resource.data.assignedExpiresAtMs
-        && request.resource.data.failedAssignedTo == resource.data.failedAssignedTo
-        && request.resource.data.failedAssignedToName == resource.data.failedAssignedToName;
+        && salesProtectedAssignmentFieldsUnchanged();
     }
 
     function canReadLeadDoc(data) {

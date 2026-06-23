@@ -1,6 +1,8 @@
 import { adminDb } from './_firebaseAdmin.js';
 import { createAppNotification, notifyLeadManagers } from './_notifications.js';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 type VercelRequest = {
   method?: string;
   headers: Record<string, string | string[] | undefined>;
@@ -25,6 +27,13 @@ function isAuthorized(req: VercelRequest) {
     firstValue(req.query?.secret) === secret;
 }
 
+function leadAssignmentExpired(lead: Record<string, any>, nowMs: number) {
+  if (!lead.assignedTo || lead.assignedStatus !== 'active') return false;
+  const assignedAtMs = Number(lead.assignedAtMs || 0);
+  const expiresAtMs = Number(lead.assignedExpiresAtMs || 0) || (assignedAtMs ? assignedAtMs + DAY_MS : 0);
+  return Boolean(expiresAtMs && expiresAtMs <= nowMs);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method && !['GET', 'POST'].includes(req.method)) {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -34,16 +43,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = adminDb();
   const nowMs = Date.now();
   const timestamp = new Date(nowMs).toISOString();
-  const snap = await db.collection('leads')
-    .where('assignedStatus', '==', 'active')
-    .where('assignedExpiresAtMs', '<=', nowMs)
-    .get();
+  const [expiresSnap, legacySnap] = await Promise.all([
+    db.collection('leads')
+      .where('assignedStatus', '==', 'active')
+      .where('assignedExpiresAtMs', '<=', nowMs)
+      .get(),
+    db.collection('leads')
+      .where('assignedStatus', '==', 'active')
+      .where('assignedAtMs', '<=', nowMs - DAY_MS)
+      .get(),
+  ]);
+  const expiredDocs = Array.from(
+    new Map(
+      [...expiresSnap.docs, ...legacySnap.docs]
+        .filter((docSnap) => leadAssignmentExpired(docSnap.data(), nowMs))
+        .map((docSnap) => [docSnap.id, docSnap]),
+    ).values(),
+  );
 
-  if (snap.empty) return res.status(200).json({ ok: true, returned: 0 });
+  if (!expiredDocs.length) return res.status(200).json({ ok: true, returned: 0 });
 
   const batch = db.batch();
   const managerNotifications: Promise<unknown>[] = [];
-  snap.docs.forEach((docSnap) => {
+  expiredDocs.forEach((docSnap) => {
     const lead = docSnap.data();
     const failedAssignedTo = String(lead.assignedTo || '');
     const failedAssignedToName = String(lead.assignedToName || failedAssignedTo);
@@ -108,5 +130,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   await batch.commit();
   await Promise.all(managerNotifications).catch((error) => console.warn('[CronReturnLeads] Notification failed:', error));
-  return res.status(200).json({ ok: true, returned: snap.size });
+  return res.status(200).json({ ok: true, returned: expiredDocs.length });
 }
