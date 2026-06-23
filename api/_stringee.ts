@@ -104,7 +104,6 @@ export async function stringeePhoneBridgeCallout(input: {
   agentPhoneNumber: string;
   customerNumber: string;
   fromNumber?: string;
-  answerUrl: string;
   eventUrl?: string;
   customData?: Record<string, unknown>;
 }) {
@@ -114,13 +113,25 @@ export async function stringeePhoneBridgeCallout(input: {
   if (!agentPhoneNumber) throw new Error('Missing agent phone number');
   if (!customerNumber) throw new Error('Missing customer phone number');
   if (!fromNumber) throw new Error('Missing Stringee from number');
-  if (!input.answerUrl) throw new Error('Missing Stringee answer URL');
+
+  const actions = [
+    ...(input.eventUrl ? [{
+      action: 'record',
+      eventUrl: input.eventUrl,
+      format: 'mp3',
+    }] : []),
+    {
+      action: 'connect',
+      from: { type: 'external', number: fromNumber, alias: 'METTA Academy' },
+      to: { type: 'external', number: customerNumber, alias: customerNumber },
+    },
+  ];
 
   const body = {
     from: { type: 'external', number: fromNumber, alias: 'METTA Academy' },
     to: [{ type: 'external', number: agentPhoneNumber, alias: agentPhoneNumber }],
-    answer_url: input.answerUrl,
     event_url: input.eventUrl,
+    actions,
     customData: JSON.stringify({
       direction: 'outbound',
       fromNumber,

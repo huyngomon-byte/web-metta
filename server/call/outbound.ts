@@ -238,20 +238,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let calloutEventType = '';
 
     if (agentRouting.agentPhoneNumber) {
-      const params = new URLSearchParams();
-      Object.entries(callMetadata).forEach(([key, value]) => {
-        const text = String(value || '').trim();
-        if (text) params.set(key, text);
-      });
       result = await stringeePhoneBridgeCallout({
         agentPhoneNumber: agentRouting.agentPhoneNumber,
         customerNumber,
         fromNumber,
-        answerUrl: `${baseUrl}/api/call/answer?${params.toString()}`,
         eventUrl: `${baseUrl}/api/call/event`,
         customData: callMetadata,
       });
-      calloutMode = 'phone_bridge_answer_url';
+      calloutMode = 'phone_bridge_actions';
       calloutEventType = 'phone_bridge_callout_requested';
     } else {
       result = await stringeePccCallout({
