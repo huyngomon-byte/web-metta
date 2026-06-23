@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, ListChecks } from 'lucide-react';
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock, ListChecks } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Badge } from '@/components/ui/badge';
@@ -106,6 +106,30 @@ function statusLabel(status: Appointment['status']) {
   if (status === 'cancelled') return 'Đã hủy';
   if (status === 'overdue') return 'Quá hạn';
   return 'Sắp diễn ra';
+}
+
+function CalendarAppointmentCard({ appointment, compact = false }: { appointment: Appointment; compact?: boolean }) {
+  const style = typeCardStyle(appointment.type);
+  const cardInner = (
+    <>
+      <div className={`flex items-center gap-1 text-[11px] font-bold ${style.accent}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+        <Clock size={11} className="opacity-60" />
+        <span>{appointment.startTime.slice(11, 16)}</span>
+        <span className="truncate">[{appointmentTypeLabel(appointment.type)}]</span>
+      </div>
+      <p className={`${compact ? 'mt-1 line-clamp-2' : 'mt-0.5 truncate'} text-xs font-semibold text-slate-800`}>{appointment.title}</p>
+      <p className="truncate text-[10px] text-slate-500">{appointment.assignedToName || appointment.assignedTo || 'Chưa gán'}</p>
+    </>
+  );
+  const className = `block rounded-md border px-2 py-1.5 shadow-sm transition ${appointment.leadId ? 'cursor-pointer' : ''} ${style.card}`;
+  return appointment.leadId ? (
+    <Link to={`/crm/leads/${appointment.leadId}?from=appointments`} className={className}>
+      {cardInner}
+    </Link>
+  ) : (
+    <div className={className}>{cardInner}</div>
+  );
 }
 
 export default function AppointmentsPage() {
@@ -235,11 +259,13 @@ export default function AppointmentsPage() {
             </div>
 
             <div className="grid grid-cols-7">
-              {monthDays.map((day) => {
+              {monthDays.map((day, index) => {
                 const key = localDateKey(day);
                 const dayItems = byDate.get(key) || [];
                 const isCurrentMonth = sameMonth(day, month);
                 const isToday = key === localDateKey(new Date());
+                const dropdownX = day.getDay() <= 1 ? 'left-0' : 'right-0';
+                const dropdownY = index >= 28 ? 'bottom-full mb-1' : 'top-full mt-1';
                 return (
                   <div key={key} className={`min-h-[132px] border-b border-r border-slate-200 p-2 ${isCurrentMonth ? 'bg-white' : 'bg-slate-50/70'}`}>
                     <div className="mb-2 flex items-center justify-between">
@@ -272,7 +298,25 @@ export default function AppointmentsPage() {
                           <div key={appointment.id} className={className}>{cardInner}</div>
                         );
                       })}
-                      {dayItems.length > 4 && <p className="text-[10px] font-semibold text-slate-400">+{dayItems.length - 4} lịch nữa</p>}
+                      {dayItems.length > 4 && (
+                        <details className="group relative">
+                          <summary className="flex cursor-pointer list-none items-center justify-between rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-500 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 [&::-webkit-details-marker]:hidden">
+                            <span>+{dayItems.length - 4} lịch nữa</span>
+                            <ChevronDown size={12} className="transition-transform group-open:rotate-180" />
+                          </summary>
+                          <div className={`absolute ${dropdownX} ${dropdownY} z-40 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-xl`}>
+                            <div className="mb-2 flex items-center justify-between border-b border-slate-100 pb-2">
+                              <span className="text-xs font-extrabold text-slate-800">{dayItems.length} lịch ngày {day.getDate()}</span>
+                              <span className="text-[10px] font-semibold text-slate-400">{monthTitle(day)}</span>
+                            </div>
+                            <div className="flex max-h-80 flex-col gap-1.5 overflow-y-auto pr-1">
+                              {dayItems.map((appointment) => (
+                                <CalendarAppointmentCard key={appointment.id} appointment={appointment} compact />
+                              ))}
+                            </div>
+                          </div>
+                        </details>
+                      )}
                     </div>
                   </div>
                 );
