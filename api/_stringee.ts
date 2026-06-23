@@ -122,7 +122,7 @@ export async function stringeePhoneBridgeCallout(input: {
     }] : []),
     {
       action: 'connect',
-      from: { type: 'external', number: fromNumber, alias: 'METTA Academy' },
+      from: { type: 'internal', number: fromNumber, alias: 'METTA Academy' },
       to: { type: 'external', number: customerNumber, alias: customerNumber },
     },
   ];
