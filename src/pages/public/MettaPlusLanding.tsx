@@ -4,11 +4,13 @@ import {
   Bot,
   CalendarCheck,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   Compass,
   FileBadge2,
   GraduationCap,
+  Globe,
   Lightbulb,
   MapPin,
   Mic2,
@@ -31,9 +33,13 @@ import {
   BRAND_LOGOS,
   DEFAULT_DEAL_CURRENCY,
   PUBLIC_PROGRAMS,
+  SUMMER_DEFAULTS,
+  SUMMER_ENGLISH_WARMUP_ACTIVITIES,
+  SUMMER_ENGLISH_WARMUP_NOTE,
   WON_LEAD_STATUS,
   leadStatuses,
   resolveCourseDealSizeForProgram,
+  summerWeeklyColumnSchedule,
 } from '@/lib/constants';
 import { formatCurrency } from '@/lib/utils';
 
@@ -82,6 +88,7 @@ type IconName =
 type ColorKey = 'orange' | 'green' | 'purple' | 'yellow' | 'blue' | 'pink';
 type MettaPlusCard = { title: string; desc: string; icon: IconName; color: ColorKey };
 type HeroTag = { label: string; color?: ColorKey };
+type SummerLandingHeroSlide = { src: string; title: string; alt: string };
 
 type MettaPlusConfig = {
   heroBadge: string;
@@ -377,6 +384,88 @@ function MiniCard({ title, desc, icon, color }: MettaPlusCard) {
       <h3 className="font-montserrat text-[18px] font-extrabold leading-tight">{title}</h3>
       <p className="mt-2 text-[14px] font-semibold leading-5 opacity-75">{desc}</p>
     </article>
+  );
+}
+
+function SummerWeeklyPlanTable() {
+  const [open, setOpen] = useState(true);
+  const weeklyColumns = SUMMER_DEFAULTS.weeklyColumns;
+  const weeklyPlan = SUMMER_DEFAULTS.weeklyPlan;
+
+  if (!weeklyPlan.length) return null;
+
+  return (
+    <div className="mt-8 overflow-hidden rounded-[28px] border border-white/15 bg-[#08244A] text-white shadow-[0_28px_60px_-32px_rgba(8,36,74,.75)]">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-extrabold sm:px-6"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+      >
+        {open ? 'Thu gọn lộ trình chi tiết từng tuần' : 'Xem lộ trình chi tiết từng tuần'}
+        <span className="text-2xl leading-none">{open ? '−' : '+'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-white/15">
+          <div className="border-b border-white/15 bg-white/[0.07] px-5 py-4 sm:px-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F6B43C]/20 text-[#F6B43C]">
+                <Globe size={19} />
+              </div>
+              <div>
+                <p className="text-sm font-extrabold text-white">{SUMMER_ENGLISH_WARMUP_NOTE}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {SUMMER_ENGLISH_WARMUP_ACTIVITIES.map((activity) => (
+                    <span key={activity} className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold text-white/80">
+                      {activity}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] table-fixed text-sm">
+              <colgroup>
+                <col className="w-[96px]" />
+                <col />
+                <col />
+                <col />
+                <col />
+              </colgroup>
+              <thead className="bg-white/10 text-xs tracking-widest text-white/70">
+                <tr>
+                  {weeklyColumns.map((col, index) => {
+                    const schedule = summerWeeklyColumnSchedule(col);
+                    return (
+                      <th key={col} className={index === 0 ? 'whitespace-nowrap px-4 py-3 text-center align-top' : 'px-4 py-3 text-center align-top'}>
+                        <span className="block uppercase">{col}</span>
+                        {schedule && (
+                          <span className="mt-1.5 block text-xs font-bold leading-5 tracking-normal text-white/90">
+                            {schedule}
+                          </span>
+                        )}
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {weeklyPlan.map((row, rowIndex) => (
+                  <tr key={rowIndex} className="border-t border-white/10">
+                    {row.map((cell, cellIndex) => (
+                      <td key={cellIndex} className={cellIndex === 0 ? 'whitespace-nowrap px-4 py-4 text-center font-extrabold text-[#F6B43C]' : 'px-4 py-4 text-center text-white/80'}>
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -741,9 +830,45 @@ export default function MettaPlusLanding() {
   // null = chưa load xong (hiện skeleton để tránh "flash" bản cũ).
   const [sections, setSections] = useState<PageSection[] | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   const config = useMemo(() => buildMettaPlusConfig(sections ?? []), [sections]);
   const heroTags = useMemo(() => config.heroTags, [config.heroTags]);
+  const heroSlides = useMemo<SummerLandingHeroSlide[]>(() => {
+    const slides: SummerLandingHeroSlide[] = [
+      ...(config.heroImage ? [{ src: config.heroImage, title: 'METTA Summer 2026', alt: config.heroImageAlt }] : []),
+      ...SUMMER_DEFAULTS.modules
+        .map((module) => ({
+          src: module.image || '',
+          title: module.tag || module.title,
+          alt: `Hoạt động ${module.title} trong METTA Summer 2026`,
+        }))
+        .filter((slide) => slide.src),
+    ];
+
+    return slides.filter((slide, index, allSlides) => allSlides.findIndex((item) => item.src === slide.src) === index);
+  }, [config.heroImage, config.heroImageAlt]);
+  const activeHeroIndex = heroSlides.length ? Math.min(heroSlideIndex, heroSlides.length - 1) : 0;
+  const activeHeroSlide = heroSlides[activeHeroIndex] || { src: config.heroImage || HERO_IMAGE, title: config.heroBadge, alt: config.heroImageAlt };
   const openRegistration = () => setRegistrationOpen(true);
+
+  useEffect(() => {
+    if (heroSlides.length > 0 && heroSlideIndex >= heroSlides.length) setHeroSlideIndex(0);
+  }, [heroSlideIndex, heroSlides.length]);
+
+  useEffect(() => {
+    if (heroSlides.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setHeroSlideIndex((current) => (current + 1) % heroSlides.length);
+    }, 4500);
+    return () => window.clearInterval(timer);
+  }, [heroSlides.length]);
+
+  const moveHeroSlide = (direction: number) => {
+    setHeroSlideIndex((current) => {
+      if (!heroSlides.length) return 0;
+      return (current + direction + heroSlides.length) % heroSlides.length;
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -827,7 +952,55 @@ export default function MettaPlusLanding() {
                   <Trophy className="h-8 w-8" />
                 </div>
                 <div className="relative overflow-hidden rounded-[38px] bg-white p-3 shadow-[0_34px_70px_-36px_rgba(8,36,74,.65)] ring-1 ring-[#E2EAF5]">
-                  <img src={config.heroImage || HERO_IMAGE} alt={config.heroImageAlt} className="aspect-[4/3] w-full rounded-[30px] object-cover object-center" />
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-[30px] bg-[#EAF5FF]">
+                    {heroSlides.map((slide, index) => (
+                      <img
+                        key={slide.src}
+                        src={slide.src}
+                        alt={slide.alt}
+                        className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-500 ${index === activeHeroIndex ? 'opacity-100' : 'opacity-0'}`}
+                      />
+                    ))}
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#08244A]/82 via-[#08244A]/32 to-transparent px-5 pb-5 pt-12">
+                      <p className="text-sm font-black uppercase tracking-[0.18em] text-white/75">METTA Summer 2026</p>
+                      <p className="mt-1 font-montserrat text-2xl font-black text-white">{activeHeroSlide.title}</p>
+                    </div>
+                    {heroSlides.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => moveHeroSlide(-1)}
+                          className="absolute left-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#08244A] shadow-lg transition hover:bg-white"
+                          aria-label="Ảnh hero trước"
+                        >
+                          <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveHeroSlide(1)}
+                          className="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-[#F37021] text-white shadow-lg transition hover:bg-[#E85D12]"
+                          aria-label="Ảnh hero tiếp theo"
+                        >
+                          <ChevronRight className="h-5 w-5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {heroSlides.length > 1 && (
+                    <div className="mt-3 grid grid-cols-4 gap-2">
+                      {heroSlides.slice(0, 4).map((slide, index) => (
+                        <button
+                          key={`preview-${slide.src}`}
+                          type="button"
+                          onClick={() => setHeroSlideIndex(index)}
+                          className={`group aspect-[4/3] overflow-hidden rounded-2xl ring-2 transition ${index === activeHeroIndex ? 'ring-[#F37021]' : 'ring-transparent hover:ring-[#F37021]/45'}`}
+                          aria-label={`Xem ảnh ${slide.title}`}
+                        >
+                          <img src={slide.src} alt="" className="h-full w-full object-cover object-center transition group-hover:scale-105" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -944,6 +1117,7 @@ export default function MettaPlusLanding() {
                   );
                 })}
               </div>
+              <SummerWeeklyPlanTable />
             </div>
           </section>
         );
