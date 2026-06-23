@@ -2,7 +2,17 @@ import { ArrowLeft, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Clock, 
 import { memo, useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { PublicLeadForm } from '@/components/public/PublicLeadForm';
-import { DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, WON_LEAD_STATUS, leadStatuses, resolveCourseDealSizeForProgram } from '@/lib/constants';
+import {
+  DEFAULT_DEAL_CURRENCY,
+  PUBLIC_PROGRAMS,
+  SUMMER_DEFAULTS,
+  SUMMER_ENGLISH_WARMUP_ACTIVITIES,
+  SUMMER_ENGLISH_WARMUP_NOTE,
+  WON_LEAD_STATUS,
+  leadStatuses,
+  resolveCourseDealSizeForProgram,
+  summerWeeklyColumnSchedule,
+} from '@/lib/constants';
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { publicLeadService } from '@/services/publicLeadService';
 import { formatCurrency } from '@/lib/utils';
@@ -439,7 +449,7 @@ const SummerHeroContent = memo(function SummerHeroContent({
 });
 
 function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCtaClick: () => void }) {
-  const [showPlan, setShowPlan] = useState(false);
+  const [showPlan, setShowPlan] = useState(true);
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   const [showcaseSlideIndex, setShowcaseSlideIndex] = useState(0);
   const [registrationOpen, setRegistrationOpen] = useState(false);
@@ -685,29 +695,65 @@ function SummerProgramPage({ program, onCtaClick }: { program: ProgramCms; onCta
                 onClick={() => setShowPlan((current) => !current)}
                 aria-expanded={showPlan}
               >
-                Xem lộ trình chi tiết từng tuần
+                {showPlan ? 'Thu gọn lộ trình chi tiết từng tuần' : 'Xem lộ trình chi tiết từng tuần'}
                 <span className="text-2xl leading-none">{showPlan ? '−' : '+'}</span>
               </button>
               {showPlan && (
-                <div className="overflow-x-auto border-t border-white/15">
-                  <table className="w-full min-w-[820px] text-left text-sm">
-                    <thead className="bg-white/10 text-xs uppercase tracking-widest text-white/70">
-                      <tr>
-                        {weeklyColumns.map((col) => (
-                          <th key={col} className="px-4 py-3">{col}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {weeklyPlan.map((row, ri) => (
-                        <tr key={ri} className="border-t border-white/10">
-                          {row.map((cell, ci) => (
-                            <td key={ci} className={ci === 0 ? 'px-4 py-4 font-extrabold text-[#F6B43C]' : 'px-4 py-4 text-white/80'}>{cell}</td>
+                <div className="border-t border-white/15">
+                  <div className="border-b border-white/15 bg-white/[0.07] px-5 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F6B43C]/20 text-[#F6B43C]">
+                        <Globe size={19} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-extrabold text-white">{SUMMER_ENGLISH_WARMUP_NOTE}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {SUMMER_ENGLISH_WARMUP_ACTIVITIES.map((activity) => (
+                            <span key={activity} className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold text-white/80">
+                              {activity}
+                            </span>
                           ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[960px] table-fixed text-left text-sm">
+                      <colgroup>
+                        <col className="w-[96px]" />
+                        <col />
+                        <col />
+                        <col />
+                        <col />
+                      </colgroup>
+                      <thead className="bg-white/10 text-xs tracking-widest text-white/70">
+                        <tr>
+                          {weeklyColumns.map((col, index) => {
+                            const schedule = summerWeeklyColumnSchedule(col);
+                            return (
+                              <th key={col} className={index === 0 ? 'px-4 py-3 text-center align-top whitespace-nowrap' : 'px-4 py-3 text-center align-top'}>
+                                <span className="block uppercase">{col}</span>
+                                {schedule && (
+                                  <span className="mt-1.5 block text-xs font-bold leading-5 tracking-normal text-white/90">
+                                    {schedule}
+                                  </span>
+                                )}
+                              </th>
+                            );
+                          })}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {weeklyPlan.map((row, ri) => (
+                          <tr key={ri} className="border-t border-white/10">
+                            {row.map((cell, ci) => (
+                              <td key={ci} className={ci === 0 ? 'px-4 py-4 text-center font-extrabold whitespace-nowrap text-[#F6B43C]' : 'px-4 py-4 text-center text-white/80'}>{cell}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>

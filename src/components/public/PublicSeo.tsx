@@ -45,6 +45,13 @@ function seoForPath(pathname: string, settings: SiteSettings, pages: CmsPage[]) 
   const slug = pageSlugForPath(pathname);
   const page = slug ? pages.find((item) => item.slug === slug) : undefined;
 
+  if (pathname === '/metta-plus' || pathname === '/lp/metta-plus' || pathname === '/p/metta-plus') {
+    return {
+      title: 'METTA Summer 2026 | Landing Page METTA Academy',
+      description: 'Landing page đăng ký METTA Summer 2026 cho trẻ 4–11 tuổi với Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa và Showcase cuối khóa.',
+    };
+  }
+
   if (pathname === '/') {
     return {
       title: homeTitle || page?.metaTitle || page?.title || DEFAULT_TITLE,

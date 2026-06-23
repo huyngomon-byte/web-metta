@@ -20,18 +20,34 @@ import {
   Star,
   Trophy,
   Users,
+  X,
 } from 'lucide-react';
 import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { publicCmsService } from '@/services/publicCmsService';
 import { publicLeadService } from '@/services/publicLeadService';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { PageSection } from '@/types/cms';
-import { BRAND_LOGOS, leadStatuses } from '@/lib/constants';
+import {
+  BRAND_LOGOS,
+  DEFAULT_DEAL_CURRENCY,
+  PUBLIC_PROGRAMS,
+  WON_LEAD_STATUS,
+  leadStatuses,
+  resolveCourseDealSizeForProgram,
+} from '@/lib/constants';
+import { formatCurrency } from '@/lib/utils';
 
 const HEADER_LOGO = BRAND_LOGOS.onWhite;
 const FOOTER_LOGO = BRAND_LOGOS.onBlue;
 const HERO_IMAGE = '/brand/hero-classroom.png';
 const SLOGAN = 'Giỏi ngoại ngữ, giàu kỹ năng, lãnh đạo tương lai';
+const SUMMER_HERO_IMAGE = '/brand/metta-summer-hero-4x3.jpg';
+const SUMMER_QR_IMAGE = '/brand/metta-summer-2026-qr.jpg';
+const SUMMER_PROGRAM = PUBLIC_PROGRAMS.find((program) => program.slug === 'metta-summer-2026');
+const SUMMER_COURSE_NAME = SUMMER_PROGRAM?.title || 'METTA Summer 2026';
+const SUMMER_COURSE_PACKAGE = SUMMER_PROGRAM?.courseName || 'Summer Camp · Đa bộ môn';
+const SUMMER_DEAL_SIZE = resolveCourseDealSizeForProgram(SUMMER_PROGRAM);
+const SUMMER_DEAL_CURRENCY = SUMMER_PROGRAM?.dealCurrency || DEFAULT_DEAL_CURRENCY;
 
 const METTA_PLUS_SECTION_TYPES = [
   'Metta+ Hero',
@@ -113,6 +129,10 @@ function scrollToForm() {
   document.getElementById('metta-plus-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+function scrollToRoadmap() {
+  document.getElementById('metta-summer-roadmap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 const iconMap: Record<IconName, IconType> = {
   BadgeCheck,
   Bot,
@@ -156,67 +176,67 @@ const solidClasses: Record<ColorKey, string> = {
 };
 
 const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
-  heroBadge: 'METTA+ PASS',
-  headline: 'Mở khóa mùa hè quốc tế cho con',
-  subHeadline: 'Trải nghiệm CLB Tiếng Anh, Kỹ năng và STEM Robotics tại Metta Academy.',
-  shortDescription: 'Học vui - làm thật - tự tin thể hiện bản thân.',
+  heroBadge: 'METTA Summer 2026',
+  headline: 'Mùa hè đa bộ môn để con khám phá và tỏa sáng',
+  subHeadline: 'Chương trình hè 6 tuần cho trẻ 4–11 tuổi với Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa.',
+  shortDescription: '24 buổi học · 4 bộ môn · Showcase cuối khóa',
   heroTags: [
-    { label: '4-15 tuổi', color: 'orange' },
-    { label: 'GVNN', color: 'green' },
-    { label: 'STEM Robotics', color: 'blue' },
-    { label: 'Metta Passport', color: 'purple' },
+    { label: '4–11 tuổi', color: 'orange' },
+    { label: '6 tuần', color: 'green' },
+    { label: '24 buổi', color: 'blue' },
+    { label: 'Showcase cuối khóa', color: 'purple' },
   ],
-  heroPrimaryCta: 'Đăng ký tư vấn ngay',
-  heroSecondaryCta: 'Giữ suất trải nghiệm cho bé',
-  heroImage: HERO_IMAGE,
-  heroImageAlt: 'Học sinh Metta Academy học tập vui vẻ',
-  benefitsTitle: 'Con nhận được gì tại Metta+?',
-  benefitsDesc: 'Một chương trình - nhiều kỹ năng nền tảng.',
+  heroPrimaryCta: 'Đăng ký ngay',
+  heroSecondaryCta: 'Xem lộ trình hè',
+  heroImage: SUMMER_HERO_IMAGE,
+  heroImageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè',
+  benefitsTitle: 'Con nhận được gì trong mùa hè này?',
+  benefitsDesc: 'Một chương trình hè cân bằng giữa nghệ thuật, tư duy, âm nhạc và vận động.',
   benefits: [
-    { title: 'GVNN 100%', desc: 'Phản xạ tự nhiên.', icon: 'Users', color: 'blue' },
-    { title: 'STEM & Robotics', desc: 'Học bằng thực hành.', icon: 'Bot', color: 'green' },
-    { title: 'Tự tin thuyết trình', desc: 'Dám nói, dám thể hiện.', icon: 'Mic2', color: 'pink' },
-    { title: 'Học qua dự án', desc: 'Có sản phẩm thật.', icon: 'Lightbulb', color: 'yellow' },
-    { title: 'Metta Passport', desc: 'Lưu dấu tiến bộ.', icon: 'FileBadge2', color: 'purple' },
-    { title: 'Trải nghiệm trước', desc: 'Dễ chọn lộ trình.', icon: 'CalendarCheck', color: 'orange' },
+    { title: 'Mỹ thuật sáng tạo', desc: 'Vẽ, phối màu, thủ công và hoàn thiện sản phẩm trưng bày.', icon: 'Palette', color: 'orange' },
+    { title: 'Cờ vua tư duy', desc: 'Làm quen luật chơi, nước đi và mini tournament vui vẻ.', icon: 'Compass', color: 'blue' },
+    { title: 'Thanh nhạc tự tin', desc: 'Luyện nhịp, phát âm, hơi thở và biểu diễn trước tập thể.', icon: 'Mic2', color: 'pink' },
+    { title: 'Nhảy & Múa', desc: 'Rèn nhịp điệu, đội hình, phối hợp nhóm và biểu cảm sân khấu.', icon: 'Sparkles', color: 'green' },
+    { title: 'Hoạt động tiếng Anh', desc: '10–15 phút đầu giờ với greeting, vocabulary và mini game.', icon: 'Users', color: 'purple' },
+    { title: 'Showcase cuối khóa', desc: 'Con có sân khấu để trình diễn và chia sẻ thành quả với ba mẹ.', icon: 'Trophy', color: 'yellow' },
   ],
-  agesTitle: 'Chọn CLB theo độ tuổi của bé',
-  agesDesc: 'Mỗi độ tuổi có một hành trình khám phá riêng.',
+  agesTitle: 'Lộ trình phù hợp cho trẻ 4–11 tuổi',
+  agesDesc: 'Nội dung được chia theo nhịp phát triển của trẻ mầm non và tiểu học.',
   ageGroups: [
-    { title: 'Mầm non', desc: 'Show & Tell, Phonics, Tiny Builders.', icon: 'Star', color: 'orange' },
-    { title: 'Tiểu học bé', desc: 'Storytelling, Writing, Robo Code.', icon: 'Palette', color: 'green' },
-    { title: 'Tiểu học lớn', desc: 'Public Speaking, Grammar, STEM.', icon: 'Rocket', color: 'blue' },
-    { title: 'THCS', desc: 'Debate, Essay, AI & Robotics.', icon: 'GraduationCap', color: 'purple' },
+    { title: 'Mầm non 4–6', desc: 'Hoạt động nhiều hình ảnh, âm nhạc, vận động và sản phẩm thủ công nhỏ.', icon: 'Star', color: 'orange' },
+    { title: 'Tiểu học 6–8', desc: 'Tăng trải nghiệm theo nhóm, luyện nhịp, màu sắc, quân cờ và biểu diễn.', icon: 'Palette', color: 'green' },
+    { title: 'Tiểu học 9–11', desc: 'Tăng thử thách kỹ thuật, tư duy chiến thuật và hoàn thiện tiết mục.', icon: 'Rocket', color: 'blue' },
+    { title: 'Showcase Day', desc: 'Ráp tiết mục, trưng bày sản phẩm và biểu diễn trước phụ huynh.', icon: 'Trophy', color: 'purple' },
   ],
-  passTitle: 'Một chiếc Pass - nhiều trải nghiệm',
-  passDesc: 'Cho con thử môi trường học thật trước khi đăng ký khóa dài hạn.',
-  passCardTitle: 'Summer Club',
-  passCardMeta: '4-15 tuổi · CLB hè · Showcase Day',
+  passTitle: 'METTA Summer 2026 trên một landing page',
+  passDesc: 'Tất cả thông tin chính của chương trình hè được gom gọn để phụ huynh xem nhanh và đăng ký ngay.',
+  passCardTitle: 'Summer 2026',
+  passCardMeta: '4–11 tuổi · 6 tuần · 24 buổi · 4 bộ môn',
   passCardImage: '',
-  passItems: ['Tham gia CLB phù hợp độ tuổi', 'Học kỹ năng với GVNN', 'Thực hành STEM Robotics', 'Có Metta Passport cá nhân', 'Tham gia Showcase cuối khóa'],
-  passCta: 'Nhận tư vấn Metta+ Pass',
-  journeyTitle: 'Hành trình Metta+ của bé',
-  journeyDesc: 'Từ trải nghiệm đến tự tin thể hiện.',
+  passItems: ['Mỹ thuật: màu sắc, hình khối, tranh và thủ công', 'Cờ vua: luật chơi, quan sát và mini tournament', 'Thanh nhạc: nhịp, hơi thở, phát âm và biểu diễn', 'Nhảy & Múa: động tác, đội hình và tương tác sân khấu', 'Showcase cuối khóa cùng phụ huynh'],
+  passCta: 'Đăng ký ngay',
+  journeyTitle: 'Lộ trình học 6 tuần',
+  journeyDesc: 'Từ làm quen, phát triển kỹ năng đến hoàn thiện sản phẩm và biểu diễn.',
   journey: [
-    { title: 'Đăng ký Pass', desc: 'Nhận tư vấn lộ trình.', icon: 'ClipboardList', color: 'orange' },
-    { title: 'Chọn CLB', desc: 'Theo tuổi và sở thích.', icon: 'Compass', color: 'blue' },
-    { title: 'Học & thực hành', desc: 'Làm dự án thật.', icon: 'Bot', color: 'green' },
-    { title: 'Showcase Day', desc: 'Tỏa sáng trước bố mẹ.', icon: 'Trophy', color: 'pink' },
+    { title: 'Tuần 1–2', desc: 'Khám phá chất liệu, bàn cờ, giọng hát và nhịp điệu cơ bản.', icon: 'ClipboardList', color: 'orange' },
+    { title: 'Tuần 3–4', desc: 'Luyện kỹ thuật, hoàn thiện bài tập nhỏ và phối hợp theo nhóm.', icon: 'Compass', color: 'blue' },
+    { title: 'Tuần 5', desc: 'Tổng duyệt sản phẩm, tiết mục và tinh thần trình diễn.', icon: 'CalendarCheck', color: 'green' },
+    { title: 'Tuần 6', desc: 'Showcase cuối khóa, trưng bày, biểu diễn và nhận chứng nhận.', icon: 'Trophy', color: 'pink' },
   ],
-  reasonsTitle: 'Vì sao phụ huynh chọn Metta+?',
-  reasonsDesc: 'Trải nghiệm gọn, đầu ra rõ, con học thật.',
+  reasonsTitle: 'Vì sao phụ huynh chọn METTA Summer?',
+  reasonsDesc: 'Lịch học rõ, bộ môn đa dạng, đầu ra có sản phẩm và sân khấu cho con.',
   reasons: [
-    { title: 'Môi trường quốc tế', desc: 'Học tập chủ động.', icon: 'Sparkles', color: 'blue' },
-    { title: 'Giáo viên chất lượng', desc: 'Đồng hành sát sao.', icon: 'BadgeCheck', color: 'green' },
-    { title: 'Nội dung thực tế', desc: 'Không học chay.', icon: 'Lightbulb', color: 'yellow' },
-    { title: 'Có đầu ra rõ ràng', desc: 'Dự án, chứng chỉ, passport.', icon: 'Trophy', color: 'purple' },
-    { title: 'Phụ huynh dễ quyết định', desc: 'Trải nghiệm trước, chọn sau.', icon: 'CheckCircle2', color: 'orange' },
+    { title: 'Đa bộ môn', desc: 'Con thử nhiều năng khiếu trong một chương trình.', icon: 'Sparkles', color: 'blue' },
+    { title: 'Lộ trình 6 tuần', desc: 'Mỗi tuần có mục tiêu học tập dễ theo dõi.', icon: 'BadgeCheck', color: 'green' },
+    { title: 'Có sản phẩm thật', desc: 'Tranh, thủ công, tiết mục hát và bài nhảy.', icon: 'Lightbulb', color: 'yellow' },
+    { title: 'Rèn tự tin', desc: 'Con luyện tương tác, biểu diễn và làm việc nhóm.', icon: 'Trophy', color: 'purple' },
+    { title: 'Đăng ký nhanh', desc: 'Form và QR thanh toán ngay trên landing page.', icon: 'CheckCircle2', color: 'orange' },
   ],
-  formTitle: 'Đăng ký tư vấn Metta+ Pass',
-  formDesc: 'Để lại thông tin, Metta Academy sẽ tư vấn CLB phù hợp cho bé.',
-  formHighlights: ['Tư vấn CLB theo tuổi', 'Giữ suất trải nghiệm', 'Gợi ý lộ trình hè'],
-  formCta: 'Nhận tư vấn ngay',
-  formId: 'metta-plus-pass',
+  formTitle: 'Đăng ký tư vấn METTA Summer 2026',
+  formDesc: 'Để lại thông tin, METTA Academy sẽ tư vấn lớp hè phù hợp và hướng dẫn phụ huynh hoàn tất đăng ký.',
+  formHighlights: ['Tư vấn lớp hè theo tuổi', 'Gửi lịch học chi tiết', 'Hỗ trợ đăng ký và thanh toán QR'],
+  formCta: 'Đăng ký tư vấn',
+  formId: 'metta-summer-2026-landing',
 };
 
 function parseObj<T extends object>(json: string | undefined, fallback: T): T {
@@ -397,16 +417,20 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
           phone,
           age: form.age,
           contactType: 'parent',
-          source: 'Landing Page',
-          interestedCourse: 'Metta+ Pass',
+          source: 'Landing Page - METTA Summer 2026',
+          interestedCourse: SUMMER_COURSE_NAME,
           status: leadStatuses[0],
-          initialNote: `Metta+ Pass · Độ tuổi: ${form.age}`,
+          dealSize: SUMMER_DEAL_SIZE,
+          dealCurrency: SUMMER_DEAL_CURRENCY,
+          expectedRevenue: SUMMER_DEAL_SIZE,
+          dealPackage: SUMMER_COURSE_PACKAGE,
+          initialNote: `METTA Summer 2026 landing page · Độ tuổi: ${form.age}`,
           company: String(formData.get('company') || ''),
           website: String(formData.get('website') || ''),
         },
-        formId || 'metta-plus-pass',
+        formId || 'metta-summer-2026-landing',
       );
-      (window as any).fbq?.('track', 'Lead', { content_name: 'Metta+ Pass' });
+      (window as any).fbq?.('track', 'Lead', { content_name: SUMMER_COURSE_NAME });
       setForm({ parentName: '', studentName: '', phone: '', age: '' });
       setDone(true);
     } catch (err) {
@@ -431,7 +455,7 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
             </div>
             <h3 className="font-montserrat text-2xl font-extrabold text-[#08244A]">Metta đã nhận thông tin!</h3>
             <p className="mt-2 text-[15px] font-semibold leading-6 text-[#5D6B82]">
-              Tư vấn viên sẽ liên hệ để gợi ý CLB phù hợp cho bé.
+              Tư vấn viên sẽ liên hệ để gợi ý lớp hè phù hợp cho bé.
             </p>
           </div>
         </div>
@@ -455,9 +479,8 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
               <select className={`${fieldClass} pr-8`} value={form.age} onChange={(e) => set('age', e.target.value)} required>
                 <option value="">Chọn tuổi</option>
                 <option>4-6 tuổi</option>
-                <option>7-9 tuổi</option>
-                <option>10-12 tuổi</option>
-                <option>13-15 tuổi</option>
+                <option>6-8 tuổi</option>
+                <option>9-11 tuổi</option>
               </select>
             </label>
           </div>
@@ -469,6 +492,205 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
         </>
       )}
     </form>
+  );
+}
+
+function SummerLandingRegistrationModal({ onClose }: { onClose: () => void }) {
+  const [parentName, setParentName] = useState('');
+  const [studentName, setStudentName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [loadingAction, setLoadingAction] = useState<'consult' | 'paid' | null>(null);
+
+  const normalizedPhone = normalizePhone(phone);
+  const transferName = parentName.trim() || 'Tên phụ huynh';
+  const transferPhone = normalizedPhone || 'SĐT';
+  const transferContent = `${transferName} - ${transferPhone}`;
+  const priceLabel = formatCurrency(SUMMER_DEAL_SIZE, SUMMER_DEAL_CURRENCY);
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  async function submitRegistration(action: 'consult' | 'paid') {
+    setError('');
+    setSuccessMessage('');
+
+    const cleanParentName = parentName.replace(/\s+/g, ' ').trim();
+    const cleanStudentName = studentName.replace(/\s+/g, ' ').trim();
+    const cleanPhone = normalizePhone(phone);
+
+    if (!cleanParentName || !cleanStudentName || !cleanPhone) {
+      setError('Vui lòng nhập tên phụ huynh, tên bé và số điện thoại.');
+      return;
+    }
+
+    if (!phoneRegex.test(cleanPhone)) {
+      setError('Số điện thoại chưa đúng định dạng.');
+      return;
+    }
+
+    const paid = action === 'paid';
+    setLoadingAction(action);
+    try {
+      await publicLeadService.submit({
+        fullName: cleanStudentName,
+        parentName: cleanParentName,
+        studentName: cleanStudentName,
+        phone: cleanPhone,
+        contactType: 'parent',
+        source: paid ? 'Landing Page - METTA Summer 2026 QR chuyển khoản' : 'Landing Page - METTA Summer 2026 đăng ký ngay',
+        interestedCourse: SUMMER_COURSE_NAME,
+        status: paid ? WON_LEAD_STATUS : leadStatuses[0],
+        tags: paid ? ['Cần check CK'] : undefined,
+        dealSize: SUMMER_DEAL_SIZE,
+        dealCurrency: SUMMER_DEAL_CURRENCY,
+        expectedRevenue: SUMMER_DEAL_SIZE,
+        revenue: paid ? SUMMER_DEAL_SIZE : undefined,
+        dealPackage: SUMMER_COURSE_PACKAGE,
+        dealNote: `ND CK: ${cleanParentName} - ${cleanPhone}`,
+        initialNote: paid
+          ? `Phụ huynh chọn Đã chuyển khoản trên landing page METTA Summer 2026. ND CK: ${cleanParentName} - ${cleanPhone}. Sales kiểm tra giao dịch Techcombank.`
+          : `Phụ huynh chọn Cần tư vấn thêm trên landing page METTA Summer 2026. ND CK gợi ý: ${cleanParentName} - ${cleanPhone}.`,
+      }, paid ? 'metta-summer-2026-landing-paid-popup' : 'metta-summer-2026-landing-consult-popup');
+
+      setSuccessMessage(paid
+        ? 'Đã ghi nhận đăng ký học METTA Summer 2026. Sales METTA sẽ kiểm tra chuyển khoản.'
+        : 'METTA đã nhận thông tin. Tư vấn viên sẽ liên hệ để hỗ trợ phụ huynh đăng ký lớp hè.');
+      (window as any).fbq?.('track', 'Lead', { content_name: SUMMER_COURSE_NAME });
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : 'Không gửi được thông tin. Vui lòng thử lại.');
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/60 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="summer-landing-registration-title">
+      <div className="mx-auto flex min-h-full max-w-5xl items-center justify-center">
+        <div className="relative w-full overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition-colors hover:text-slate-900"
+            aria-label="Đóng form đăng ký"
+          >
+            <X size={20} />
+          </button>
+
+          <div className="grid lg:grid-cols-[1fr_0.95fr]">
+            <div className="p-5 sm:p-7 lg:p-8">
+              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-[#F37021]">METTA Summer 2026</p>
+              <h2 id="summer-landing-registration-title" className="mt-3 text-2xl font-extrabold leading-tight text-[#08244A] sm:text-3xl">
+                Đăng ký ngay
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                Điền thông tin để METTA ghi nhận đăng ký và hỗ trợ phụ huynh hoàn tất lớp hè cho con.
+              </p>
+
+              <div className="mt-6 grid gap-4">
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">Tên phụ huynh</span>
+                  <input
+                    value={parentName}
+                    onChange={(event) => setParentName(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#1B8DF2] focus:ring-4 focus:ring-[#1B8DF2]/15"
+                    placeholder="Ví dụ: Nguyễn Minh Anh"
+                    autoFocus
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">Tên bé</span>
+                  <input
+                    value={studentName}
+                    onChange={(event) => setStudentName(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#1B8DF2] focus:ring-4 focus:ring-[#1B8DF2]/15"
+                    placeholder="Ví dụ: Minh Khôi"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-700">Số điện thoại</span>
+                  <input
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#1B8DF2] focus:ring-4 focus:ring-[#1B8DF2]/15"
+                    placeholder="Ví dụ: 0912345678"
+                    inputMode="tel"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-[#FFC83D]/45 bg-[#FFF8EA] p-4">
+                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#F37021]">Nội dung chuyển khoản</p>
+                <p className="mt-2 break-words text-lg font-extrabold text-slate-950">{transferContent}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-600">Học phí: {priceLabel} / trọn khóa</p>
+              </div>
+
+              {error && (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                  {error}
+                </div>
+              )}
+              {successMessage && (
+                <div className="mt-4 flex gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                  <CheckCircle2 size={20} className="mt-0.5 shrink-0" />
+                  <span>{successMessage}</span>
+                </div>
+              )}
+
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => submitRegistration('consult')}
+                  disabled={Boolean(loadingAction)}
+                  className="inline-flex items-center justify-center rounded-2xl border-2 border-[#08244A]/15 bg-white px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-[#08244A] transition-all hover:-translate-y-0.5 hover:bg-[#F6FAFF] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingAction === 'consult' ? 'Đang gửi...' : 'Cần tư vấn thêm'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => submitRegistration('paid')}
+                  disabled={Boolean(loadingAction)}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F37021] px-5 py-3 text-sm font-extrabold uppercase tracking-wide text-white shadow-lg shadow-orange-600/25 transition-all hover:-translate-y-0.5 hover:bg-[#E85D12] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {loadingAction === 'paid' ? 'Đang ghi nhận...' : 'Đã chuyển khoản'} <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-[#EAF5FF] via-white to-[#FFF8EA] p-5 sm:p-7 lg:p-8">
+              <div className="rounded-3xl bg-white p-4 shadow-xl shadow-[#08244A]/10">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div>
+                    <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">Thanh toán</p>
+                    <p className="mt-1 text-lg font-extrabold text-[#08244A]">Mã QR METTA Summer</p>
+                  </div>
+                  <span className="rounded-full bg-[#F37021]/10 px-3 py-1 text-xs font-extrabold text-[#F37021]">{priceLabel}</span>
+                </div>
+
+                <img
+                  src={SUMMER_QR_IMAGE}
+                  alt="Mã QR thanh toán METTA Summer 2026"
+                  className="mx-auto mt-5 w-full max-w-[300px] rounded-2xl border border-slate-100 object-contain"
+                />
+
+                <div className="mt-5 rounded-2xl bg-[#FFF8EA] p-4 text-center">
+                  <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#F37021]">ND CK</p>
+                  <p className="mt-2 break-words text-base font-extrabold text-slate-950">{transferContent}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -518,8 +740,10 @@ function MiniFooter() {
 export default function MettaPlusLanding() {
   // null = chưa load xong (hiện skeleton để tránh "flash" bản cũ).
   const [sections, setSections] = useState<PageSection[] | null>(null);
+  const [registrationOpen, setRegistrationOpen] = useState(false);
   const config = useMemo(() => buildMettaPlusConfig(sections ?? []), [sections]);
   const heroTags = useMemo(() => config.heroTags, [config.heroTags]);
+  const openRegistration = () => setRegistrationOpen(true);
 
   useEffect(() => {
     let active = true;
@@ -580,12 +804,12 @@ export default function MettaPlusLanding() {
                   })}
                 </div>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={scrollToForm} className="inline-flex h-[56px] items-center justify-center gap-2 rounded-2xl bg-[#F37021] px-7 text-[16px] font-extrabold text-white shadow-[0_20px_40px_-20px_rgba(243,112,33,.9)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
+                  <button type="button" onClick={openRegistration} className="inline-flex h-[56px] items-center justify-center gap-2 rounded-2xl bg-[#F37021] px-7 text-[16px] font-extrabold text-white shadow-[0_20px_40px_-20px_rgba(243,112,33,.9)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
                     {config.heroPrimaryCta}
                     <ChevronRight className="h-5 w-5" />
                   </button>
                   {config.heroSecondaryCta && (
-                    <button type="button" onClick={scrollToForm} className="inline-flex h-[56px] items-center justify-center rounded-2xl border-2 border-[#08244A] bg-white px-7 text-[16px] font-extrabold text-[#08244A] transition hover:-translate-y-0.5 hover:bg-[#EAF5FF]">
+                    <button type="button" onClick={scrollToRoadmap} className="inline-flex h-[56px] items-center justify-center rounded-2xl border-2 border-[#08244A] bg-white px-7 text-[16px] font-extrabold text-[#08244A] transition hover:-translate-y-0.5 hover:bg-[#EAF5FF]">
                       {config.heroSecondaryCta}
                     </button>
                   )}
@@ -594,13 +818,13 @@ export default function MettaPlusLanding() {
 
               <div className="relative">
                 <div className="absolute -left-5 top-10 z-10 hidden rotate-[-10deg] rounded-[24px] bg-[#FFC83D] px-4 py-3 text-[14px] font-black text-[#08244A] shadow-xl sm:block">
-                  <span className="mr-1">★</span> Passport ready
+                  <span className="mr-1">★</span> Showcase ready
                 </div>
                 <div className="absolute -right-2 top-2 z-10 rounded-[22px] bg-[#EAF8EC] p-3 text-[#16833A] shadow-xl">
-                  <Bot className="h-8 w-8" />
+                  <Palette className="h-8 w-8" />
                 </div>
                 <div className="absolute -bottom-3 left-8 z-10 rounded-[22px] bg-[#FFEAF4] p-3 text-[#D82975] shadow-xl">
-                  <Mic2 className="h-8 w-8" />
+                  <Trophy className="h-8 w-8" />
                 </div>
                 <div className="relative overflow-hidden rounded-[38px] bg-white p-3 shadow-[0_34px_70px_-36px_rgba(8,36,74,.65)] ring-1 ring-[#E2EAF5]">
                   <img src={config.heroImage || HERO_IMAGE} alt={config.heroImageAlt} className="aspect-[4/3] w-full rounded-[30px] object-cover object-center" />
@@ -670,7 +894,7 @@ export default function MettaPlusLanding() {
                         <img src={HEADER_LOGO} alt="METTA Academy" className="h-10 w-auto" />
                       </div>
                       <div className="mt-8 grid grid-cols-3 gap-2.5">
-                        {['ENG', 'STEM', 'SHOW'].map((label, index) => (
+                        {['ART', 'CHESS', 'SHOW'].map((label, index) => (
                           <div key={label} className={`rounded-2xl px-3 py-5 text-center text-[13px] font-black ${colorClasses[(['blue', 'green', 'orange'] as ColorKey[])[index]]}`}>
                             {label}
                           </div>
@@ -690,7 +914,7 @@ export default function MettaPlusLanding() {
                         </div>
                       ))}
                     </div>
-                    <button type="button" onClick={scrollToForm} className="mt-7 inline-flex h-[54px] items-center justify-center gap-2 rounded-2xl bg-[#FFC83D] px-6 text-[15px] font-black text-[#08244A] shadow-lg transition hover:-translate-y-0.5">
+                    <button type="button" onClick={openRegistration} className="mt-7 inline-flex h-[54px] items-center justify-center gap-2 rounded-2xl bg-[#FFC83D] px-6 text-[15px] font-black text-[#08244A] shadow-lg transition hover:-translate-y-0.5">
                       {config.passCta}
                       <ChevronRight className="h-5 w-5" />
                     </button>
@@ -702,7 +926,7 @@ export default function MettaPlusLanding() {
         );
       case 'Metta+ Journey':
         return (
-          <section className="bg-[#FFF7EC] px-5 py-14 sm:px-6 lg:py-18">
+          <section id="metta-summer-roadmap" className="bg-[#FFF7EC] px-5 py-14 sm:px-6 lg:py-18">
             <div className="mx-auto max-w-[1180px]">
               <SectionHeader title={config.journeyTitle} desc={config.journeyDesc} />
               <div className="grid gap-4 lg:grid-cols-4">
@@ -781,7 +1005,7 @@ export default function MettaPlusLanding() {
           <a href="#top" className="flex items-center gap-2.5">
             <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />
           </a>
-          <button type="button" onClick={scrollToForm} className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#F37021] px-5 text-[14px] font-extrabold text-white shadow-[0_16px_28px_-18px_rgba(243,112,33,.95)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
+          <button type="button" onClick={openRegistration} className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#F37021] px-5 text-[14px] font-extrabold text-white shadow-[0_16px_28px_-18px_rgba(243,112,33,.95)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
             {config.heroPrimaryCta}
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -793,6 +1017,8 @@ export default function MettaPlusLanding() {
           .filter(isMettaPlusSection)
           .map((section) => <div key={section.id}>{renderSection(section.type)}</div>)}
       </main>
+
+      {registrationOpen && <SummerLandingRegistrationModal onClose={() => setRegistrationOpen(false)} />}
 
       <MiniFooter />
     </div>

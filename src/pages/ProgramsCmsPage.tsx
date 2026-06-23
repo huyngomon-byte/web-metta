@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, defaultCourseDealSizeForProgram, resolveCourseDealSizeForProgram } from '@/lib/constants';
+import { DEFAULT_COURSE_DEAL_SIZE, DEFAULT_DEAL_CURRENCY, PUBLIC_PROGRAMS, SUMMER_DEFAULTS, defaultCourseDealSizeForProgram, resolveCourseDealSizeForProgram, summerWeeklyColumnSchedule } from '@/lib/constants';
 import { useThemeSettings } from '@/hooks/useCms';
 import { formatCurrency } from '@/lib/utils';
 import { cmsService } from '@/services/cmsService';
@@ -965,12 +965,18 @@ function SummerWeeklyEditor({ columns, rows, onColumns, onRows }: { columns: str
         </div>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {columns.map((c, ci) => (
-          <div key={ci} className="flex min-w-[150px] items-center gap-1">
-            <Input className="text-xs font-bold" value={c} onChange={(e) => setCol(ci, e.target.value)} placeholder={`Cột ${ci + 1}`} />
-            <button type="button" onClick={() => removeCol(ci)} className="flex-shrink-0 text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
-          </div>
-        ))}
+        {columns.map((c, ci) => {
+          const schedule = summerWeeklyColumnSchedule(c);
+          return (
+            <div key={ci} className="flex min-w-[190px] items-start gap-1">
+              <div className="min-w-0 flex-1">
+                <Input className="text-xs font-bold" value={c} onChange={(e) => setCol(ci, e.target.value)} placeholder={`Cột ${ci + 1}`} />
+                {schedule && <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500">{schedule}</p>}
+              </div>
+              <button type="button" onClick={() => removeCol(ci)} className="mt-2 flex-shrink-0 text-slate-300 hover:text-red-500"><Trash2 size={13} /></button>
+            </div>
+          );
+        })}
       </div>
       <div className="flex flex-col gap-2">
         {rows.map((row, ri) => (

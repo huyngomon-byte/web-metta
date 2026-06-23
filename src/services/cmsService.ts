@@ -390,6 +390,32 @@ function hasMettaPlusLanding(items: PageSection[]) {
   return items.some((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
 }
 
+const LEGACY_METTA_PLUS_COPY = /(?:METTA\+ PASS|Metta\+ Pass|STEM Robotics|Metta Passport|metta-plus-pass|4[-–]15|Passport ready|Con nhận được gì tại Metta\+|Hành trình Metta\+|Vì sao phụ huynh chọn Metta\+|Summer Club)/i;
+
+function mettaPlusSearchText(items: PageSection[]) {
+  return items
+    .map((section) => [
+      section.title,
+      section.subtitle,
+      section.description,
+      section.content,
+      section.buttonText,
+      section.button2Text,
+      section.formId,
+      section.imageUrl,
+      section.extraData,
+    ].filter((value): value is string => Boolean(value)).join(' '))
+    .join(' ');
+}
+
+function isLegacyMettaPlusLanding(items: PageSection[]) {
+  return hasMettaPlusLanding(items) && LEGACY_METTA_PLUS_COPY.test(mettaPlusSearchText(items));
+}
+
+function shouldUseMettaPlusFallback(pageId: string, items: PageSection[]) {
+  return pageId === 'page-metta-plus' && (!hasMettaPlusLanding(items) || isLegacyMettaPlusLanding(items));
+}
+
 function fallbackSectionsForPage(pageId: string) {
   return normalizeCmsSections(seedSections.filter((section) => section.pageId === pageId));
 }
@@ -741,18 +767,25 @@ export const cmsService = {
     ensureLocalSeed();
     const remote = await readRemoteSections(pageId);
     if (remote?.length) {
+      let nextRemote = remote;
+      if (pageId === 'page-phonics' && !hasEbookLanding(nextRemote)) nextRemote = fallbackSectionsForPage(pageId);
+      if (shouldUseMettaPlusFallback(pageId, nextRemote)) nextRemote = fallbackSectionsForPage(pageId);
       const otherSections = store.sections.filter((section) => section.pageId !== pageId);
-      store.sections = [...otherSections, ...remote];
+      store.sections = [...otherSections, ...nextRemote];
       persistCMS();
-      if (pageId === 'page-phonics' && !hasEbookLanding(remote)) return delay(fallbackSectionsForPage(pageId));
-      if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(remote)) return delay(fallbackSectionsForPage(pageId));
-      return delay(pageId === 'page-home' ? ensureFacilitiesSection(remote) : remote);
+      return delay(pageId === 'page-home' ? ensureFacilitiesSection(nextRemote) : nextRemote);
     }
     const local = sortSections(store.sections.filter((section) => section.pageId === pageId));
     const mergedLocal = pageId === 'page-home' ? ensureFacilitiesSection(mergeHomepageDefaults(local)) : local;
     if (pageId === 'page-home' && !hasUsableHomepageSections(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
     if (pageId === 'page-phonics' && !hasEbookLanding(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
-    if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(mergedLocal)) return delay(fallbackSectionsForPage(pageId));
+    if (shouldUseMettaPlusFallback(pageId, mergedLocal)) {
+      const fallback = fallbackSectionsForPage(pageId);
+      const otherSections = store.sections.filter((section) => section.pageId !== pageId);
+      store.sections = [...otherSections, ...fallback];
+      persistCMS();
+      return delay(fallback);
+    }
     return delay(mergedLocal);
   },
 
@@ -765,7 +798,7 @@ export const cmsService = {
     if (pageId === 'page-phonics' && !hasEbookLanding(visible)) {
       return fallbackSectionsForPage(pageId).filter((section) => section.visible);
     }
-    if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(visible)) {
+    if (shouldUseMettaPlusFallback(pageId, visible)) {
       return fallbackSectionsForPage(pageId).filter((section) => section.visible);
     }
     if (visible.length) return visible;

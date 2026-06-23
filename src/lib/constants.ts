@@ -23,6 +23,29 @@ export const DEFAULT_DEAL_CURRENCY = 'VND';
 export const DEFAULT_COURSE_DEAL_SIZE = 20000000;
 const SUMMER_HERO_IMAGE = '/brand/metta-summer-hero-4x3.jpg';
 
+export const SUMMER_ENGLISH_WARMUP_NOTE = 'Mỗi buổi học dành khoảng 10–15 phút đầu giờ cho hoạt động tiếng Anh:';
+export const SUMMER_ENGLISH_WARMUP_ACTIVITIES = [
+  'Greeting Time',
+  'Vocabulary of the Day',
+  'Mini Game bằng tiếng Anh',
+] as const;
+
+export function summerWeeklyColumnSchedule(column: string) {
+  const normalized = column
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+  if (normalized.includes('my thuat')) return 'Thứ 2 18:00 - 19:30';
+  if (normalized.includes('co vua')) return 'Thứ 4 18:00 - 19:30';
+  if (normalized.includes('thanh nhac')) return 'Thứ 6 18:00 - 19:30';
+  if (normalized.includes('nhay') && normalized.includes('mua')) return 'Chủ nhật 09:00 - 10:30';
+  return '';
+}
+
 export const COURSES = [
   { name: 'METTA Kiddies', code: 'KIDDIES', ageRange: '3-6 tuổi', level: 'Preschool' },
   { name: 'METTA on Phonics', code: 'PHONICS', ageRange: '5-7 tuổi', level: 'Early Primary' },

@@ -296,6 +296,32 @@ function hasMettaPlusLanding(items: PageSection[]) {
   return items.some((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
 }
 
+const LEGACY_METTA_PLUS_COPY = /(?:METTA\+ PASS|Metta\+ Pass|STEM Robotics|Metta Passport|metta-plus-pass|4[-–]15|Passport ready|Con nhận được gì tại Metta\+|Hành trình Metta\+|Vì sao phụ huynh chọn Metta\+|Summer Club)/i;
+
+function mettaPlusSearchText(items: PageSection[]) {
+  return items
+    .map((section) => [
+      section.title,
+      section.subtitle,
+      section.description,
+      section.content,
+      section.buttonText,
+      section.button2Text,
+      section.formId,
+      section.imageUrl,
+      section.extraData,
+    ].filter((value): value is string => Boolean(value)).join(' '))
+    .join(' ');
+}
+
+function isLegacyMettaPlusLanding(items: PageSection[]) {
+  return hasMettaPlusLanding(items) && LEGACY_METTA_PLUS_COPY.test(mettaPlusSearchText(items));
+}
+
+function shouldUseMettaPlusFallback(pageId: string, items: PageSection[]) {
+  return pageId === 'page-metta-plus' && (!hasMettaPlusLanding(items) || isLegacyMettaPlusLanding(items));
+}
+
 function fallbackSectionsForPage(pageId: string, sections = PUBLIC_SECTIONS) {
   return sortSections(sections.filter((section) => section.pageId === pageId));
 }
@@ -311,7 +337,7 @@ function sectionsForPage(pageId: string, sections = PUBLIC_SECTIONS) {
   const local = fallbackSectionsForPage(pageId, sections);
   if (pageId === 'page-home' && !hasUsableHomepageSections(local)) return fallbackSectionsForPage(pageId);
   if (pageId === 'page-phonics' && !hasEbookLanding(local)) return fallbackSectionsForPage(pageId);
-  if (pageId === 'page-metta-plus' && !hasMettaPlusLanding(local)) return fallbackSectionsForPage(pageId);
+  if (shouldUseMettaPlusFallback(pageId, local)) return fallbackSectionsForPage(pageId);
   return pageId === 'page-home' ? ensureFacilitiesSection(local) : local;
 }
 
