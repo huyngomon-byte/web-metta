@@ -275,6 +275,13 @@ export interface PageSection {
   updatedAt: string;
 }
 
+export interface MettaPlusPricingOffer {
+  originalPrice?: number;
+  salePrice?: number;
+  discountPercent?: number;
+  currency?: string;
+}
+
 export interface BlogPost {
   id: string;
   title: string;

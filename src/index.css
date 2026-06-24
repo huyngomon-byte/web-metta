@@ -150,6 +150,27 @@ select {
 .lp-card { background: #fff; border-radius: 26px; box-shadow: 0 20px 55px -18px rgba(0, 35, 71, .45); border: 1px solid rgba(0, 35, 71, .1); }
 .lp-chip { background: var(--lp-sky); color: var(--lp-navy-700); }
 
+.pulse-cta {
+  animation: pulse-cta 2s ease-in-out infinite;
+  transform-origin: center;
+  will-change: scale;
+}
+
+.pulse-cta:hover {
+  animation-play-state: paused;
+}
+
+@keyframes pulse-cta {
+  0%, 100% { scale: 1; }
+  50% { scale: 1.05; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-cta {
+    animation: none;
+  }
+}
+
 /* Khi landing ebook hoạt động trong cây có PublicLayout, ẩn header/footer/messenger
    global để không trùng với mini-header/mini-footer của landing. */
 body:has(.lp-root) [data-public-shell] { display: none !important; }

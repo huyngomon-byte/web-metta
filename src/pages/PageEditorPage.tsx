@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { pages as seedPages } from '@/data/seed';
 import { cmsService } from '@/services/cmsService';
 import { usePageSections } from '@/hooks/useCms';
-import type { BlockType, CmsPage, PageSection } from '@/types/cms';
+import type { BlockType, CmsPage, MettaPlusPricingOffer, PageSection } from '@/types/cms';
 import { SUMMER_DEFAULTS, SUMMER_ENGLISH_WARMUP_ACTIVITIES, SUMMER_ENGLISH_WARMUP_NOTE } from '@/lib/constants';
 
 /* ── constants ────────────────────────────────────────────────────────── */
@@ -951,6 +951,12 @@ type MettaPlusIcon =
 type MettaPlusCard = { title: string; desc: string; icon: MettaPlusIcon; color: MettaPlusColor };
 type HeroTagItem = { label: string; color?: MettaPlusColor };
 type MettaPlusHeroSlide = { src: string; title: string; alt?: string };
+type MettaPlusOfferFields = {
+  offerOriginalPrice?: number;
+  offerSalePrice?: number;
+  offerDiscountPercent?: number;
+  offerCurrency?: string;
+};
 type MettaPlusWeeklyPlanExtra = {
   warmupNote?: string;
   warmupActivities?: string[];
@@ -991,6 +997,10 @@ type MettaPlusData = {
   formCta: string;
   footerSubtitle: string;
   footerCta: string;
+  offerOriginalPrice: number;
+  offerSalePrice: number;
+  offerDiscountPercent: number;
+  offerCurrency: string;
 };
 
 const METTA_PLUS_ICON_OPTIONS: MettaPlusIcon[] = ['Sparkles', 'Star', 'Users', 'Bot', 'Mic2', 'Lightbulb', 'FileBadge2', 'CalendarCheck', 'Palette', 'Rocket', 'GraduationCap', 'ClipboardList', 'Compass', 'Trophy', 'BadgeCheck', 'CheckCircle2'];
@@ -1017,6 +1027,13 @@ const DEFAULT_METTA_PLUS_WEEKLY_PLAN_EXTRA: Required<MettaPlusWeeklyPlanExtra> =
   rows: SUMMER_DEFAULTS.weeklyPlan.map((row) => [...row]),
 };
 
+const DEFAULT_METTA_PLUS_PRICING: Required<MettaPlusPricingOffer> = {
+  originalPrice: 2499000,
+  salePrice: 1999000,
+  discountPercent: 20,
+  currency: 'VND',
+};
+
 const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
   heroBadge: 'METTA Summer 2026',
   headline: 'Mùa hè đa bộ môn để con khám phá và tỏa sáng',
@@ -1032,6 +1049,10 @@ const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
   heroSecondaryCta: 'Xem lộ trình hè',
   heroImage: '/brand/metta-summer-hero-4x3.jpg',
   heroImageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè',
+  offerOriginalPrice: DEFAULT_METTA_PLUS_PRICING.originalPrice,
+  offerSalePrice: DEFAULT_METTA_PLUS_PRICING.salePrice,
+  offerDiscountPercent: DEFAULT_METTA_PLUS_PRICING.discountPercent,
+  offerCurrency: DEFAULT_METTA_PLUS_PRICING.currency,
   benefitsTitle: 'Con nhận được gì trong mùa hè này?',
   benefitsDesc: 'Một chương trình hè cân bằng giữa nghệ thuật, tư duy, âm nhạc và vận động.',
   benefits: [
@@ -1284,6 +1305,12 @@ function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: str
         <FieldCol><Label>CTA phụ hero</Label><Input value={data.heroSecondaryCta} onChange={(e) => sync({ ...data, heroSecondaryCta: e.target.value })} /></FieldCol>
         <FieldCol><Label>Alt ảnh hero</Label><Input value={data.heroImageAlt} onChange={(e) => sync({ ...data, heroImageAlt: e.target.value })} /></FieldCol>
       </div>
+      <div className="grid gap-3 rounded-xl border border-orange-200 bg-white p-3 md:grid-cols-4">
+        <FieldCol><Label>Giá gốc</Label><Input type="number" min={0} value={data.offerOriginalPrice} onChange={(e) => sync({ ...data, offerOriginalPrice: Number(e.target.value) })} /></FieldCol>
+        <FieldCol><Label>Giá bán</Label><Input type="number" min={0} value={data.offerSalePrice} onChange={(e) => sync({ ...data, offerSalePrice: Number(e.target.value) })} /></FieldCol>
+        <FieldCol><Label>% giảm</Label><Input type="number" min={0} value={data.offerDiscountPercent} onChange={(e) => sync({ ...data, offerDiscountPercent: Number(e.target.value) })} /></FieldCol>
+        <FieldCol><Label>Tiền tệ</Label><Input value={data.offerCurrency} onChange={(e) => sync({ ...data, offerCurrency: e.target.value || DEFAULT_METTA_PLUS_PRICING.currency })} /></FieldCol>
+      </div>
       <ImageUploader value={data.heroImage} onChange={(heroImage) => sync({ ...data, heroImage })} sizeNote="Hero ngang 4:3 · 1200 x 900 px" label="Ảnh hero bên phải" />
       <HeroTagsEditor label="Tag nhỏ hero" items={data.heroTags} onChange={(heroTags) => sync({ ...data, heroTags })} />
       <div className="grid gap-3 md:grid-cols-2">
@@ -1328,12 +1355,20 @@ function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: str
   );
 }
 
-type MettaPlusHeroExtra = { badge?: string; tags?: (string | HeroTagItem)[]; imageAlt?: string; slides?: MettaPlusHeroSlide[] };
+type MettaPlusHeroExtra = MettaPlusOfferFields & { badge?: string; tags?: (string | HeroTagItem)[]; imageAlt?: string; slides?: MettaPlusHeroSlide[] };
 type MettaPlusPassExtra = { passCardTitle?: string; passCardMeta?: string; passItems?: string[] };
 type MettaPlusFormExtra = { highlights?: string[] };
 
 function MettaPlusHeroSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
-  const extra = parseObj<MettaPlusHeroExtra>(section.extraData, { badge: 'METTA Summer 2026', tags: [], imageAlt: '' });
+  const extra = parseObj<MettaPlusHeroExtra>(section.extraData, {
+    badge: 'METTA Summer 2026',
+    tags: [],
+    imageAlt: '',
+    offerOriginalPrice: DEFAULT_METTA_PLUS_PRICING.originalPrice,
+    offerSalePrice: DEFAULT_METTA_PLUS_PRICING.salePrice,
+    offerDiscountPercent: DEFAULT_METTA_PLUS_PRICING.discountPercent,
+    offerCurrency: DEFAULT_METTA_PLUS_PRICING.currency,
+  });
   const syncExtra = (patch: Partial<MettaPlusHeroExtra>) => onChange({ extraData: JSON.stringify({ ...extra, ...patch }) });
   return (
     <>
@@ -1345,6 +1380,12 @@ function MettaPlusHeroSectionEditor({ section, onChange }: { section: PageSectio
         <FieldCol span2><Label>Mô tả ngắn</Label><Input value={section.description || ''} onChange={(e) => onChange({ description: e.target.value })} /></FieldCol>
         <FieldCol><Label>CTA phụ</Label><Input value={section.button2Text || ''} onChange={(e) => onChange({ button2Text: e.target.value })} /></FieldCol>
         <FieldCol><Label>Alt ảnh hero</Label><Input value={extra.imageAlt || ''} onChange={(e) => syncExtra({ imageAlt: e.target.value })} /></FieldCol>
+      </div>
+      <div className="grid gap-3 rounded-xl border border-orange-200 bg-orange-50/40 p-3 md:grid-cols-4">
+        <FieldCol><Label>Giá gốc</Label><Input type="number" min={0} value={extra.offerOriginalPrice ?? DEFAULT_METTA_PLUS_PRICING.originalPrice} onChange={(e) => syncExtra({ offerOriginalPrice: Number(e.target.value) })} /></FieldCol>
+        <FieldCol><Label>Giá bán</Label><Input type="number" min={0} value={extra.offerSalePrice ?? DEFAULT_METTA_PLUS_PRICING.salePrice} onChange={(e) => syncExtra({ offerSalePrice: Number(e.target.value) })} /></FieldCol>
+        <FieldCol><Label>% giảm</Label><Input type="number" min={0} value={extra.offerDiscountPercent ?? DEFAULT_METTA_PLUS_PRICING.discountPercent} onChange={(e) => syncExtra({ offerDiscountPercent: Number(e.target.value) })} /></FieldCol>
+        <FieldCol><Label>Tiền tệ</Label><Input value={extra.offerCurrency || DEFAULT_METTA_PLUS_PRICING.currency} onChange={(e) => syncExtra({ offerCurrency: e.target.value || DEFAULT_METTA_PLUS_PRICING.currency })} /></FieldCol>
       </div>
       <ImageUploader value={section.imageUrl || ''} onChange={(imageUrl) => onChange({ imageUrl })} sizeNote="Hero ngang 4:3 · 1200 x 900 px" label="Ảnh hero bên phải" />
       <MettaPlusHeroSlidesEditor slides={extra.slides} onChange={(slides) => syncExtra({ slides })} />

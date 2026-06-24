@@ -9,6 +9,7 @@ const DEFAULT_DESCRIPTION = 'Trung tâm Anh ngữ quốc tế METTA Academy – 
 const SITE_URL = 'https://metta.edu.vn';
 const PUBLIC_SITE_URL = 'https://www.metta.edu.vn';
 const LOGO_URL = `${SITE_URL}/logo.png`;
+const METTA_SUMMER_OG_IMAGE = '/brand/metta-summer-hero-4x3.jpg';
 const DEFAULT_MAP_URL = 'https://www.google.com/maps/place/Metta+Academy/@20.9664565,105.7732044,17z/data=!4m14!1m7!3m6!1s0x3134538655bb7f0f:0xdc927bc6493c2501!2sMetta+Academy!8m2!3d20.9664515!4d105.7757793!16s%2Fg%2F11z810c9f8!3m5!1s0x3134538655bb7f0f:0xdc927bc6493c2501!8m2!3d20.9664515!4d105.7757793!16s%2Fg%2F11z810c9f8?entry=ttu&g_ep=EgoyMDI2MDYxMy4wIKXMDSoASAFQAw%3D%3D';
 const JSONLD_SCRIPT_ID = 'metta-jsonld';
 const METTA_SUMMER_PATHS = new Set([
@@ -265,7 +266,7 @@ function upsertStructuredData(data: unknown) {
   element.textContent = JSON.stringify(data);
 }
 
-function applyCommonSeo(seo: { title: string; description: string }, canonical: string) {
+function applyCommonSeo(seo: { title: string; description: string }, canonical: string, image = '') {
   document.title = seo.title;
   upsertMeta('description', seo.description);
   upsertMeta('og:title', seo.title, 'property');
@@ -274,9 +275,15 @@ function applyCommonSeo(seo: { title: string; description: string }, canonical: 
   upsertMeta('og:type', 'website', 'property');
   upsertMeta('twitter:title', seo.title);
   upsertMeta('twitter:description', seo.description);
-  removeMeta('og:image', 'property');
-  removeMeta('twitter:image');
-  removeMeta('twitter:card');
+  if (image) {
+    upsertMeta('og:image', image, 'property');
+    upsertMeta('twitter:image', image);
+    upsertMeta('twitter:card', 'summary_large_image');
+  } else {
+    removeMeta('og:image', 'property');
+    removeMeta('twitter:image');
+    removeMeta('twitter:card');
+  }
   removeMeta('article:published_time', 'property');
   removeMeta('article:modified_time', 'property');
   removeMeta('article:author', 'property');
@@ -336,7 +343,8 @@ export function PublicSeo() {
         if (!active) return;
         const seo = seoForPath(pathname, settings, pages);
         const canonical = canonicalUrl(pathname);
-        applyCommonSeo(seo, canonical);
+        const image = METTA_SUMMER_PATHS.has(pathname) ? absoluteUrl(METTA_SUMMER_OG_IMAGE, window.location.origin) : '';
+        applyCommonSeo(seo, canonical, image);
         upsertStructuredData(buildStructuredData(pathname, seo, settings.seoDescription || DEFAULT_DESCRIPTION, settings.mapUrl || DEFAULT_MAP_URL));
       })
       .catch(() => {

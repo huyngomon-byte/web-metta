@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   ClipboardList,
   Compass,
   FileBadge2,
@@ -29,7 +30,7 @@ import { usePublicThemeSettings } from '@/hooks/usePublicCms';
 import { publicCmsService } from '@/services/publicCmsService';
 import { publicLeadService } from '@/services/publicLeadService';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
-import type { PageSection } from '@/types/cms';
+import type { MettaPlusPricingOffer, PageSection } from '@/types/cms';
 import {
   BRAND_LOGOS,
   DEFAULT_DEAL_CURRENCY,
@@ -56,6 +57,9 @@ const SUMMER_DEAL_SIZE = resolveCourseDealSizeForProgram(SUMMER_PROGRAM);
 const SUMMER_DEAL_CURRENCY = SUMMER_PROGRAM?.dealCurrency || DEFAULT_DEAL_CURRENCY;
 const METTA_SUMMER_SLUG = 'metta-summer';
 const LEGACY_METTA_PLUS_SLUG = 'metta-plus';
+const DEFAULT_OFFER_ORIGINAL_PRICE = 2499000;
+const DEFAULT_OFFER_SALE_PRICE = SUMMER_DEAL_SIZE || 1999000;
+const DEFAULT_OFFER_DISCOUNT_PERCENT = 20;
 
 const METTA_PLUS_SECTION_TYPES = [
   'Metta+ Hero',
@@ -92,6 +96,7 @@ type ColorKey = 'orange' | 'green' | 'purple' | 'yellow' | 'blue' | 'pink';
 type MettaPlusCard = { title: string; desc: string; icon: IconName; color: ColorKey };
 type HeroTag = { label: string; color?: ColorKey };
 type SummerLandingHeroSlide = { src: string; title: string; alt: string };
+type SummerLandingPricing = Required<MettaPlusPricingOffer>;
 type SummerWeeklyPlanExtra = {
   warmupNote?: string;
   warmupActivities?: string[];
@@ -134,12 +139,62 @@ type MettaPlusConfig = {
   formHighlights: string[];
   formCta: string;
   formId: string;
+  offerOriginalPrice: number;
+  offerSalePrice: number;
+  offerDiscountPercent: number;
+  offerCurrency: string;
 };
 
 const phoneRegex = /^0(3|5|7|8|9|1[2689])\d{8}$/;
 
 function normalizePhone(phone: string) {
   return phone.replace(/[\s.\-()]/g, '').replace(/^\+84/, '0');
+}
+
+function formatCountdown(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+function secondsUntilEndOfDay() {
+  const now = new Date();
+  const end = new Date(now);
+  end.setHours(24, 0, 0, 0);
+  return Math.max(0, Math.floor((end.getTime() - now.getTime()) / 1000));
+}
+
+function useDailyCountdown() {
+  const [countdown, setCountdown] = useState(() => formatCountdown(secondsUntilEndOfDay()));
+
+  useEffect(() => {
+    const update = () => setCountdown(formatCountdown(secondsUntilEndOfDay()));
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return countdown;
+}
+
+function normalizeNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function normalizePricingOffer(offer: MettaPlusPricingOffer): Required<MettaPlusPricingOffer> {
+  const originalPrice = normalizeNumber(offer.originalPrice, DEFAULT_OFFER_ORIGINAL_PRICE);
+  const salePrice = normalizeNumber(offer.salePrice, DEFAULT_OFFER_SALE_PRICE);
+  const computedDiscount = originalPrice > salePrice && originalPrice > 0
+    ? Math.round(((originalPrice - salePrice) / originalPrice) * 100)
+    : 0;
+  return {
+    originalPrice,
+    salePrice,
+    discountPercent: normalizeNumber(offer.discountPercent, computedDiscount || DEFAULT_OFFER_DISCOUNT_PERCENT),
+    currency: offer.currency || SUMMER_DEAL_CURRENCY,
+  };
 }
 
 function scrollToForm() {
@@ -276,6 +331,10 @@ const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
   formHighlights: ['Tư vấn lớp hè theo tuổi', 'Gửi lịch học chi tiết', 'Hỗ trợ đăng ký và thanh toán QR'],
   formCta: 'Đăng ký tư vấn',
   formId: 'metta-summer-2026-landing',
+  offerOriginalPrice: DEFAULT_OFFER_ORIGINAL_PRICE,
+  offerSalePrice: DEFAULT_OFFER_SALE_PRICE,
+  offerDiscountPercent: DEFAULT_OFFER_DISCOUNT_PERCENT,
+  offerCurrency: SUMMER_DEAL_CURRENCY,
 };
 
 function parseObj<T extends object>(json: string | undefined, fallback: T): T {
@@ -340,6 +399,10 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
           tags: config.heroTags as (string | HeroTag)[],
           imageAlt: config.heroImageAlt,
           slides: config.heroSlides,
+          offerOriginalPrice: config.offerOriginalPrice,
+          offerSalePrice: config.offerSalePrice,
+          offerDiscountPercent: config.offerDiscountPercent,
+          offerCurrency: config.offerCurrency,
         });
         // Dùng ?? (nullish) thay || để admin xóa thành chuỗi rỗng vẫn được tôn trọng
         // (nếu dùng ||, "" sẽ rơi về default seed → field không bao giờ ẩn được).
@@ -348,6 +411,10 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
           config.heroTags = extra.tags.map((tag) => typeof tag === 'string' ? { label: tag } : tag);
         }
         config.heroImageAlt = extra.imageAlt ?? config.heroImageAlt;
+        config.offerOriginalPrice = normalizeNumber(extra.offerOriginalPrice, config.offerOriginalPrice);
+        config.offerSalePrice = normalizeNumber(extra.offerSalePrice, config.offerSalePrice);
+        config.offerDiscountPercent = normalizeNumber(extra.offerDiscountPercent, config.offerDiscountPercent);
+        config.offerCurrency = extra.offerCurrency || config.offerCurrency;
         if (extra.slides?.length) {
           config.heroSlides = extra.slides
             .filter((slide) => slide?.src)
@@ -549,7 +616,7 @@ function SummerWeeklyPlanTable({ section }: { section: PageSection }) {
   );
 }
 
-function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string }) {
+function MettaPlusForm({ ctaText, formId, pricing }: { ctaText: string; formId: string; pricing: SummerLandingPricing }) {
   const [form, setForm] = useState({ parentName: '', studentName: '', phone: '', age: '' });
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
@@ -589,9 +656,9 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
           source: 'Landing Page - METTA Summer 2026',
           interestedCourse: SUMMER_COURSE_NAME,
           status: leadStatuses[0],
-          dealSize: SUMMER_DEAL_SIZE,
-          dealCurrency: SUMMER_DEAL_CURRENCY,
-          expectedRevenue: SUMMER_DEAL_SIZE,
+          dealSize: pricing.salePrice,
+          dealCurrency: pricing.currency,
+          expectedRevenue: pricing.salePrice,
           dealPackage: SUMMER_COURSE_PACKAGE,
           initialNote: `METTA Summer 2026 landing page · Độ tuổi: ${form.age}`,
           company: String(formData.get('company') || ''),
@@ -664,7 +731,7 @@ function MettaPlusForm({ ctaText, formId }: { ctaText: string; formId: string })
   );
 }
 
-function SummerLandingRegistrationModal({ onClose }: { onClose: () => void }) {
+function SummerLandingRegistrationModal({ onClose, pricing }: { onClose: () => void; pricing: SummerLandingPricing }) {
   const [parentName, setParentName] = useState('');
   const [studentName, setStudentName] = useState('');
   const [phone, setPhone] = useState('');
@@ -676,7 +743,9 @@ function SummerLandingRegistrationModal({ onClose }: { onClose: () => void }) {
   const transferName = parentName.trim() || 'Tên phụ huynh';
   const transferPhone = normalizedPhone || 'SĐT';
   const transferContent = `${transferName} - ${transferPhone}`;
-  const priceLabel = formatCurrency(SUMMER_DEAL_SIZE, SUMMER_DEAL_CURRENCY);
+  const originalPriceLabel = formatCurrency(pricing.originalPrice, pricing.currency);
+  const salePriceLabel = formatCurrency(pricing.salePrice, pricing.currency);
+  const discountLabel = `-${Math.round(pricing.discountPercent)}%`;
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -717,10 +786,10 @@ function SummerLandingRegistrationModal({ onClose }: { onClose: () => void }) {
         interestedCourse: SUMMER_COURSE_NAME,
         status: paid ? WON_LEAD_STATUS : leadStatuses[0],
         tags: paid ? ['Cần check CK'] : undefined,
-        dealSize: SUMMER_DEAL_SIZE,
-        dealCurrency: SUMMER_DEAL_CURRENCY,
-        expectedRevenue: SUMMER_DEAL_SIZE,
-        revenue: paid ? SUMMER_DEAL_SIZE : undefined,
+        dealSize: pricing.salePrice,
+        dealCurrency: pricing.currency,
+        expectedRevenue: pricing.salePrice,
+        revenue: paid ? pricing.salePrice : undefined,
         dealPackage: SUMMER_COURSE_PACKAGE,
         dealNote: `ND CK: ${cleanParentName} - ${cleanPhone}`,
         initialNote: paid
@@ -799,7 +868,12 @@ function SummerLandingRegistrationModal({ onClose }: { onClose: () => void }) {
               <div className="mt-5 rounded-2xl border border-[#FFC83D]/45 bg-[#FFF8EA] p-4">
                 <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-[#F37021]">Nội dung chuyển khoản</p>
                 <p className="mt-2 break-words text-lg font-extrabold text-slate-950">{transferContent}</p>
-                <p className="mt-1 text-sm font-semibold text-slate-600">Học phí: {priceLabel} / trọn khóa</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold text-slate-400 line-through">{originalPriceLabel}</span>
+                  <span className="text-lg font-extrabold text-[#F37021]">{salePriceLabel}</span>
+                  <span className="rounded-full bg-[#F37021]/10 px-2.5 py-1 text-xs font-extrabold text-[#F37021]">{discountLabel}</span>
+                </div>
+                <p className="mt-1 text-sm font-semibold text-slate-600">Trọn khóa METTA Summer 2026</p>
               </div>
 
               {error && (
@@ -841,7 +915,7 @@ function SummerLandingRegistrationModal({ onClose }: { onClose: () => void }) {
                     <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-400">Thanh toán</p>
                     <p className="mt-1 text-lg font-extrabold text-[#08244A]">Mã QR METTA Summer</p>
                   </div>
-                  <span className="rounded-full bg-[#F37021]/10 px-3 py-1 text-xs font-extrabold text-[#F37021]">{priceLabel}</span>
+                  <span className="rounded-full bg-[#F37021]/10 px-3 py-1 text-xs font-extrabold text-[#F37021]">{salePriceLabel}</span>
                 </div>
 
                 <img
@@ -913,6 +987,13 @@ export default function MettaPlusLanding() {
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   const config = useMemo(() => buildMettaPlusConfig(sections ?? []), [sections]);
+  const countdown = useDailyCountdown();
+  const pricing = useMemo(() => normalizePricingOffer({
+    originalPrice: config.offerOriginalPrice,
+    salePrice: config.offerSalePrice,
+    discountPercent: config.offerDiscountPercent,
+    currency: config.offerCurrency,
+  }), [config.offerCurrency, config.offerDiscountPercent, config.offerOriginalPrice, config.offerSalePrice]);
   const heroTags = useMemo(() => config.heroTags, [config.heroTags]);
   const heroSlides = useMemo<SummerLandingHeroSlide[]>(() => {
     const editableSlides = config.heroSlides?.length ? config.heroSlides : [];
@@ -927,6 +1008,9 @@ export default function MettaPlusLanding() {
   }, [config.heroBadge, config.heroImage, config.heroImageAlt, config.heroSlides]);
   const activeHeroIndex = heroSlides.length ? Math.min(heroSlideIndex, heroSlides.length - 1) : 0;
   const activeHeroSlide = heroSlides[activeHeroIndex] || { src: config.heroImage || HERO_IMAGE, title: config.heroBadge, alt: config.heroImageAlt };
+  const offerOriginalPriceLabel = formatCurrency(pricing.originalPrice, pricing.currency);
+  const offerSalePriceLabel = formatCurrency(pricing.salePrice, pricing.currency);
+  const offerDiscountLabel = `-${Math.round(pricing.discountPercent)}%`;
   const openRegistration = () => setRegistrationOpen(true);
 
   useEffect(() => {
@@ -1010,7 +1094,7 @@ export default function MettaPlusLanding() {
                   })}
                 </div>
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={openRegistration} className="inline-flex h-[56px] items-center justify-center gap-2 rounded-2xl bg-[#F37021] px-7 text-[16px] font-extrabold text-white shadow-[0_20px_40px_-20px_rgba(243,112,33,.9)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
+                  <button type="button" onClick={openRegistration} className="pulse-cta inline-flex h-[56px] items-center justify-center gap-2 rounded-2xl bg-[#F37021] px-7 text-[16px] font-extrabold text-white shadow-[0_20px_40px_-20px_rgba(243,112,33,.9)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
                     {config.heroPrimaryCta}
                     <ChevronRight className="h-5 w-5" />
                   </button>
@@ -1019,6 +1103,17 @@ export default function MettaPlusLanding() {
                       {config.heroSecondaryCta}
                     </button>
                   )}
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-[13px] font-extrabold">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[#08244A] shadow-sm ring-1 ring-[#E8EEF7]">
+                    <span className="text-slate-400 line-through">{offerOriginalPriceLabel}</span>
+                    <span className="text-[#F37021]">{offerSalePriceLabel}</span>
+                    <span className="rounded-full bg-[#F37021]/10 px-2 py-0.5 text-[11px] text-[#F37021]">{offerDiscountLabel}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-2 rounded-full bg-[#FFF0E6] px-4 py-2 text-[#E85D12] ring-1 ring-[#FFD2B4]">
+                    <Clock className="h-4 w-4" />
+                    Ưu đãi kết thúc sau <span className="font-black tabular-nums">{countdown}</span>
+                  </span>
                 </div>
               </div>
 
@@ -1157,6 +1252,11 @@ export default function MettaPlusLanding() {
                       <p className="mt-7 rounded-2xl bg-[#F6FAFF] px-4 py-3 text-[14px] font-bold text-[#5D6B82]">
                         {config.passCardMeta}
                       </p>
+                      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl bg-[#FFF8EA] px-4 py-3 text-[14px] font-black">
+                        <span className="text-slate-400 line-through">{offerOriginalPriceLabel}</span>
+                        <span className="text-[#F37021]">{offerSalePriceLabel}</span>
+                        <span className="rounded-full bg-[#F37021]/10 px-2.5 py-1 text-[11px] text-[#F37021]">{offerDiscountLabel}</span>
+                      </div>
                     </div>
                   )}
                   <div>
@@ -1246,7 +1346,7 @@ export default function MettaPlusLanding() {
                 </div>
               </div>
               <div className="rounded-[30px] bg-[#F8FBFF] p-5 ring-1 ring-[#DCE9F8] sm:p-6">
-                <MettaPlusForm ctaText={config.formCta} formId={config.formId} />
+                <MettaPlusForm ctaText={config.formCta} formId={config.formId} pricing={pricing} />
               </div>
             </div>
           </section>
@@ -1256,12 +1356,12 @@ export default function MettaPlusLanding() {
 
   return (
     <div className="min-h-screen overflow-hidden bg-[#FFFDF8] font-inter text-[#08244A] antialiased">
-      <header className="sticky top-0 z-40 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
           <a href="#top" className="flex items-center gap-2.5">
             <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />
           </a>
-          <button type="button" onClick={openRegistration} className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#F37021] px-5 text-[14px] font-extrabold text-white shadow-[0_16px_28px_-18px_rgba(243,112,33,.95)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
+          <button type="button" onClick={openRegistration} className="pulse-cta inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#F37021] px-5 text-[14px] font-extrabold text-white shadow-[0_16px_28px_-18px_rgba(243,112,33,.95)] transition hover:-translate-y-0.5 hover:bg-[#E85D12]">
             {config.heroPrimaryCta}
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -1274,7 +1374,7 @@ export default function MettaPlusLanding() {
           .map((section) => <div key={section.id}>{renderSection(section)}</div>)}
       </main>
 
-      {registrationOpen && <SummerLandingRegistrationModal onClose={() => setRegistrationOpen(false)} />}
+      {registrationOpen && <SummerLandingRegistrationModal onClose={() => setRegistrationOpen(false)} pricing={pricing} />}
 
       <MiniFooter />
     </div>
@@ -1286,7 +1386,7 @@ export default function MettaPlusLanding() {
 function MettaPlusSkeleton() {
   return (
     <div className="min-h-screen overflow-hidden bg-[#FFFDF8] font-inter text-[#08244A] antialiased">
-      <header className="sticky top-0 z-40 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
             <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />

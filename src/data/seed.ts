@@ -523,6 +523,10 @@ export const sections: PageSection[] = [
       badge: 'METTA Summer 2026',
       tags: ['4–11 tuổi', '6 tuần', '24 buổi', 'Showcase cuối khóa'],
       imageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè',
+      offerOriginalPrice: 2499000,
+      offerSalePrice: 1999000,
+      offerDiscountPercent: 20,
+      offerCurrency: 'VND',
       slides: [
         { src: '/brand/metta-summer-hero-4x3.jpg', title: 'Mỹ thuật', alt: 'Học viên METTA Summer 2026 trong hoạt động mỹ thuật' },
         { src: 'https://images.unsplash.com/photo-1529699211952-734e80c4d42b?auto=format&fit=crop&w=1200&q=80', title: 'Cờ vua', alt: 'Hoạt động cờ vua trong METTA Summer 2026' },
