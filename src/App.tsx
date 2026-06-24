@@ -129,9 +129,12 @@ export default function App() {
             <Route path="/p/landing-page-phonics" element={<PublicEbookLanding />} />
             <Route path="/p/ebook-mam-non" element={<PublicEbookLanding />} />
             <Route path="/lp/sach-tien-tieu-hoc" element={<PublicEbookLanding />} />
-            <Route path="/metta-plus" element={<MettaPlusLanding />} />
-            <Route path="/lp/metta-plus" element={<MettaPlusLanding />} />
-            <Route path="/p/metta-plus" element={<MettaPlusLanding />} />
+            <Route path="/metta-summer" element={<MettaPlusLanding />} />
+            <Route path="/lp/metta-summer" element={<MettaPlusLanding />} />
+            <Route path="/p/metta-summer" element={<MettaPlusLanding />} />
+            <Route path="/metta-plus" element={<Navigate to="/p/metta-summer" replace />} />
+            <Route path="/lp/metta-plus" element={<Navigate to="/p/metta-summer" replace />} />
+            <Route path="/p/metta-plus" element={<Navigate to="/p/metta-summer" replace />} />
             <Route path="/p/:slug" element={<PublicPageRouter />} />
             <Route element={<PublicLayout />}>
               <Route path="/" element={<PublicHomePage />} />

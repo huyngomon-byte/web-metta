@@ -3,18 +3,34 @@ import { useParams } from 'react-router-dom';
 import PublicLayout from '@/pages/public/PublicLayout';
 import PublicCmsPage from '@/pages/public/PublicCmsPage';
 import PublicEbookLanding from '@/pages/public/PublicEbookLanding';
+import MettaPlusLanding from '@/pages/public/MettaPlusLanding';
 import PublicNotFoundPage from '@/pages/public/PublicNotFoundPage';
 import { pages as seedPages, sections as seedSections } from '@/data/seed';
 import { publicCmsService } from '@/services/publicCmsService';
 import type { PageSection } from '@/types/cms';
 
+const METTA_PLUS_SECTION_TYPES = new Set([
+  'Metta+ Hero',
+  'Metta+ Benefits',
+  'Metta+ Age Clubs',
+  'Metta+ Pass',
+  'Metta+ Journey',
+  'Metta+ Weekly Plan',
+  'Metta+ Reasons',
+  'Metta+ Form',
+]);
+
 function hasEbookHero(items: PageSection[]) {
   return items.some((section) => section.type === 'Ebook Hero');
 }
 
+function hasMettaPlusLanding(items: PageSection[]) {
+  return items.some((section) => METTA_PLUS_SECTION_TYPES.has(section.type));
+}
+
 export default function PublicPageRouter() {
   const { slug } = useParams();
-  const [routeKind, setRouteKind] = useState<'loading' | 'ebook' | 'cms' | 'not-found'>('loading');
+  const [routeKind, setRouteKind] = useState<'loading' | 'ebook' | 'metta-plus' | 'cms' | 'not-found'>('loading');
 
   useEffect(() => {
     let active = true;
@@ -30,7 +46,10 @@ export default function PublicPageRouter() {
         if (!page) return 'not-found' as const;
         const sections = await publicCmsService.getVisibleSections(page.id);
         const fallback = seedSections.filter((section) => section.pageId === page.id && section.visible);
-        return hasEbookHero(sections.length ? sections : fallback) ? 'ebook' as const : 'cms' as const;
+        const resolvedSections = sections.length ? sections : fallback;
+        if (hasEbookHero(resolvedSections)) return 'ebook' as const;
+        if (hasMettaPlusLanding(resolvedSections)) return 'metta-plus' as const;
+        return 'cms' as const;
       })
       .then((value) => {
         if (active) setRouteKind(value);
@@ -47,6 +66,7 @@ export default function PublicPageRouter() {
   }
 
   if (routeKind === 'ebook') return <PublicEbookLanding />;
+  if (routeKind === 'metta-plus') return <MettaPlusLanding />;
   if (routeKind === 'not-found') {
     return (
       <PublicLayout>

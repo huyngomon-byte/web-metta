@@ -409,7 +409,7 @@ export const pages: CmsPage[] = [
   { id: 'page-phonics', title: 'Landing Page Phonics', slug: 'landing-page-phonics', metaTitle: 'Phonics METTA', metaDescription: 'Chương trình phát âm và ghép âm.', status: 'published', createdAt: now, updatedAt: now },
   { id: 'page-ebook', title: 'Landing Page Ebook', slug: 'landing-page-ebook', metaTitle: 'Ebook học tiếng Anh', metaDescription: 'Tải ebook mi�&n phí.', status: 'draft', createdAt: now, updatedAt: now }
   ,
-  { id: 'page-metta-plus', title: 'METTA Summer 2026', slug: 'metta-plus', metaTitle: 'METTA Summer 2026 | Landing Page METTA Academy', metaDescription: 'Landing page dang ky METTA Summer 2026 cho tre 4-11 tuoi voi My thuat, Co vua, Thanh nhac, Nhay va Mua.', status: 'published', createdAt: now, updatedAt: now }
+  { id: 'page-metta-plus', title: 'METTA Summer 2026', slug: 'metta-summer', metaTitle: 'METTA Summer 2026 | Landing Page METTA Academy', metaDescription: 'Landing page dang ky METTA Summer 2026 cho tre 4-11 tuoi voi My thuat, Co vua, Thanh nhac, Nhay va Mua.', status: 'published', createdAt: now, updatedAt: now }
 ];
 
 export const sections: PageSection[] = [

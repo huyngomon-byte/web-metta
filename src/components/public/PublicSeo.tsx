@@ -11,6 +11,14 @@ const PUBLIC_SITE_URL = 'https://www.metta.edu.vn';
 const LOGO_URL = `${SITE_URL}/logo.png`;
 const DEFAULT_MAP_URL = 'https://www.google.com/maps/place/Metta+Academy/@20.9664565,105.7732044,17z/data=!4m14!1m7!3m6!1s0x3134538655bb7f0f:0xdc927bc6493c2501!2sMetta+Academy!8m2!3d20.9664515!4d105.7757793!16s%2Fg%2F11z810c9f8!3m5!1s0x3134538655bb7f0f:0xdc927bc6493c2501!8m2!3d20.9664515!4d105.7757793!16s%2Fg%2F11z810c9f8?entry=ttu&g_ep=EgoyMDI2MDYxMy4wIKXMDSoASAFQAw%3D%3D';
 const JSONLD_SCRIPT_ID = 'metta-jsonld';
+const METTA_SUMMER_PATHS = new Set([
+  '/metta-summer',
+  '/lp/metta-summer',
+  '/p/metta-summer',
+  '/metta-plus',
+  '/lp/metta-plus',
+  '/p/metta-plus',
+]);
 
 function isAdminPath(pathname: string) {
   return pathname === '/login'
@@ -29,7 +37,7 @@ function isAdminPath(pathname: string) {
 
 function pageSlugForPath(pathname: string) {
   if (pathname === '/') return 'homepage';
-  if (pathname === '/metta-plus' || pathname === '/lp/metta-plus' || pathname === '/p/metta-plus') return 'metta-plus';
+  if (METTA_SUMMER_PATHS.has(pathname)) return 'metta-summer';
   if (pathname === '/p/landing-page-phonics' || pathname === '/p/ebook-mam-non' || pathname === '/lp/sach-tien-tieu-hoc') return 'ebook-mam-non';
   const publicPageMatch = pathname.match(/^\/p\/([^/]+)/);
   return publicPageMatch?.[1] || '';
@@ -45,7 +53,7 @@ function seoForPath(pathname: string, settings: SiteSettings, pages: CmsPage[]) 
   const slug = pageSlugForPath(pathname);
   const page = slug ? pages.find((item) => item.slug === slug) : undefined;
 
-  if (pathname === '/metta-plus' || pathname === '/lp/metta-plus' || pathname === '/p/metta-plus') {
+  if (METTA_SUMMER_PATHS.has(pathname)) {
     return {
       title: 'METTA Summer 2026 | Landing Page METTA Academy',
       description: 'Landing page đăng ký METTA Summer 2026 cho trẻ 4–11 tuổi với Mỹ thuật, Cờ vua, Thanh nhạc, Nhảy & Múa và Showcase cuối khóa.',

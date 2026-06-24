@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   BadgeCheck,
   Bot,
@@ -53,6 +54,8 @@ const SUMMER_COURSE_NAME = SUMMER_PROGRAM?.title || 'METTA Summer 2026';
 const SUMMER_COURSE_PACKAGE = SUMMER_PROGRAM?.courseName || 'Summer Camp · Đa bộ môn';
 const SUMMER_DEAL_SIZE = resolveCourseDealSizeForProgram(SUMMER_PROGRAM);
 const SUMMER_DEAL_CURRENCY = SUMMER_PROGRAM?.dealCurrency || DEFAULT_DEAL_CURRENCY;
+const METTA_SUMMER_SLUG = 'metta-summer';
+const LEGACY_METTA_PLUS_SLUG = 'metta-plus';
 
 const METTA_PLUS_SECTION_TYPES = [
   'Metta+ Hero',
@@ -307,6 +310,13 @@ function fallbackSections() {
   return seedSections
     .filter((section) => section.pageId === 'page-metta-plus' && section.visible && isMettaPlusSection(section))
     .sort((a, b) => a.order - b.order);
+}
+
+function landingSlugFromPath(pathname: string) {
+  const publicPageMatch = pathname.match(/^\/p\/([^/]+)/);
+  if (publicPageMatch?.[1]) return publicPageMatch[1];
+  if (pathname.includes(LEGACY_METTA_PLUS_SLUG)) return LEGACY_METTA_PLUS_SLUG;
+  return METTA_SUMMER_SLUG;
 }
 
 function parseLegacyConfig(section?: PageSection) {
@@ -897,6 +907,7 @@ function MiniFooter() {
 }
 
 export default function MettaPlusLanding() {
+  const location = useLocation();
   // null = chưa load xong (hiện skeleton để tránh "flash" bản cũ).
   const [sections, setSections] = useState<PageSection[] | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(false);
@@ -940,7 +951,10 @@ export default function MettaPlusLanding() {
   useEffect(() => {
     let active = true;
     async function load() {
-      const page = await publicCmsService.getPageBySlug('metta-plus')
+      const slug = landingSlugFromPath(location.pathname);
+      const page = await publicCmsService.getPageBySlug(slug)
+        || await publicCmsService.getPageBySlug(METTA_SUMMER_SLUG)
+        || await publicCmsService.getPageBySlug(LEGACY_METTA_PLUS_SLUG)
         || await publicCmsService.getPage('page-metta-plus')
         || seedPages.find((item) => item.id === 'page-metta-plus');
       if (!page) {
@@ -955,7 +969,7 @@ export default function MettaPlusLanding() {
       if (active) setSections(fallbackSections());
     });
     return () => { active = false; };
-  }, []);
+  }, [location.pathname]);
 
   if (sections === null) return <MettaPlusSkeleton />;
 
