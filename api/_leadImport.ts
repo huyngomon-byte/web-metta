@@ -8,7 +8,7 @@ import {
   normalizeStudentName,
   type DedupeLeadDoc,
 } from './_leadDedupe.js';
-import { salesImportAssignmentTargetsSelf, salesImportExistingLeadAccess } from './_leadImportPolicy.js';
+import { canImportLeadAssignment, salesImportExistingLeadAccess } from './_leadImportPolicy.js';
 
 const LEAD_STATUSES = [
   'Lead mới',
@@ -413,9 +413,8 @@ async function handleLeadImport(req: VercelRequest, res: VercelResponse) {
       const requestedAssignedTo = cleanText(row.lead.assignedTo);
       const requestedAssignedToName = cleanText(row.lead.assignedToName);
       const hasRequestedAssignment = Boolean(requestedAssignedTo || requestedAssignedToName);
-      if (apiUser.role === 'sales' && hasRequestedAssignment
-        && !salesImportAssignmentTargetsSelf(apiUser, requestedAssignedTo, requestedAssignedToName)) {
-        throw new Error('Sales chỉ được import assignment cho chính mình.');
+      if (hasRequestedAssignment && !canImportLeadAssignment(apiUser.role)) {
+        throw new Error('Sales không có quyền import assignment; chỉ Admin hoặc Manager được phân lead.');
       }
 
       const explicitExistingId = row.inputId && stateById.has(row.inputId) ? row.inputId : '';
@@ -451,9 +450,7 @@ async function handleLeadImport(req: VercelRequest, res: VercelResponse) {
       if (sourceConfigWarning) warnings.push(sourceConfigWarning);
 
       if (apiUser.role === 'sales') {
-        if (!existing || !cleanText(existing.assignedTo)) {
-          Object.assign(merged, applyAssignment(merged, { id: apiUser.id, fullName: apiUser.fullName }, apiUser.id, now, nowMs, true));
-        }
+        if (!existing) Object.assign(merged, applyAssignment(merged, null, '', now, nowMs));
       } else if (hasRequestedAssignment) {
         if (!usersAvailable) {
           warnings.push(assignmentConfigWarning);

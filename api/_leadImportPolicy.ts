@@ -23,11 +23,8 @@ function userIdentityKeys(user: SalesImportUser) {
   ].filter(Boolean));
 }
 
-export function salesImportAssignmentTargetsSelf(user: SalesImportUser, assignedTo: unknown, assignedToName: unknown) {
-  const values = [assignedTo, assignedToName].map((value) => String(value || '').trim()).filter(Boolean);
-  if (!values.length) return true;
-  const ownKeys = userIdentityKeys(user);
-  return values.every((value) => ownKeys.has(value) || ownKeys.has(normalizedIdentity(value)));
+export function canImportLeadAssignment(role: unknown) {
+  return ['admin', 'manager'].includes(String(role || ''));
 }
 
 export function salesImportExistingLeadAccess(
@@ -38,7 +35,7 @@ export function salesImportExistingLeadAccess(
   const ownerValues = [existingAssignedTo, existingAssignedToName]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
-  if (!ownerValues.length) return 'claim' as const;
+  if (!ownerValues.length) return 'unassigned' as const;
   const ownKeys = userIdentityKeys(user);
   return ownerValues.every((value) => ownKeys.has(value) || ownKeys.has(normalizedIdentity(value)))
     ? 'own' as const
