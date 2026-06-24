@@ -43,6 +43,9 @@ type AppConfigUser = {
 const PUBLIC_CMS_NO_STORE_HEADER = 'no-store, max-age=0, must-revalidate';
 const LEAD_PAGE_SIZE = 100;
 const LEAD_PAGE_DEFAULT_SINCE_DAYS = 30;
+const LEAD_ASSIGNMENT_GROUPS = ['all', 'unassigned', 'stale', 'returned', 'assigned'] as const;
+
+type LeadAssignmentGroup = typeof LEAD_ASSIGNMENT_GROUPS[number];
 
 const configFields: Record<string, 'configs'> = {
   leadCenterConfigs: 'configs',
@@ -180,6 +183,101 @@ async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
   });
 }
 
+async function readLeadAssignmentPage(req: VercelRequest, res: VercelResponse) {
+  const user = await requireActiveUser(req);
+  requireManagerAccess(user);
+
+  const requestedPage = positiveInteger(queryValue(req.query?.page), 1, 100_000);
+  const pageSize = positiveInteger(queryValue(req.query?.pageSize), LEAD_PAGE_SIZE, LEAD_PAGE_SIZE);
+  const requestedGroup = String(queryValue(req.query?.group) || 'all') as LeadAssignmentGroup;
+  const group: LeadAssignmentGroup = LEAD_ASSIGNMENT_GROUPS.includes(requestedGroup) ? requestedGroup : 'all';
+
+  const db = adminDb();
+  const usersSnap = await db.collection('users').get();
+  const activeOwnerKeys = Array.from(new Set(usersSnap.docs.flatMap((item) => {
+    const data = item.data();
+    if (data.role !== 'sales' || data.active !== true) return [];
+    return [item.id, String(data.fullName || '').trim()].filter(Boolean);
+  })));
+  const activeOwnerSet = new Set(activeOwnerKeys);
+  const leadsCollection = db.collection('leads');
+  const unassignedQuery = leadsCollection.where('assignedStatus', '==', 'unassigned');
+  const returnedQuery = leadsCollection.where('assignedStatus', '==', 'returned');
+  const canQueryAssignedOwners = activeOwnerKeys.length > 0 && activeOwnerKeys.length <= 30;
+  const staleExcludedKeys = ['', ...activeOwnerKeys];
+  const canQueryStaleOwners = staleExcludedKeys.length <= 10;
+  const requiresOwnerScan = !canQueryAssignedOwners || !canQueryStaleOwners;
+  const assignedQuery = canQueryAssignedOwners
+    ? leadsCollection.where('assignedTo', 'in', activeOwnerKeys)
+    : null;
+  const staleQuery = canQueryStaleOwners
+    ? leadsCollection.where('assignedTo', 'not-in', staleExcludedKeys)
+    : null;
+
+  const [allCountSnap, unassignedCountSnap, returnedCountSnap, assignedCountSnap, staleCountSnap, ownerScanSnap] = await Promise.all([
+    leadsCollection.count().get(),
+    unassignedQuery.count().get(),
+    returnedQuery.count().get(),
+    assignedQuery ? assignedQuery.count().get() : Promise.resolve(null),
+    staleQuery ? staleQuery.count().get() : Promise.resolve(null),
+    requiresOwnerScan
+      ? leadsCollection.where('assignedStatus', 'in', ['active', 'accepted']).get()
+      : Promise.resolve(null),
+  ]);
+
+  const ownerScanDocs = ownerScanSnap?.docs || [];
+  const scannedAssignedDocs = ownerScanDocs.filter((item) => activeOwnerSet.has(String(item.data().assignedTo || '')));
+  const scannedStaleDocs = ownerScanDocs.filter((item) => {
+    const assignedTo = String(item.data().assignedTo || '').trim();
+    return Boolean(assignedTo) && !activeOwnerSet.has(assignedTo);
+  });
+  const groupCounts: Record<LeadAssignmentGroup, number> = {
+    all: allCountSnap.data().count,
+    unassigned: unassignedCountSnap.data().count,
+    returned: returnedCountSnap.data().count,
+    assigned: assignedCountSnap?.data().count ?? scannedAssignedDocs.length,
+    stale: staleCountSnap?.data().count ?? scannedStaleDocs.length,
+  };
+
+  const total = groupCounts[group];
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * pageSize;
+  let docs: FirebaseFirestore.QueryDocumentSnapshot[] = [];
+
+  if (group === 'all') {
+    docs = (await leadsCollection.orderBy('createdAt', 'desc').offset(offset).limit(pageSize).get()).docs;
+  } else if (group === 'unassigned') {
+    docs = (await unassignedQuery.offset(offset).limit(pageSize).get()).docs;
+  } else if (group === 'returned') {
+    docs = (await returnedQuery.offset(offset).limit(pageSize).get()).docs;
+  } else if (group === 'assigned') {
+    docs = assignedQuery
+      ? (await assignedQuery.offset(offset).limit(pageSize).get()).docs
+      : scannedAssignedDocs.slice(offset, offset + pageSize);
+  } else {
+    docs = staleQuery
+      ? (await staleQuery.offset(offset).limit(pageSize).get()).docs
+      : scannedStaleDocs.slice(offset, offset + pageSize);
+  }
+
+  const leads = docs
+    .map((item) => ({ ...item.data(), id: item.id }) as Record<string, any> & { id: string })
+    .sort((a, b) => String(b.createdAt || b.updatedAt || '').localeCompare(String(a.createdAt || a.updatedAt || '')));
+
+  return res.status(200).json({
+    leads,
+    group,
+    groupCounts,
+    page,
+    pageSize,
+    total,
+    totalPages,
+    hasPrevious: page > 1,
+    hasNext: page < totalPages,
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const id = String(queryValue(req.query?.id) || req.body?.id || '');
@@ -235,6 +333,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (id === 'leadPage' && req.method === 'GET') {
       return await readLeadNumberedPage(req, res);
+    }
+
+    if (id === 'leadAssignmentPage' && req.method === 'GET') {
+      return await readLeadAssignmentPage(req, res);
     }
 
     if (id === 'leadImport' && req.method === 'POST') {

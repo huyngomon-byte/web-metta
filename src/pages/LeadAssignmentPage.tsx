@@ -13,12 +13,12 @@ import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } f
 import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { leadService } from '@/services/leadService';
+import { leadService, type LeadAssignmentGroup } from '@/services/leadService';
 import { userService } from '@/services/userService';
 import type { Lead } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
-type GroupKey = 'all' | 'unassigned' | 'stale' | 'returned' | 'assigned';
+type GroupKey = LeadAssignmentGroup;
 
 const groupTabs: { key: GroupKey; title: string }[] = [
   { key: 'all', title: 'Tất cả lead' },
@@ -32,6 +32,7 @@ const FILTER_UNASSIGNED = '__unassigned__';
 const FILTER_STALE = '__stale__';
 const FILTER_LEGACY_PREFIX = 'legacy:';
 const LEAD_ASSIGNMENT_PAGE_SIZE = 100;
+const EMPTY_GROUP_COUNTS: Record<GroupKey, number> = { all: 0, unassigned: 0, stale: 0, returned: 0, assigned: 0 };
 
 const CONTACTED_STATUSES: readonly string[] = [leadStatuses[1], leadStatuses[3], leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS, LOST_LEAD_STATUS];
 const TEST_STATUSES: readonly string[] = [leadStatuses[4], leadStatuses[5], DEAL_QUOTED_STATUS, WON_LEAD_STATUS];
@@ -81,13 +82,6 @@ function leadAssignedToActiveSales(lead: Lead, salesUsers: AdminUser[]) {
   return salesUsers.some((sales) => leadBelongsToSales(lead, sales));
 }
 
-function groupLead(lead: Lead, salesUsers: AdminUser[]): GroupKey {
-  if (lead.assignedStatus === 'returned' || lead.failedReason) return 'returned';
-  if (!hasAssignment(lead)) return 'unassigned';
-  if (!leadAssignedToActiveSales(lead, salesUsers)) return 'stale';
-  return 'assigned';
-}
-
 function returnedReason(lead: Lead) {
   if (lead.failedReason === 'no_status_update_24h') return 'Không cập nhật status sau 24h';
   return lead.failedReason || '-';
@@ -129,19 +123,11 @@ export default function LeadAssignmentPage() {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [totalLeads, setTotalLeads] = useState(0);
+  const [filteredTotal, setFilteredTotal] = useState(0);
+  const [groupCounts, setGroupCounts] = useState<Record<GroupKey, number>>(EMPTY_GROUP_COUNTS);
 
   const salesUsers = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
   const salesNameById = useMemo(() => new Map(salesUsers.map((sales) => [sales.id, sales.fullName])), [salesUsers]);
-
-  const groups = useMemo(() => {
-    const result: Record<GroupKey, Lead[]> = { all: [], unassigned: [], stale: [], returned: [], assigned: [] };
-    leads.forEach((lead) => {
-      result.all.push(lead);
-      result[groupLead(lead, salesUsers)].push(lead);
-    });
-    return result;
-  }, [leads, salesUsers]);
 
   const legacySalesOptions = useMemo(() => {
     const activeNames = new Set(salesUsers.map((sales) => sales.fullName.toLowerCase()));
@@ -155,7 +141,7 @@ export default function LeadAssignmentPage() {
 
   const visibleLeads = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    return groups[activeGroup].filter((lead) => {
+    return leads.filter((lead) => {
       const matchesKeyword = !keyword
         || `${lead.fullName} ${lead.studentName} ${lead.parentName} ${lead.phone} ${lead.email} ${lead.assignedTo} ${lead.assignedToName}`.toLowerCase().includes(keyword);
       if (!matchesKeyword) return false;
@@ -169,7 +155,7 @@ export default function LeadAssignmentPage() {
       const sales = salesUsers.find((item) => item.id === currentSalesFilter);
       return sales ? leadBelongsToSales(lead, sales) : true;
     });
-  }, [activeGroup, currentSalesFilter, groups, salesUsers, search]);
+  }, [currentSalesFilter, leads, salesUsers, search]);
 
   const rangeLeads = useMemo(() => leads.filter((lead) => inRange(lead.createdAt, dateFrom, dateTo)), [dateFrom, dateTo, leads]);
   const [prevFrom, prevTo] = useMemo(() => previousRange(dateFrom, dateTo), [dateFrom, dateTo]);
@@ -233,36 +219,46 @@ export default function LeadAssignmentPage() {
       .sort((a, b) => b.revenue - a.revenue || b.expectedRevenue - a.expectedRevenue || b.converted - a.converted);
   }, [courseDealSizes, previousLeads, rangeLeads, salesUsers]);
 
-  const loadPage = useCallback(async (targetPage: number) => {
+  const loadPage = useCallback(async (targetPage: number, group: GroupKey) => {
     setLoading(true);
     try {
       const [leadPage, userItems] = await Promise.all([
-        leadService.getNumberedLeadsPage({
+        leadService.getLeadAssignmentPage({
           page: targetPage,
           pageSize: LEAD_ASSIGNMENT_PAGE_SIZE,
-          sinceDays: 3_650,
+          group,
         }),
         userService.getUsers(),
       ]);
       setLeads(leadPage.leads);
+      setActiveGroup(leadPage.group);
       setPage(leadPage.page);
       setTotalPages(leadPage.totalPages);
-      setTotalLeads(leadPage.total);
+      setFilteredTotal(leadPage.total);
+      setGroupCounts(leadPage.groupCounts);
       setUsers(userItems);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const refresh = useCallback(() => loadPage(page), [loadPage, page]);
+  const refresh = useCallback(() => loadPage(page, activeGroup), [activeGroup, loadPage, page]);
 
   const goToPage = useCallback(async (targetPage: number) => {
     setSelected([]);
-    await loadPage(targetPage);
+    await loadPage(targetPage, activeGroup);
+  }, [activeGroup, loadPage]);
+
+  const selectGroup = useCallback(async (group: GroupKey) => {
+    setActiveGroup(group);
+    setSelected([]);
+    setSearch('');
+    setCurrentSalesFilter('');
+    await loadPage(1, group);
   }, [loadPage]);
 
   useEffect(() => {
-    void loadPage(1);
+    void loadPage(1, 'all');
   }, [loadPage]);
 
   function toggle(id: string) {
@@ -356,19 +352,19 @@ export default function LeadAssignmentPage() {
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {groupTabs.map((tab) => {
-          const count = tab.key === 'all' ? totalLeads : groups[tab.key].length;
-          const percentage = tab.key === 'all' ? 100 : pct(count, leads.length);
+          const count = groupCounts[tab.key];
+          const percentage = pct(count, groupCounts.all);
           return (
             <button
               key={tab.key}
               type="button"
-              onClick={() => { setActiveGroup(tab.key); setSelected([]); }}
+              onClick={() => void selectGroup(tab.key)}
               className={`rounded-xl border p-4 text-left shadow-sm transition ${activeGroup === tab.key ? 'border-[#003B7A] bg-[#003B7A] text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-[#003B7A]/40'}`}
             >
               <p className="text-sm font-bold">{tab.title}</p>
               <div className="mt-2 flex items-end justify-between gap-2">
                 <p className="text-3xl font-extrabold">{count.toLocaleString('vi-VN')}</p>
-                <p className={`text-sm font-bold ${activeGroup === tab.key ? 'text-blue-100' : 'text-slate-400'}`}>{tab.key === 'all' ? `${percentage}%` : `${percentage}% trang này`}</p>
+                <p className={`text-sm font-bold ${activeGroup === tab.key ? 'text-blue-100' : 'text-slate-400'}`}>{percentage}% tổng lead</p>
               </div>
             </button>
           );
@@ -378,7 +374,7 @@ export default function LeadAssignmentPage() {
       <LeadPagination
         page={page}
         totalPages={totalPages}
-        totalLeads={totalLeads}
+        totalLeads={filteredTotal}
         pageSize={LEAD_ASSIGNMENT_PAGE_SIZE}
         loading={loading}
         onPageChange={goToPage}
@@ -491,7 +487,7 @@ export default function LeadAssignmentPage() {
       <LeadPagination
         page={page}
         totalPages={totalPages}
-        totalLeads={totalLeads}
+        totalLeads={filteredTotal}
         pageSize={LEAD_ASSIGNMENT_PAGE_SIZE}
         loading={loading}
         onPageChange={goToPage}

@@ -78,6 +78,21 @@ export type LeadNumberedPageResult = {
   hasNext: boolean;
 };
 
+export type LeadAssignmentGroup = 'all' | 'unassigned' | 'stale' | 'returned' | 'assigned';
+
+export type LeadAssignmentGroupCounts = Record<LeadAssignmentGroup, number>;
+
+export type LeadAssignmentPageOptions = {
+  page?: number;
+  pageSize?: number;
+  group?: LeadAssignmentGroup;
+};
+
+export type LeadAssignmentPageResult = LeadNumberedPageResult & {
+  group: LeadAssignmentGroup;
+  groupCounts: LeadAssignmentGroupCounts;
+};
+
 type PublicLeadSubmitInput = Partial<Lead> & {
   company?: string;
   website?: string;
@@ -771,6 +786,73 @@ export const leadService = {
     persistLeads();
     return {
       leads: visibleLeads(user),
+      page: Number(payload.page || 1),
+      pageSize: Number(payload.pageSize || pageSize),
+      total: Number(payload.total || 0),
+      totalPages: Number(payload.totalPages || 1),
+      hasPrevious: Boolean(payload.hasPrevious),
+      hasNext: Boolean(payload.hasNext),
+    };
+  },
+
+  getLeadAssignmentPage: async (options: LeadAssignmentPageOptions = {}): Promise<LeadAssignmentPageResult> => {
+    const pageSize = Math.max(1, Math.min(DEFAULT_LEADS_PAGE_SIZE, Math.round(options.pageSize || DEFAULT_LEADS_PAGE_SIZE)));
+    const requestedPage = Math.max(1, Math.round(options.page || 1));
+    const group = options.group || 'all';
+    const user = currentUser();
+
+    if (!USE_FIREBASE) {
+      loadLeads();
+      const activeSalesIds = new Set(store.users.filter((item) => item.role === 'sales' && item.active).map((item) => item.id));
+      const grouped: Record<LeadAssignmentGroup, Lead[]> = { all: [], unassigned: [], stale: [], returned: [], assigned: [] };
+      visibleLeads(user).forEach((lead) => {
+        grouped.all.push(lead);
+        if (lead.assignedStatus === 'returned' || lead.failedReason) grouped.returned.push(lead);
+        else if (!lead.assignedTo) grouped.unassigned.push(lead);
+        else if (activeSalesIds.has(lead.assignedTo)) grouped.assigned.push(lead);
+        else grouped.stale.push(lead);
+      });
+      const groupCounts = Object.fromEntries(Object.entries(grouped).map(([key, items]) => [key, items.length])) as LeadAssignmentGroupCounts;
+      const selected = grouped[group].sort((a, b) => (b.createdAt || b.updatedAt || '').localeCompare(a.createdAt || a.updatedAt || ''));
+      const total = selected.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const page = Math.min(requestedPage, totalPages);
+      return delay({
+        leads: selected.slice((page - 1) * pageSize, page * pageSize),
+        group,
+        groupCounts,
+        page,
+        pageSize,
+        total,
+        totalPages,
+        hasPrevious: page > 1,
+        hasNext: page < totalPages,
+      });
+    }
+
+    const token = await auth?.currentUser?.getIdToken();
+    if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    const params = new URLSearchParams({
+      id: 'leadAssignmentPage',
+      group,
+      page: String(requestedPage),
+      pageSize: String(pageSize),
+    });
+    const response = await fetch(`/api/app-config?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await response.json().catch(() => ({})) as Partial<LeadAssignmentPageResult> & { error?: string };
+    if (!response.ok) throw new Error(payload.error || 'Không tải được dữ liệu phân lead.');
+    if (!Array.isArray(payload.leads) || !payload.groupCounts) throw new Error('Server trả về dữ liệu phân lead không hợp lệ.');
+
+    let remoteLeads = payload.leads.map((lead) => normalizeLead(lead));
+    if (canViewAllLeads(user)) remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
+    setStoreLeads(remoteLeads, true);
+    persistLeads();
+    return {
+      leads: visibleLeads(user),
+      group: payload.group || group,
+      groupCounts: payload.groupCounts,
       page: Number(payload.page || 1),
       pageSize: Number(payload.pageSize || pageSize),
       total: Number(payload.total || 0),
