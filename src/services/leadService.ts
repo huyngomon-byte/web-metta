@@ -61,6 +61,24 @@ type LeadPageOptions = {
   dateTo?: string;
 };
 
+export type LeadNumberedPageOptions = {
+  page?: number;
+  pageSize?: number;
+  sinceDays?: number;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+export type LeadNumberedPageResult = {
+  leads: Lead[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+};
+
 type PublicLeadSubmitInput = Partial<Lead> & {
   company?: string;
   website?: string;
@@ -82,6 +100,26 @@ type LeadSubscribeMeta = {
 };
 
 type LeadSubscribeCallback = (leads: Lead[], meta?: LeadSubscribeMeta) => void;
+
+export type LeadImportInputRow = {
+  rowNumber: number;
+  lead: Partial<Lead>;
+};
+
+export type LeadImportRowResult = {
+  rowNumber: number;
+  leadId: string;
+  mode: 'create' | 'update' | 'failed';
+  error?: string;
+  warnings?: string[];
+};
+
+export type LeadImportResult = {
+  created: number;
+  updated: number;
+  failed: number;
+  results: LeadImportRowResult[];
+};
 
 const COURSE_MIGRATION: Record<string, InterestedCourse> = {
   'Mẫu giáo': 'METTA Kiddies',
@@ -658,6 +696,90 @@ async function syncEnrollmentToLms(lead: Lead) {
 }
 
 export const leadService = {
+  useCachedLeadsPage: (leads: Lead[]) => {
+    setStoreLeads(leads, true);
+    persistLeads();
+    return visibleLeads(currentUser());
+  },
+
+  importLeads: async (rows: LeadImportInputRow[]): Promise<LeadImportResult> => {
+    const token = await auth?.currentUser?.getIdToken();
+    if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại trước khi import.');
+    const response = await fetch('/api/lead-import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ rows }),
+    });
+    const payload = await response.json().catch(() => ({})) as Partial<LeadImportResult> & { error?: string };
+    if (!response.ok) throw new Error(payload.error || 'Không import được leads trên server.');
+    if (!Array.isArray(payload.results)) throw new Error('Server trả về kết quả import không hợp lệ.');
+    return {
+      created: Number(payload.created || 0),
+      updated: Number(payload.updated || 0),
+      failed: Number(payload.failed || 0),
+      results: payload.results,
+    };
+  },
+
+  getNumberedLeadsPage: async (options: LeadNumberedPageOptions = {}): Promise<LeadNumberedPageResult> => {
+    const pageSize = Math.max(1, Math.min(DEFAULT_LEADS_PAGE_SIZE, Math.round(options.pageSize || DEFAULT_LEADS_PAGE_SIZE)));
+    const requestedPage = Math.max(1, Math.round(options.page || 1));
+    const user = currentUser();
+    const { dateFrom, dateTo } = leadPageDateRange(options);
+
+    if (!USE_FIREBASE) {
+      loadLeads();
+      const allLeads = visibleLeads(user)
+        .filter((lead) => inLeadPageDateRange(lead, dateFrom, dateTo))
+        .sort((a, b) => (b.createdAt || b.updatedAt || '').localeCompare(a.createdAt || a.updatedAt || ''));
+      const total = allLeads.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const page = Math.min(requestedPage, totalPages);
+      return delay({
+        leads: allLeads.slice((page - 1) * pageSize, page * pageSize),
+        page,
+        pageSize,
+        total,
+        totalPages,
+        hasPrevious: page > 1,
+        hasNext: page < totalPages,
+      });
+    }
+
+    const token = await auth?.currentUser?.getIdToken();
+    if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    const params = new URLSearchParams({
+      page: String(requestedPage),
+      pageSize: String(pageSize),
+      sinceDays: String(options.sinceDays ?? DEFAULT_LEADS_SINCE_DAYS),
+    });
+    if (options.dateFrom) params.set('dateFrom', options.dateFrom);
+    if (options.dateTo) params.set('dateTo', options.dateTo);
+    const response = await fetch(`/api/lead-page?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await response.json().catch(() => ({})) as Partial<LeadNumberedPageResult> & { error?: string };
+    if (!response.ok) throw new Error(payload.error || 'Không tải được trang leads.');
+    if (!Array.isArray(payload.leads)) throw new Error('Server trả về trang leads không hợp lệ.');
+
+    let remoteLeads = payload.leads.map((lead) => normalizeLead(lead));
+    if (canViewAllLeads(user)) remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
+    setStoreLeads(remoteLeads, true);
+    persistLeads();
+    return {
+      leads: visibleLeads(user),
+      page: Number(payload.page || 1),
+      pageSize: Number(payload.pageSize || pageSize),
+      total: Number(payload.total || 0),
+      totalPages: Number(payload.totalPages || 1),
+      hasPrevious: Boolean(payload.hasPrevious),
+      hasNext: Boolean(payload.hasNext),
+    };
+  },
+
   getLeads: async () => {
     const user = currentUser();
     if (USE_FIREBASE) {

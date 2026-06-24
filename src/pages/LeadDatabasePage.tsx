@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
+import { LeadPagination } from '@/components/leads/LeadPagination';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, WON_LEAD_STATUS, leadStatuses } from '@/lib/constants';
 import {
   downloadWorkbook,
@@ -132,9 +133,9 @@ export default function LeadDatabasePage() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [editingParent, setEditingParent] = useState<ParentProfile | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const { leads, refresh, loadMore, hasMore, loadingMore } = useLeads({
+  const { leads, refresh, page, totalPages, totalLeads, goToPage, loadingPage } = useLeads({
     realtime: false,
-    mode: 'paged',
+    mode: 'numbered',
     pageSize: LEAD_DATABASE_PAGE_SIZE,
     dateFrom: createdFrom,
     dateTo: createdTo,
@@ -155,6 +156,11 @@ export default function LeadDatabasePage() {
     centerConfigService.getConfigs().then(setCenterConfigs).catch(() => setCenterConfigs([]));
     userService.getUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
+
+  useEffect(() => {
+    setSelectedLeadIds([]);
+    setSelectedParentIds([]);
+  }, [page]);
 
   const salesUsers = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
 
@@ -310,7 +316,7 @@ export default function LeadDatabasePage() {
     setImportFileName(file.name);
     setBusy(true);
     try {
-      const result = await parseLeadWorkbook(file, leads);
+      const result = await parseLeadWorkbook(file);
       setParsed(result);
       if (result.errors.length) setError(`File có ${result.errors.length} lỗi cần xử lý trước khi import.`);
       else setMessage(`Đã đọc ${result.rows.length} dòng hợp lệ từ file.`);
@@ -322,31 +328,35 @@ export default function LeadDatabasePage() {
   }
 
   async function importParsedRows() {
-    if (!parsed?.rows.length) return;
+    if (!parsed?.rows.length || parsed.errors.length) return;
     setBusy(true);
     setError('');
     setMessage('');
-    const failures: string[] = [];
-    let created = 0;
-    let updated = 0;
     try {
-      for (const row of parsed.rows) {
-        try {
-          await leadService.saveLead(row.lead);
-          if (row.mode === 'create') created += 1;
-          else updated += 1;
-        } catch (err) {
-          failures.push(`Dòng ${row.rowNumber}: ${err instanceof Error ? err.message : 'Không import được.'}`);
-        }
-      }
-      await refresh();
+      const result = await leadService.importLeads(parsed.rows.map((row) => ({ rowNumber: row.rowNumber, lead: row.lead })));
+      const resultByRow = new Map(result.results.map((row) => [row.rowNumber, row]));
+      setParsed({
+        ...parsed,
+        rows: parsed.rows.map((row) => {
+          const imported = resultByRow.get(row.rowNumber);
+          return {
+            ...row,
+            mode: imported?.mode || 'failed',
+            lead: imported?.leadId ? { ...row.lead, id: imported.leadId } : row.lead,
+            warnings: Array.from(new Set([
+              ...row.warnings,
+              ...(imported?.warnings || []),
+              ...(imported?.error ? [imported.error] : []),
+            ])),
+          };
+        }),
+      });
+      await goToPage(1, true);
+      const failures = result.results.filter((row) => row.error).map((row) => `Dòng ${row.rowNumber}: ${row.error}`);
       if (failures.length) setError(failures.slice(0, 5).join('\n'));
-      setMessage(`Import xong: tạo mới ${created}, cập nhật ${updated}, lỗi ${failures.length}.`);
-      if (!failures.length) {
-        setParsed(null);
-        setImportFileName('');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
+      setMessage(`Import xong: tạo mới ${result.created}, cập nhật ${result.updated}, lỗi ${result.failed}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không import được leads trên server.');
     } finally {
       setBusy(false);
     }
@@ -423,6 +433,7 @@ export default function LeadDatabasePage() {
 
   const createCount = parsed?.rows.filter((row) => row.mode === 'create').length || 0;
   const updateCount = parsed?.rows.filter((row) => row.mode === 'update').length || 0;
+  const pendingCount = parsed?.rows.filter((row) => row.mode === 'pending').length || 0;
   const warningCount = parsed?.rows.reduce((sum, row) => sum + row.warnings.length, 0) || 0;
 
   return (
@@ -433,8 +444,7 @@ export default function LeadDatabasePage() {
           <p className="text-slate-500">Kho dữ liệu leads, timeline và appointments để backup, kiểm tra và import/export Excel.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void refresh()} disabled={busy}><RefreshCcw /> Làm mới</Button>
-          {hasMore && <Button variant="outline" onClick={() => void loadMore()} disabled={busy || loadingMore}><RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải' : 'Tải thêm lead'}</Button>}
+          <Button variant="outline" onClick={() => void refresh()} disabled={busy || loadingPage}><RefreshCcw className={loadingPage ? 'animate-spin' : ''} /> Làm mới</Button>
           <Button variant="outline" onClick={downloadTemplate} disabled={busy}><FileSpreadsheet /> Tải file mẫu</Button>
           <Button onClick={() => void exportDatabase()} disabled={busy}><Download /> Export database</Button>
         </div>
@@ -447,7 +457,7 @@ export default function LeadDatabasePage() {
       )}
 
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="Tổng leads" value={metrics.total.toLocaleString('vi-VN')} />
+        <MetricCard label="Tổng leads" value={totalLeads.toLocaleString('vi-VN')} />
         <MetricCard label="Có số điện thoại" value={metrics.withPhone.toLocaleString('vi-VN')} />
         <MetricCard label="Lead referral" value={referralTotals.referredLeads.toLocaleString('vi-VN')} />
         <MetricCard label="Phụ huynh có refer" value={referralTotals.referrers.toLocaleString('vi-VN')} />
@@ -471,7 +481,7 @@ export default function LeadDatabasePage() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="font-bold text-slate-950">{importFileName || 'Chọn file Excel để import leads'}</p>
-                <p className="mt-1 text-sm text-slate-500">Sheet tên "Leads" sẽ được đọc. Dùng Lead ID hoặc SĐT để cập nhật dữ liệu cũ.</p>
+                <p className="mt-1 text-sm text-slate-500">Sheet "Leads" chỉ được parse tại browser; server sẽ kiểm tra Lead ID hoặc SĐT + tên học sinh khi import.</p>
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => fileInputRef.current?.click()} disabled={busy}><Upload /> Chọn file</Button>
@@ -481,7 +491,8 @@ export default function LeadDatabasePage() {
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <MiniStat label="Chờ kiểm tra" value={pendingCount} />
             <MiniStat label="Tạo mới" value={createCount} />
             <MiniStat label="Cập nhật" value={updateCount} />
             <MiniStat label="Cảnh báo" value={warningCount} />
@@ -500,7 +511,11 @@ export default function LeadDatabasePage() {
                   {parsed.rows.slice(0, 8).map((row) => (
                     <TR key={`${row.rowNumber}-${row.lead.phone}`}>
                       <TD>{row.rowNumber}</TD>
-                      <TD><Badge tone={row.mode === 'create' ? 'green' : 'blue'}>{row.mode === 'create' ? 'Create' : 'Update'}</Badge></TD>
+                      <TD>
+                        <Badge tone={row.mode === 'create' ? 'green' : row.mode === 'update' ? 'blue' : row.mode === 'failed' ? 'red' : 'gray'}>
+                          {row.mode === 'create' ? 'Create' : row.mode === 'update' ? 'Update' : row.mode === 'failed' ? 'Lỗi' : 'Sẽ kiểm tra khi import'}
+                        </Badge>
+                      </TD>
                       <TD className="font-semibold text-slate-900">{leadDisplayName(row.lead)}</TD>
                       <TD>{row.lead.phone}</TD>
                       <TD>{row.lead.status}</TD>
@@ -562,7 +577,7 @@ export default function LeadDatabasePage() {
                 <TR><TH><input type="checkbox" checked={Boolean(filteredParents.length && selectedParentIds.length === filteredParents.length)} onChange={(event) => setSelectedParentIds(event.target.checked ? filteredParents.map((item) => item.id) : [])} /></TH><TH>Phụ huynh</TH><TH>Học sinh/lead</TH><TH>Thông tin sâu</TH><TH>Nguồn/trung tâm</TH><TH>Updated</TH><TH></TH></TR>
               </THead>
               <TBody>
-                {filteredParents.slice(0, 80).map((parent) => (
+                {filteredParents.map((parent) => (
                   <TR key={parent.id}>
                     <TD><input type="checkbox" checked={selectedParentIds.includes(parent.id)} onChange={() => toggleParentSelection(parent.id)} /></TD>
                     <TD>
@@ -597,7 +612,6 @@ export default function LeadDatabasePage() {
               </TBody>
             </Table>
           </div>
-          {filteredParents.length > 80 && <p className="mt-3 text-xs font-semibold text-slate-400">Đang hiển thị 80/{filteredParents.length} hồ sơ đầu.</p>}
         </CardContent>
       </Card>
 
@@ -681,7 +695,7 @@ export default function LeadDatabasePage() {
               <TR><TH><input type="checkbox" checked={Boolean(filtered.length && selectedLeadIds.length === filtered.length)} onChange={(event) => setSelectedLeadIds(event.target.checked ? filtered.map((item) => item.id) : [])} /></TH><TH>Lead</TH><TH>SĐT</TH><TH>Status</TH><TH>Source</TH><TH>Referral</TH><TH>Trung tâm</TH><TH>Sales</TH><TH>Expected/Revenue</TH><TH>Updated</TH><TH></TH></TR>
             </THead>
             <TBody>
-              {filtered.slice(0, 80).map((lead) => (
+              {filtered.map((lead) => (
                 <TR key={lead.id}>
                   <TD><input type="checkbox" checked={selectedLeadIds.includes(lead.id)} onChange={() => toggleLeadSelection(lead.id)} /></TD>
                   <TD>
@@ -713,7 +727,16 @@ export default function LeadDatabasePage() {
               {!filtered.length && <TR><TD colSpan={11} className="py-8 text-center text-slate-400">Không tìm thấy lead phù hợp.</TD></TR>}
             </TBody>
           </Table>
-          {filtered.length > 80 && <p className="mt-3 text-xs font-semibold text-slate-400">Đang hiển thị 80/{filtered.length} dòng đầu. Dùng search/filter hoặc export Excel để xem toàn bộ.</p>}
+          <div className="mt-4">
+            <LeadPagination
+              page={page}
+              totalPages={totalPages}
+              totalLeads={totalLeads}
+              pageSize={LEAD_DATABASE_PAGE_SIZE}
+              loading={loadingPage}
+              onPageChange={goToPage}
+            />
+          </div>
         </CardContent>
       </Card>
 

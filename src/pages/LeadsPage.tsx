@@ -11,6 +11,7 @@ import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import { TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { CallRecordingButton } from '@/components/call/CallRecordingPlayer';
+import { LeadPagination } from '@/components/leads/LeadPagination';
 import { useCallCenter } from '@/context/CallCenterContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useCourseCatalog } from '@/hooks/useCms';
@@ -42,7 +43,7 @@ type LeadImportIssue = {
   rowNumber: number | string;
   level: 'error' | 'warning';
   source: 'parse' | 'import';
-  mode?: 'create' | 'update' | '';
+  mode?: 'pending' | 'create' | 'update' | 'failed' | '';
   leadName?: string;
   phone?: string;
   message: string;
@@ -363,10 +364,6 @@ function collectLeadImportIssues(result: ParsedLeadImportResult): LeadImportIssu
   ];
 }
 
-function nextUiFrame() {
-  return new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-}
-
 export default function LeadsPage() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
@@ -377,9 +374,9 @@ export default function LeadsPage() {
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [filters, setFilters] = useState(defaultLeadFilters);
-  const { leads, refresh, loadMore, hasMore, loadingMore } = useLeads({
+  const { leads, refresh, page, totalPages, totalLeads, goToPage, loadingPage } = useLeads({
     realtime: false,
-    mode: 'paged',
+    mode: 'numbered',
     pageSize: LEADS_PAGE_SIZE,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
@@ -500,6 +497,7 @@ export default function LeadsPage() {
   }, [centerConfigs, leads]);
   const leadImportCreateCount = leadImportParsed?.rows.filter((row) => row.mode === 'create').length || 0;
   const leadImportUpdateCount = leadImportParsed?.rows.filter((row) => row.mode === 'update').length || 0;
+  const leadImportPendingCount = leadImportParsed?.rows.filter((row) => row.mode === 'pending').length || 0;
   const leadImportWarningCount = leadImportParsed?.rows.reduce((sum, row) => sum + row.warnings.length, 0) || 0;
   const leadImportTotal = leadImportProgress.total || leadImportParsed?.rows.length || 0;
   const leadImportPercent = leadImportTotal ? Math.round((leadImportProgress.processed / leadImportTotal) * 100) : 0;
@@ -625,7 +623,8 @@ export default function LeadsPage() {
 
       setEditing(null);
       setSaveMessage('Đã lưu lead thành công.');
-      await refresh();
+      if (payload.id) await refresh();
+      else await goToPage(1, true);
     } catch (err) {
       setError(err instanceof Error ? `Không ghi được Firestore: ${err.message}` : 'Không lưu được lead.');
     }
@@ -679,7 +678,7 @@ export default function LeadsPage() {
       });
       setQuickLead({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
       setSaveMessage('Đã thêm lead mới.');
-      await refresh();
+      await goToPage(1, true);
     } catch (err) {
       setError(err instanceof Error ? `Không ghi được Firestore: ${err.message}` : 'Không thêm được lead.');
     }
@@ -710,8 +709,7 @@ export default function LeadsPage() {
     setLeadImportBusy(true);
     setLeadImportOpen(true);
     try {
-      const visibleReferenceLeads = await leadService.getLeads();
-      const result = await parseLeadWorkbook(file, visibleReferenceLeads);
+      const result = await parseLeadWorkbook(file);
       setLeadImportParsed(result);
       const issues = collectLeadImportIssues(result);
       setLeadImportIssues(issues);
@@ -758,62 +756,62 @@ export default function LeadsPage() {
       total: leadImportParsed.rows.length,
       message: 'Đang import lead...',
     });
-    let created = 0;
-    let updated = 0;
-    let failed = 0;
-    let processed = 0;
     try {
-      for (const row of leadImportParsed.rows) {
-        setLeadImportProgress((current) => ({
-          ...current,
-          phase: 'importing',
-          currentRow: row.rowNumber,
-          message: `Đang xử lý dòng ${row.rowNumber}...`,
-        }));
-        try {
-          await leadService.saveLead(row.lead);
-          if (row.mode === 'create') created += 1;
-          else updated += 1;
-        } catch (err) {
-          failed += 1;
-          const issue: LeadImportIssue = {
-            rowNumber: row.rowNumber,
-            level: 'error',
-            source: 'import',
-            mode: row.mode,
-            leadName: leadDisplayName(row.lead),
-            phone: row.lead.phone || '',
-            message: err instanceof Error ? err.message : 'Không import được dòng này.',
+      const importResult = await leadService.importLeads(leadImportParsed.rows.map((row) => ({ rowNumber: row.rowNumber, lead: row.lead })));
+      const originalByRow = new Map(leadImportParsed.rows.map((row) => [row.rowNumber, row]));
+      const resultByRow = new Map(importResult.results.map((result) => [result.rowNumber, result]));
+      const updatedParsed: ParsedLeadImportResult = {
+        ...leadImportParsed,
+        rows: leadImportParsed.rows.map((row) => {
+          const result = resultByRow.get(row.rowNumber);
+          return {
+            ...row,
+            mode: result?.mode || 'failed',
+            lead: result?.leadId ? { ...row.lead, id: result.leadId } : row.lead,
+            warnings: Array.from(new Set([...row.warnings, ...(result?.warnings || [])])),
           };
-          setLeadImportIssues((current) => [...current, issue]);
-        }
-        processed += 1;
-        setLeadImportProgress({
-          phase: 'importing',
-          total: leadImportParsed.rows.length,
-          processed,
-          created,
-          updated,
-          failed,
-          currentRow: row.rowNumber,
-          message: `Đã xử lý ${processed}/${leadImportParsed.rows.length} dòng.`,
-        });
-        await nextUiFrame();
-      }
-      await refresh();
+        }),
+      };
+      const serverIssues: LeadImportIssue[] = importResult.results.flatMap((result) => {
+        const row = originalByRow.get(result.rowNumber);
+        const shared = {
+          rowNumber: result.rowNumber,
+          source: 'import' as const,
+          mode: result.mode,
+          leadName: row ? leadDisplayName(row.lead) : '',
+          phone: row?.lead.phone || '',
+        };
+        return [
+          ...(result.warnings || []).map((message) => ({ ...shared, level: 'warning' as const, message })),
+          ...(result.error ? [{ ...shared, level: 'error' as const, message: result.error }] : []),
+        ];
+      });
+      setLeadImportParsed(updatedParsed);
+      setLeadImportIssues([...baseIssues, ...serverIssues]);
+      await goToPage(1, true);
       setLeadImportProgress({
         phase: 'done',
         total: leadImportParsed.rows.length,
-        processed,
-        created,
-        updated,
-        failed,
-        message: failed
-          ? `Hoàn tất nhưng có ${failed} dòng lỗi.`
+        processed: importResult.results.length,
+        created: importResult.created,
+        updated: importResult.updated,
+        failed: importResult.failed,
+        message: importResult.failed
+          ? `Hoàn tất nhưng có ${importResult.failed} dòng lỗi.`
           : 'Hoàn tất import không có lỗi.',
       });
-      if (failed) setError(`Có ${failed} dòng import lỗi. Xem lý do bên dưới hoặc tải file error log.`);
-      setSaveMessage(`Import xong: tạo mới ${created}, cập nhật ${updated}, lỗi ${failed}.`);
+      if (importResult.failed) setError(`Có ${importResult.failed} dòng import lỗi. Xem lý do bên dưới hoặc tải file error log.`);
+      setSaveMessage(`Import xong: tạo mới ${importResult.created}, cập nhật ${importResult.updated}, lỗi ${importResult.failed}.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Không import được leads trên server.';
+      setLeadImportProgress({
+        ...emptyLeadImportProgress,
+        phase: 'done',
+        total: leadImportParsed.rows.length,
+        failed: leadImportParsed.rows.length,
+        message,
+      });
+      setError(message);
     } finally {
       setLeadImportBusy(false);
     }
@@ -891,9 +889,6 @@ export default function LeadsPage() {
           {canCreate && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setLeadImportOpen((open) => !open)}>
             <Upload /> Import Excel
           </Button>}
-          {hasMore && <Button variant="outline" className="w-full sm:w-auto" onClick={() => void loadMore()} disabled={loadingMore}>
-            <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải' : 'Tải thêm lead'}
-          </Button>}
           {canAssign && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setShowSourceSettings((current) => !current)}>
             Source priority
           </Button>}
@@ -909,7 +904,7 @@ export default function LeadsPage() {
           <CardHeader className="flex-row items-start justify-between gap-3">
             <div>
               <CardTitle className="flex items-center gap-2"><Upload size={18} /> Import lead hàng loạt</CardTitle>
-              <p className="text-sm text-slate-500">Hỗ trợ Excel/CSV. Lead ID hoặc SĐT sẽ được dùng để cập nhật lead cũ; dòng mới sẽ tạo lead mới.</p>
+              <p className="text-sm text-slate-500">Hỗ trợ Excel/CSV. Server kiểm tra trùng theo Lead ID hoặc SĐT + tên học sinh khi import.</p>
             </div>
             <Button variant="ghost" size="icon" onClick={() => setLeadImportOpen(false)} aria-label="Đóng import">
               <X size={18} />
@@ -954,7 +949,7 @@ export default function LeadsPage() {
                       {leadImportProgress.phase === 'parsing'
                         ? 'Đang kiểm tra file'
                         : leadImportProgress.phase === 'importing'
-                          ? `Đang xử lý dòng ${leadImportProgress.currentRow || '-'}`
+                          ? 'Server đang xử lý toàn bộ file'
                           : leadImportProgress.phase === 'done'
                             ? 'Import đã hoàn tất'
                             : 'Sẵn sàng import'}
@@ -996,7 +991,11 @@ export default function LeadsPage() {
 
             {leadImportParsed && (
               <div className="grid gap-4">
-                <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <p className="text-xs font-bold uppercase text-slate-600">Chờ kiểm tra</p>
+                    <p className="text-xl font-extrabold text-slate-900">{leadImportPendingCount}</p>
+                  </div>
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
                     <p className="text-xs font-bold uppercase text-emerald-700">Tạo mới</p>
                     <p className="text-xl font-extrabold text-emerald-900">{leadImportCreateCount}</p>
@@ -1028,7 +1027,11 @@ export default function LeadsPage() {
                       {leadImportParsed.rows.slice(0, 8).map((row) => (
                         <TR key={`${row.rowNumber}-${row.lead.phone || row.lead.id || row.mode}`}>
                           <TD>{row.rowNumber}</TD>
-                          <TD><Badge tone={row.mode === 'create' ? 'green' : 'blue'}>{row.mode === 'create' ? 'Create' : 'Update'}</Badge></TD>
+                          <TD>
+                            <Badge tone={row.mode === 'create' ? 'green' : row.mode === 'update' ? 'blue' : row.mode === 'failed' ? 'red' : 'gray'}>
+                              {row.mode === 'create' ? 'Create' : row.mode === 'update' ? 'Update' : row.mode === 'failed' ? 'Lỗi' : 'Sẽ kiểm tra khi import'}
+                            </Badge>
+                          </TD>
                           <TD className="font-semibold text-slate-900">{leadDisplayName(row.lead)}</TD>
                           <TD>{row.lead.phone || '-'}</TD>
                           <TD>{row.lead.status || '-'}</TD>
@@ -1196,6 +1199,15 @@ export default function LeadsPage() {
       ) : (
         <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} courseOptions={courseOptions} courseDealSizes={courseDealSizes} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
       )}
+
+      <LeadPagination
+        page={page}
+        totalPages={totalPages}
+        totalLeads={totalLeads}
+        pageSize={LEADS_PAGE_SIZE}
+        loading={loadingPage}
+        onPageChange={goToPage}
+      />
 
       {detailLead && (
         <LeadDetailModal

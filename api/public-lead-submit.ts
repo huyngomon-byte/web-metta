@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { adminAppCheck, adminDb } from './_firebaseAdmin.js';
+import { dedupeIndexPayload, findLeadByDedupe, normalizeLeadPhone } from './_leadDedupe.js';
 import { sendLeadCapiSignal } from './_metaCapi.js';
 import { notifyLeadAssigned, notifyLeadManagers } from './_notifications.js';
 
@@ -99,10 +100,6 @@ function isValidEmail(email?: string) {
   return !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function normalizePhone(phone: string) {
-  return phone.replace(/[\s.\-()]/g, '').replace(/^\+84/, '0');
-}
-
 function isValidPhone(phone: string) {
   return /^0(3|5|7|8|9|1[2689])\d{8}$/.test(phone);
 }
@@ -165,13 +162,6 @@ function originFromRequest(req: VercelRequest) {
 
 function cleanName(value?: string) {
   return String(value || '').replace(/\s+/g, ' ').trim();
-}
-
-function identityKey(value?: string) {
-  return cleanName(value)
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
 }
 
 function stripUndefined<T>(value: T): T {
@@ -374,41 +364,6 @@ async function priorityForSource(db: ReturnType<typeof adminDb>, source: string)
   return SOURCE_PRIORITY[source] || 1;
 }
 
-function leadStudentKey(lead: LeadDoc) {
-  return identityKey(lead.studentName || lead.fullName || '');
-}
-
-function leadParentKey(lead: LeadDoc) {
-  return identityKey(lead.parentName || '');
-}
-
-async function findMatchingLead(db: ReturnType<typeof adminDb>, phone: string, parentName: string, studentName: string) {
-  const snap = await db.collection('leads').where('phone', '==', phone).limit(25).get();
-  const candidates = snap.docs.map((item) => ({ id: item.id, ...item.data() }) as LeadDoc);
-  if (!candidates.length) return null;
-
-  const parent = identityKey(parentName);
-  const student = identityKey(studentName);
-  const exactStudent = candidates.find((lead) => student && leadStudentKey(lead) === student);
-  if (exactStudent) return exactStudent;
-
-  const sameParentWithoutStudent = candidates.find((lead) => {
-    const leadParent = leadParentKey(lead);
-    const leadStudent = leadStudentKey(lead);
-    return parent && leadParent === parent && !leadStudent;
-  });
-  if (sameParentWithoutStudent) return sameParentWithoutStudent;
-
-  if (candidates.length === 1) {
-    const only = candidates[0];
-    const leadParent = leadParentKey(only);
-    const leadStudent = leadStudentKey(only);
-    if (!leadStudent && (!leadParent || leadParent === parent)) return only;
-  }
-
-  return null;
-}
-
 function assignmentStillActive(lead: LeadDoc | null, nowMs: number) {
   if (!lead?.assignedTo) return false;
   if (lead.assignedStatus === 'returned') return false;
@@ -472,7 +427,7 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
   if (lead.interestedCourse && !interestedCourse) return res.status(400).json({ error: 'Invalid interestedCourse' });
   if (!isValidEmail(lead.email)) return res.status(400).json({ error: 'Invalid email' });
 
-  const phone = normalizePhone(String(lead.phone));
+  const phone = normalizeLeadPhone(lead.phone);
   if (!isValidPhone(phone)) return res.status(400).json({ error: 'Invalid phone' });
 
   const db = adminDb();
@@ -497,11 +452,11 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
   const now = new Date(nowMs).toISOString();
   const eventId = `lead_${nowMs}_${Math.random().toString(36).slice(2)}`;
   const source = String(lead.source || 'Website');
-  const referralPhone = lead.referralPhone ? normalizePhone(String(lead.referralPhone)) : '';
+  const referralPhone = lead.referralPhone ? normalizeLeadPhone(lead.referralPhone) : '';
   if (String(source).toLowerCase() === 'referral' && !isValidPhone(referralPhone)) {
     return res.status(400).json({ error: 'Referral source requires a valid referralPhone' });
   }
-  const existingLead = await findMatchingLead(db, phone, parentName, studentName);
+  const existingLead = await findLeadByDedupe(db, phone, studentName) as LeadDoc | null;
   const existingAssignmentActive = assignmentStillActive(existingLead, nowMs);
   const requestedStatus = typeof lead.status === 'string' ? lead.status.trim() : '';
   const status = LEAD_STATUSES.includes(requestedStatus) ? requestedStatus : existingLead?.status || 'Lead mới';
@@ -607,7 +562,13 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
     convertedToStudentId: existingLead?.convertedToStudentId || '',
   });
 
-  await leadRef.set(payload, { merge: Boolean(existingLead) });
+  const leadWrite = db.batch();
+  leadWrite.set(leadRef, payload, { merge: Boolean(existingLead) });
+  const dedupeIndex = dedupeIndexPayload(payload as LeadDoc, now);
+  if (dedupeIndex) {
+    leadWrite.set(db.collection('leadDedupeIndex').doc(dedupeIndex.id), dedupeIndex.data, { merge: true });
+  }
+  await leadWrite.commit();
 
   const capiResult = await sendLeadCapiSignal({
     db,

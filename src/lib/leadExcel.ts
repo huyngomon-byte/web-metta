@@ -68,7 +68,7 @@ export const leadExcelColumns: LeadExcelColumn[] = [
 export interface ParsedLeadImportRow {
   rowNumber: number;
   lead: Partial<Lead>;
-  mode: 'create' | 'update';
+  mode: 'pending' | 'create' | 'update' | 'failed';
   warnings: string[];
 }
 
@@ -218,7 +218,7 @@ export function makeLeadTemplateWorkbook() {
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
     ['Field', 'Required', 'Notes'],
     ['Tên học sinh hoặc Tên phụ huynh', 'Yes', 'Ít nhất một trong hai tên phải có dữ liệu.'],
-    ['Số điện thoại', 'Yes', 'Dùng để upsert nếu không có Lead ID.'],
+    ['Số điện thoại', 'Yes', 'Dùng cùng Tên học sinh để kiểm tra trùng nếu không có Lead ID.'],
     ['Trạng thái', 'No', `Nếu để trống, hệ thống dùng "${leadStatuses[0]}".`],
     ['Đã báo phí/Chờ chốt', 'Conditional', 'Cần có Lý do pending.'],
     ['Mất lead', 'Conditional', 'Cần có Lý do mất lead.'],
@@ -230,7 +230,7 @@ export function downloadWorkbook(workbook: XLSX.WorkBook, fileName: string) {
   XLSX.writeFile(workbook, fileName, { compression: true });
 }
 
-export async function parseLeadWorkbook(file: File, existingLeads: Lead[]): Promise<ParsedLeadImportResult> {
+export async function parseLeadWorkbook(file: File): Promise<ParsedLeadImportResult> {
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
   const sheetName = workbook.SheetNames.find((name) => normalizeHeader(name) === 'leads') || workbook.SheetNames[0];
@@ -238,10 +238,6 @@ export async function parseLeadWorkbook(file: File, existingLeads: Lead[]): Prom
   if (!sheet) return { rows: [], errors: ['Không tìm thấy sheet dữ liệu leads trong file.'] };
 
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
-  const existingById = new Map(existingLeads.map((lead) => [lead.id, lead]));
-  const existingByPhone = new Map(existingLeads
-    .map((lead) => [normalizeImportedPhone(lead.phone), lead] as const)
-    .filter(([phone]) => phone));
   const parsed: ParsedLeadImportRow[] = [];
   const errors: string[] = [];
 
@@ -270,23 +266,21 @@ export async function parseLeadWorkbook(file: File, existingLeads: Lead[]): Prom
       return;
     }
 
-    const matched = (lead.id && existingById.get(lead.id)) || existingByPhone.get(phone);
-    if (matched) lead.id = matched.id;
-    else delete lead.id;
-
     lead.fullName = String(lead.fullName || lead.studentName || lead.parentName || '').trim();
     lead.phone = phone;
     const contactType = String(lead.contactType || '');
     const assignedStatus = String(lead.assignedStatus || '');
-    const hasImportedAssignment = Boolean(String(lead.assignedTo || lead.assignedToName || '').trim());
-    lead.contactType = CONTACT_TYPES.includes(contactType as ContactType) ? contactType as Lead['contactType'] : 'parent';
-    lead.assignedStatus = ASSIGNMENT_STATUSES.includes(assignedStatus as AssignmentStatus)
-      ? assignedStatus as Lead['assignedStatus']
-      : hasImportedAssignment ? 'active' : 'unassigned';
-    lead.status = (lead.status || leadStatuses[0]) as Lead['status'];
-    lead.dealCurrency = lead.dealCurrency || DEFAULT_DEAL_CURRENCY;
-    lead.enrollmentType = lead.enrollmentType || 'new';
-    lead.initialNote = lead.initialNote || '';
+    if (contactType && !CONTACT_TYPES.includes(contactType as ContactType)) {
+      warnings.push(`Loại liên hệ "${contactType}" không hợp lệ; server sẽ dùng parent nếu tạo lead mới.`);
+      delete lead.contactType;
+    }
+    if (assignedStatus && !ASSIGNMENT_STATUSES.includes(assignedStatus as AssignmentStatus)) {
+      warnings.push(`Trạng thái phân lead "${assignedStatus}" không hợp lệ; server sẽ tự xác định lại.`);
+      delete lead.assignedStatus;
+    }
+    if (!String(lead.studentName || '').trim()) {
+      warnings.push('Thiếu tên học sinh: dòng này sẽ không tự động merge theo SĐT.');
+    }
 
     if (lead.status === DEAL_QUOTED_STATUS && !lead.pendingReason) warnings.push('Trạng thái báo phí cần có Lý do pending để import thành công.');
     if (lead.status === LOST_LEAD_STATUS && !lead.lostReason) warnings.push('Trạng thái mất lead cần có Lý do mất lead để import thành công.');
@@ -296,7 +290,7 @@ export async function parseLeadWorkbook(file: File, existingLeads: Lead[]): Prom
     parsed.push({
       rowNumber,
       lead,
-      mode: matched ? 'update' : 'create',
+      mode: 'pending',
       warnings,
     });
   });

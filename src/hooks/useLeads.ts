@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { describeFriendlyDataError } from '@/lib/friendlyErrors';
 import { leadService } from '@/services/leadService';
 import type { LeadPageCursor } from '@/services/leadService';
@@ -8,7 +8,7 @@ type UseLeadsOptions = {
   realtime?: boolean;
   pollMs?: number;
   pageSize?: number;
-  mode?: 'paged' | 'all';
+  mode?: 'paged' | 'numbered' | 'all';
   sinceDays?: number;
   dateFrom?: string;
   dateTo?: string;
@@ -34,10 +34,66 @@ export function useLeads({
   const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLeads, setTotalLeads] = useState(0);
   const [error, setError] = useState('');
+  const currentPageRef = useRef(1);
+  const totalPagesRef = useRef(1);
+  const numberedPageCacheRef = useRef(new Map<number, Lead[]>());
+
+  const loadNumberedPage = useCallback(async (targetPage: number, force = false) => {
+    const safeTarget = Math.max(1, Math.round(targetPage || 1));
+    const cached = numberedPageCacheRef.current.get(safeTarget);
+    if (cached && !force) {
+      currentPageRef.current = safeTarget;
+      setPage(safeTarget);
+      setLeads(leadService.useCachedLeadsPage(cached));
+      setHasMore(safeTarget < totalPagesRef.current);
+      return;
+    }
+
+    setLoadingPage(true);
+    setError('');
+    try {
+      const result = await leadService.getNumberedLeadsPage({
+        page: safeTarget,
+        pageSize,
+        sinceDays,
+        dateFrom,
+        dateTo,
+      });
+      currentPageRef.current = result.page;
+      totalPagesRef.current = result.totalPages;
+      setPage(result.page);
+      setTotalPages(result.totalPages);
+      setTotalLeads(result.total);
+      setHasMore(result.hasNext);
+      setLeads(result.leads);
+      const cache = numberedPageCacheRef.current;
+      cache.delete(result.page);
+      cache.set(result.page, result.leads);
+      while (cache.size > 5) {
+        const oldestPage = cache.keys().next().value as number | undefined;
+        if (oldestPage === undefined) break;
+        cache.delete(oldestPage);
+      }
+    } catch (err) {
+      console.warn('[useLeads] Cannot load numbered lead page:', err);
+      setError(describeFriendlyDataError(err, 'trang dữ liệu lead'));
+    } finally {
+      setLoadingPage(false);
+    }
+  }, [dateFrom, dateTo, pageSize, sinceDays]);
+
   const refresh = useCallback(async () => {
     setError('');
     try {
+      if (mode === 'numbered') {
+        await loadNumberedPage(currentPageRef.current, true);
+        return;
+      }
       if (mode === 'paged') {
         const page = await leadService.getLeadsPage({ pageSize, sinceDays, dateFrom, dateTo });
         setLeads(page.leads);
@@ -57,7 +113,13 @@ export function useLeads({
       setNextCursor(null);
       setHasMore(false);
     }
-  }, [dateFrom, dateTo, mode, pageSize, sinceDays]);
+  }, [dateFrom, dateTo, loadNumberedPage, mode, pageSize, sinceDays]);
+
+  const goToPage = useCallback(async (targetPage: number, force = false) => {
+    if (mode !== 'numbered' || loadingPage) return;
+    const safeTarget = Math.max(1, Math.min(totalPages, Math.round(targetPage || 1)));
+    await loadNumberedPage(safeTarget, force);
+  }, [loadNumberedPage, loadingPage, mode, totalPages]);
 
   const loadMore = useCallback(async () => {
     if (!hasMore || !nextCursor || loadingMore) return;
@@ -77,6 +139,19 @@ export function useLeads({
   }, [dateFrom, dateTo, hasMore, loadingMore, nextCursor, pageSize, sinceDays]);
 
   useEffect(() => {
+    if (mode === 'numbered') {
+      numberedPageCacheRef.current.clear();
+      currentPageRef.current = 1;
+      totalPagesRef.current = 1;
+      setPage(1);
+      setTotalPages(1);
+      setTotalLeads(0);
+      void loadNumberedPage(1, true);
+      if (!pollMs) return undefined;
+      const timer = window.setInterval(() => void loadNumberedPage(currentPageRef.current, true), pollMs);
+      return () => window.clearInterval(timer);
+    }
+
     if (realtime) {
       return leadService.subscribeLeads((items, meta) => {
         setLeads((current) => {
@@ -93,7 +168,22 @@ export function useLeads({
     if (!pollMs) return undefined;
     const timer = window.setInterval(() => void refresh(), pollMs);
     return () => window.clearInterval(timer);
-  }, [pollMs, realtime, refresh]);
+  }, [loadNumberedPage, mode, pollMs, realtime, refresh]);
 
-  return { leads, refresh, setLeads, loadMore, hasMore, loadingMore, error };
+  return {
+    leads,
+    refresh,
+    setLeads,
+    loadMore,
+    hasMore,
+    loadingMore,
+    error,
+    page,
+    totalPages,
+    totalLeads,
+    goToPage,
+    loadingPage,
+    hasPreviousPage: page > 1,
+    hasNextPage: page < totalPages,
+  };
 }

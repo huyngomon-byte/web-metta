@@ -7,7 +7,8 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:lead-import": "node --experimental-strip-types --test scripts/lead-import-rules.test.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
