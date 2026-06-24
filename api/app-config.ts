@@ -1,4 +1,5 @@
 import { adminAuth, adminDb } from './_firebaseAdmin.js';
+import leadImportHandler from './_leadImport.js';
 import { sendBlogPage, sendPublicBlogPost, sendPublicBlogPosts, sendSitemap } from './_publicSeoServer.js';
 
 type PublicCmsDocument = {
@@ -553,6 +554,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (id === 'leadPage' && req.method === 'GET') {
       return await readLeadNumberedPage(req, res);
+    }
+
+    if (id === 'leadImport' && req.method === 'POST') {
+      return await leadImportHandler(
+        req as Parameters<typeof leadImportHandler>[0],
+        res as Parameters<typeof leadImportHandler>[1],
+      );
     }
 
     const field = configFields[id];

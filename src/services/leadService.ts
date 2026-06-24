@@ -705,7 +705,7 @@ export const leadService = {
   importLeads: async (rows: LeadImportInputRow[]): Promise<LeadImportResult> => {
     const token = await auth?.currentUser?.getIdToken();
     if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại trước khi import.');
-    const response = await fetch('/api/lead-import', {
+    const response = await fetch('/api/app-config?id=leadImport', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
