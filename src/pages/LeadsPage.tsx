@@ -1194,12 +1194,6 @@ export default function LeadsPage() {
         />
       )}
 
-      {view === 'table' ? (
-        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={setDetailLead} onDetail={setDetailLead} onDelete={removeLead} onCall={callLead} callLogs={callLogs} sourceConfigs={sourceConfigs} courseDealSizes={courseDealSizes} />
-      ) : (
-        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} courseOptions={courseOptions} courseDealSizes={courseDealSizes} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
-      )}
-
       <LeadPagination
         page={page}
         totalPages={totalPages}
@@ -1208,6 +1202,23 @@ export default function LeadsPage() {
         loading={loadingPage}
         onPageChange={goToPage}
       />
+
+      {view === 'table' ? (
+        <LeadsTable leads={filtered} canAssign={canAssign} onEdit={setDetailLead} onDetail={setDetailLead} onDelete={removeLead} onCall={callLead} callLogs={callLogs} sourceConfigs={sourceConfigs} courseDealSizes={courseDealSizes} />
+      ) : (
+        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} courseOptions={courseOptions} courseDealSizes={courseDealSizes} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
+      )}
+
+      <div className={view === 'kanban' ? 'mb-20' : undefined}>
+        <LeadPagination
+          page={page}
+          totalPages={totalPages}
+          totalLeads={totalLeads}
+          pageSize={LEADS_PAGE_SIZE}
+          loading={loadingPage}
+          onPageChange={goToPage}
+        />
+      </div>
 
       {detailLead && (
         <LeadDetailModal

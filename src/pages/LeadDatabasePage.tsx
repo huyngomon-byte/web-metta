@@ -690,6 +690,16 @@ export default function LeadDatabasePage() {
               )}
             </div>
           </div>
+          <div className="mb-4">
+            <LeadPagination
+              page={page}
+              totalPages={totalPages}
+              totalLeads={totalLeads}
+              pageSize={LEAD_DATABASE_PAGE_SIZE}
+              loading={loadingPage}
+              onPageChange={goToPage}
+            />
+          </div>
           <Table>
             <THead>
               <TR><TH><input type="checkbox" checked={Boolean(filtered.length && selectedLeadIds.length === filtered.length)} onChange={(event) => setSelectedLeadIds(event.target.checked ? filtered.map((item) => item.id) : [])} /></TH><TH>Lead</TH><TH>SĐT</TH><TH>Status</TH><TH>Source</TH><TH>Referral</TH><TH>Trung tâm</TH><TH>Sales</TH><TH>Expected/Revenue</TH><TH>Updated</TH><TH></TH></TR>
