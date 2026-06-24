@@ -21,7 +21,6 @@ import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/l
 import { financeDefaultsForLead, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
 import { canDeleteLead, canViewAllLeads, canViewLead, leadAssignmentExpired, leadAssignmentExpiresAtMs } from '@/lib/permissions';
 import { appointmentService } from '@/services/appointmentService';
-import { chooseAutoAssignedSalesAsync } from '@/services/assignmentRuleService';
 import { currentUser } from '@/services/authService';
 import { lmsSyncService } from '@/services/lmsSyncService';
 import { notificationService } from '@/services/notificationService';
@@ -1085,10 +1084,9 @@ export const leadService = {
       store.leads = store.leads.map((item) => (item.id === lead.id ? normalizeLead({ ...item, ...patch } as Lead) : item));
     } else {
       const salesSelfCreate = user?.role === 'sales';
-      const autoAssignedSales = lead.assignedTo || salesSelfCreate ? null : await chooseAutoAssignedSalesAsync(store.leads.map(normalizeLead), store.users);
-      const assignedTo = salesSelfCreate ? user.id : (lead.assignedTo || autoAssignedSales?.salesId || '');
-      const assignedToName = salesSelfCreate ? user.fullName : (lead.assignedToName || autoAssignedSales?.salesName || salesNameById(assignedTo));
-      const assignedBy = salesSelfCreate ? user.id : (lead.assignedBy || (autoAssignedSales ? 'auto-assignment-rule' : ''));
+      const assignedTo = salesSelfCreate ? user.id : (lead.assignedTo || '');
+      const assignedToName = salesSelfCreate ? user.fullName : (lead.assignedToName || salesNameById(assignedTo));
+      const assignedBy = salesSelfCreate ? user.id : (lead.assignedBy || '');
       const hasAssignment = Boolean(assignedTo);
       const assignedStatus = hasAssignment ? (salesSelfCreate ? 'accepted' : 'active') : 'unassigned';
       const draftForValidation = normalizeLead({
@@ -1150,8 +1148,8 @@ export const leadService = {
       if (hasAssignment && !salesSelfCreate) {
         assignmentNotification = {
           salesId: assignedTo,
-          assignedByName: autoAssignedSales ? 'Auto rule' : user?.fullName,
-          auto: Boolean(autoAssignedSales),
+          assignedByName: user?.fullName,
+          auto: false,
         };
       }
       activityQueue.push({

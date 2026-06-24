@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { adminAppCheck, adminDb } from './_firebaseAdmin.js';
 import { dedupeIndexPayload, findLeadByDedupe, normalizeLeadPhone } from './_leadDedupe.js';
 import { sendLeadCapiSignal } from './_metaCapi.js';
-import { notifyLeadAssigned, notifyLeadManagers } from './_notifications.js';
+import { notifyLeadManagers } from './_notifications.js';
 
 const LEAD_STATUSES = [
   'Lead mới',
@@ -39,34 +39,6 @@ const SOURCE_PRIORITY: Record<string, number> = {
   Zalo: 3,
   'Walk-in': 3,
   'Khác': 1,
-};
-
-type AdminUser = {
-  id: string;
-  fullName: string;
-  role: string;
-  active: boolean;
-};
-
-type SalesAssignmentRule = {
-  salesId: string;
-  salesName: string;
-  percent: number;
-  active: boolean;
-  updatedAt?: string;
-};
-
-type LeadAssignmentSnapshot = {
-  assignedTo?: string;
-  assignedToName?: string;
-  assignedStatus?: string;
-};
-
-type LeadAssignmentCount = {
-  assignedTo?: string;
-  assignedToName?: string;
-  assignedStatus?: string;
-  count?: number;
 };
 
 type LeadDoc = Record<string, any> & {
@@ -183,12 +155,6 @@ function stringOrExisting(value: unknown, existing: unknown, fallback = '') {
   return existingText || fallback;
 }
 
-function cleanPercent(value: unknown) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.min(100, Math.round(parsed));
-}
-
 function clampPriority(value: unknown) {
   const parsed = Number(value);
   if (parsed >= 5) return 5;
@@ -240,115 +206,6 @@ function trackingFromLead(lead: Record<string, any>, sourceUrl: string, req: Ver
   };
 }
 
-function activeSales(users: AdminUser[]) {
-  return users.filter((user) => user.role === 'sales' && user.active);
-}
-
-function defaultRules(users: AdminUser[]): SalesAssignmentRule[] {
-  const sales = activeSales(users);
-  if (!sales.length) return [];
-  if (sales.length === 2) {
-    return sales.map((user, index) => ({
-      salesId: user.id,
-      salesName: user.fullName,
-      percent: index === 0 ? 60 : 40,
-      active: true,
-      updatedAt: new Date().toISOString(),
-    }));
-  }
-
-  const base = Math.floor(100 / sales.length);
-  let remainder = 100 - base * sales.length;
-  return sales.map((user) => {
-    const extra = remainder > 0 ? 1 : 0;
-    remainder -= extra;
-    return {
-      salesId: user.id,
-      salesName: user.fullName,
-      percent: base + extra,
-      active: true,
-      updatedAt: new Date().toISOString(),
-    };
-  });
-}
-
-function assignmentRulesTotal(rules: SalesAssignmentRule[]) {
-  return rules.filter((rule) => rule.active).reduce((sum, rule) => sum + cleanPercent(rule.percent), 0);
-}
-
-function normalizeAssignmentRules(users: AdminUser[], saved: SalesAssignmentRule[]) {
-  const sales = activeSales(users);
-  if (!sales.length) return [];
-  if (!saved.length) return defaultRules(users);
-
-  const savedById = new Map(saved.map((rule) => [rule.salesId, rule]));
-  const rules = sales.map((user) => {
-    const existing = savedById.get(user.id);
-    return {
-      salesId: user.id,
-      salesName: user.fullName,
-      percent: cleanPercent(existing?.percent),
-      active: existing?.active !== false,
-      updatedAt: existing?.updatedAt,
-    };
-  });
-
-  return assignmentRulesTotal(rules) > 0 ? rules : defaultRules(users);
-}
-
-function salesMatches(lead: LeadAssignmentSnapshot, rule: SalesAssignmentRule) {
-  return lead.assignedTo === rule.salesId || lead.assignedTo === rule.salesName || lead.assignedToName === rule.salesName;
-}
-
-function chooseAutoAssignedSales(leads: LeadAssignmentCount[], users: AdminUser[], savedRules: SalesAssignmentRule[]) {
-  const rules = normalizeAssignmentRules(users, savedRules).filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
-  if (!rules.length || assignmentRulesTotal(rules) !== 100) return null;
-
-  const assignedTotal = leads.reduce((sum, lead) => sum + Number(lead.count || 0), 0);
-  const totalAfter = assignedTotal + 1;
-  const ranked = rules.map((rule) => {
-    const current = leads
-      .filter((lead) => salesMatches(lead, rule) && lead.assignedStatus !== 'returned')
-      .reduce((sum, lead) => sum + Number(lead.count || 0), 0);
-    const targetExact = (totalAfter * cleanPercent(rule.percent)) / 100;
-    const targetRounded = Math.round(targetExact);
-    return {
-      rule,
-      current,
-      targetExact,
-      targetRounded,
-      roundedGap: targetRounded - current,
-      exactGap: targetExact - current,
-    };
-  }).sort((a, b) =>
-    b.roundedGap - a.roundedGap ||
-    b.exactGap - a.exactGap ||
-    a.current - b.current ||
-    cleanPercent(b.rule.percent) - cleanPercent(a.rule.percent),
-  );
-
-  const winner = ranked[0]?.rule;
-  return winner ? { salesId: winner.salesId, salesName: winner.salesName } : null;
-}
-
-async function countAssignedLeadsForRule(db: ReturnType<typeof adminDb>, rule: SalesAssignmentRule) {
-  const leadIds = new Set<string>();
-  const collect = (snap: FirebaseFirestore.QuerySnapshot<FirebaseFirestore.DocumentData>) => {
-    snap.docs.forEach((doc) => {
-      if (doc.data().assignedStatus !== 'returned') leadIds.add(doc.id);
-    });
-  };
-
-  const queries = [
-    db.collection('leads').where('assignedTo', '==', rule.salesId).get(),
-    db.collection('leads').where('assignedTo', '==', rule.salesName).get(),
-    db.collection('leads').where('assignedToName', '==', rule.salesName).get(),
-  ];
-  const snapshots = await Promise.all(queries);
-  snapshots.forEach(collect);
-  return leadIds.size;
-}
-
 async function priorityForSource(db: ReturnType<typeof adminDb>, source: string) {
   try {
     const snap = await db.collection('appConfig').doc('leadSourceConfigs').get();
@@ -383,35 +240,6 @@ function nextStageHistory(existing: LeadDoc | null, status: string, now: string)
 function nextSubmissionHistory(existing: LeadDoc | null, entry: Record<string, unknown>) {
   const history = Array.isArray(existing?.submissionHistory) ? existing!.submissionHistory : [];
   return [...history.slice(-19), entry];
-}
-
-async function pickAutoAssignedSales(db: ReturnType<typeof adminDb>) {
-  try {
-    const [usersSnap, rulesSnap] = await Promise.all([
-      db.collection('users').get(),
-      db.collection('appConfig').doc('salesAssignmentRules').get(),
-    ]);
-    const users = usersSnap.docs.map((item) => {
-      const data = item.data() as Partial<AdminUser>;
-      return { id: item.id, fullName: data.fullName || '', role: data.role || '', active: data.active === true };
-    });
-    const rulesData = rulesSnap.exists ? rulesSnap.data() : null;
-    const rules = Array.isArray(rulesData?.rules) ? rulesData.rules as SalesAssignmentRule[] : [];
-    const normalizedRules = normalizeAssignmentRules(users, rules);
-    const countableRules = normalizedRules.filter((rule) => rule.active && cleanPercent(rule.percent) > 0);
-    const counts = await Promise.all(countableRules.map(async (rule) => {
-      return {
-        assignedTo: rule.salesId,
-        assignedToName: rule.salesName,
-        assignedStatus: 'active',
-        count: await countAssignedLeadsForRule(db, rule),
-      };
-    }));
-    return chooseAutoAssignedSales(counts, users, normalizedRules);
-  } catch (error) {
-    console.warn('[PublicLead] Auto assignment config read failed, leaving lead unassigned:', error);
-    return null;
-  }
 }
 
 async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
@@ -479,17 +307,12 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
 
   const leadRef = existingLead ? db.collection('leads').doc(existingLead.id) : db.collection('leads').doc();
   const sourceUrl = lead.sourceUrl || `${originFromRequest(req)}/${lead.pageSlug || ''}`;
-  const [priorityLevel, autoAssignedSales] = await Promise.all([
-    priorityForSource(db, source),
-    existingAssignmentActive ? Promise.resolve(null) : pickAutoAssignedSales(db),
-  ]);
-  const assignedTo = existingAssignmentActive ? String(existingLead?.assignedTo || '') : autoAssignedSales?.salesId || '';
-  const assignedToName = existingAssignmentActive ? String(existingLead?.assignedToName || '') : autoAssignedSales?.salesName || '';
-  const assignedAtMs = assignedTo ? existingAssignmentActive ? Number(existingLead?.assignedAtMs || nowMs) : nowMs : 0;
-  const assignedExpiresAtMs = assignedTo
-    ? existingAssignmentActive ? Number(existingLead?.assignedExpiresAtMs || 0) : nowMs + DAY_MS
-    : 0;
-  const assignedStatus = assignedTo ? existingAssignmentActive ? existingLead?.assignedStatus || 'active' : 'active' : 'unassigned';
+  const priorityLevel = await priorityForSource(db, source);
+  const assignedTo = existingAssignmentActive ? String(existingLead?.assignedTo || '') : '';
+  const assignedToName = existingAssignmentActive ? String(existingLead?.assignedToName || '') : '';
+  const assignedAtMs = assignedTo ? Number(existingLead?.assignedAtMs || nowMs) : 0;
+  const assignedExpiresAtMs = assignedTo ? Number(existingLead?.assignedExpiresAtMs || 0) : 0;
+  const assignedStatus = assignedTo ? existingLead?.assignedStatus || 'active' : 'unassigned';
   const tracking = trackingFromLead(lead, sourceUrl, req, now);
   const submissionEntry = stripUndefined({
     at: now,
@@ -525,8 +348,8 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
     status,
     assignedTo,
     assignedToName,
-    assignedBy: assignedTo ? existingAssignmentActive ? existingLead?.assignedBy || '' : 'auto-assignment-rule' : '',
-    assignedAt: assignedTo ? existingAssignmentActive ? existingLead?.assignedAt || now : now : '',
+    assignedBy: assignedTo ? existingLead?.assignedBy || '' : '',
+    assignedAt: assignedTo ? existingLead?.assignedAt || now : '',
     assignedAtMs,
     assignedExpiresAtMs,
     assignedStatus,
@@ -583,16 +406,7 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
     return null;
   });
 
-  if (assignedTo && !existingAssignmentActive) {
-    await notifyLeadAssigned(db, {
-      leadId: leadRef.id,
-      leadName: studentName || parentName || phone,
-      salesId: assignedTo,
-      assignedByName: 'Auto rule',
-      auto: true,
-      createdAt: now,
-    }).catch((error) => console.warn('[PublicLead] Sales notification failed:', error));
-  } else if (!assignedTo) {
+  if (!assignedTo) {
     await notifyLeadManagers(db, {
       title: 'Lead mới chưa có PIC',
       body: `${studentName || parentName || phone} từ ${source} cần được phân sales.`,

@@ -47,7 +47,7 @@ function emptySource(): Partial<SourceChannel> {
     priorityLevel: 4,
     defaultCenter: '',
     defaultCourse: '',
-    routingHint: 'Auto assign theo rule Phân lead',
+    routingHint: 'Admin/Manager phân lead thủ công',
     description: '',
     active: true,
   };

@@ -95,13 +95,6 @@ type ApiUserRecord = {
   active: boolean;
 };
 
-type AssignmentRule = {
-  salesId: string;
-  salesName: string;
-  percent: number;
-  active: boolean;
-};
-
 type PreparedRow = ImportRow & {
   inputId: string;
   phone: string;
@@ -152,12 +145,6 @@ function clampPriority(value: unknown) {
   return 1;
 }
 
-function cleanPercent(value: unknown) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return 0;
-  return Math.min(100, Math.round(parsed));
-}
-
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
   if (value && typeof value === 'object') {
@@ -204,38 +191,6 @@ async function parallelChunks<T>(items: T[], worker: (item: T) => Promise<void>)
   for (let index = 0; index < items.length; index += FALLBACK_QUERY_CONCURRENCY) {
     await Promise.all(items.slice(index, index + FALLBACK_QUERY_CONCURRENCY).map(worker));
   }
-}
-
-function defaultRules(users: ApiUserRecord[]): AssignmentRule[] {
-  const sales = users.filter((user) => user.role === 'sales' && user.active);
-  if (!sales.length) return [];
-  const base = Math.floor(100 / sales.length);
-  let remainder = 100 - base * sales.length;
-  return sales.map((user) => {
-    const extra = remainder > 0 ? 1 : 0;
-    remainder -= extra;
-    return { salesId: user.id, salesName: user.fullName, percent: base + extra, active: true };
-  });
-}
-
-function normalizeRules(users: ApiUserRecord[], saved: AssignmentRule[]) {
-  const sales = users.filter((user) => user.role === 'sales' && user.active);
-  if (!sales.length) return [];
-  if (!saved.length) return defaultRules(users);
-  const byId = new Map(saved.map((rule) => [rule.salesId, rule]));
-  return sales.map((salesUser) => {
-    const rule = byId.get(salesUser.id);
-    return {
-      salesId: salesUser.id,
-      salesName: salesUser.fullName,
-      percent: cleanPercent(rule?.percent),
-      active: rule?.active !== false,
-    };
-  });
-}
-
-function assignmentTotal(rules: AssignmentRule[]) {
-  return rules.filter((rule) => rule.active).reduce((sum, rule) => sum + cleanPercent(rule.percent), 0);
 }
 
 function findRequestedSales(users: ApiUserRecord[], assignedTo: string, assignedToName: string) {
@@ -346,10 +301,7 @@ async function handleLeadImport(req: VercelRequest, res: VercelResponse) {
 
   const [usersResult, configsResult] = await Promise.allSettled([
     db.collection('users').get(),
-    db.getAll(
-      db.collection('appConfig').doc('leadSourceConfigs'),
-      db.collection('appConfig').doc('salesAssignmentRules'),
-    ),
+    db.collection('appConfig').doc('leadSourceConfigs').get(),
   ]);
 
   const usersAvailable = usersResult.status === 'fulfilled';
@@ -369,67 +321,20 @@ async function handleLeadImport(req: VercelRequest, res: VercelResponse) {
   const sourceConfigs = new Map<string, number>();
   let sourceConfigWarning = '';
   let assignmentConfigWarning = '';
-  let savedRules: AssignmentRule[] = [];
   if (configsResult.status === 'fulfilled') {
-    const [sourceSnap, rulesSnap] = configsResult.value;
+    const sourceSnap = configsResult.value;
     const sourceData = sourceSnap.exists ? sourceSnap.data() : null;
     const configs = Array.isArray(sourceData?.configs) ? sourceData.configs : [];
     configs.forEach((item: Record<string, unknown>) => {
       if (item?.active === false || !cleanText(item?.name)) return;
       sourceConfigs.set(normalizedLookup(item.name), clampPriority(item.priorityLevel));
     });
-    const rulesData = rulesSnap.exists ? rulesSnap.data() : null;
-    savedRules = Array.isArray(rulesData?.rules) ? rulesData.rules as AssignmentRule[] : [];
   } else {
     sourceConfigWarning = 'Không đọc được source config; đã dùng priority fallback.';
-    assignmentConfigWarning = 'Không đọc được assignment config; lead mới không có PIC sẽ để unassigned.';
   }
   if (!usersAvailable) {
     assignmentConfigWarning = 'Không đọc được danh sách users; assignment từ file không được áp dụng và lead mới sẽ để unassigned.';
   }
-
-  const rules = usersAvailable ? normalizeRules(users, savedRules).filter((rule) => rule.active && rule.percent > 0) : [];
-  const assignmentCounts = new Map<string, number>();
-  if (!assignmentConfigWarning && rules.length && assignmentTotal(rules) === 100) {
-    const countResults = await Promise.allSettled(rules.map(async (rule) => {
-      const snap = await db.collection('leads').where('assignedTo', '==', rule.salesId).count().get();
-      return [rule.salesId, snap.data().count] as const;
-    }));
-    if (countResults.some((result) => result.status === 'rejected')) {
-      assignmentConfigWarning = 'Không đọc được phân bổ assignment hiện tại; lead mới không có PIC sẽ để unassigned.';
-    } else {
-      countResults.forEach((result) => {
-        if (result.status === 'fulfilled') assignmentCounts.set(result.value[0], result.value[1]);
-      });
-    }
-  } else if (!assignmentConfigWarning) {
-    assignmentConfigWarning = 'Assignment rule chưa hợp lệ; lead mới không có PIC sẽ để unassigned.';
-  }
-
-  const chooseAutoAssignedSales = () => {
-    if (assignmentConfigWarning || !rules.length || assignmentTotal(rules) !== 100) return null;
-    const totalAfter = Array.from(assignmentCounts.values()).reduce((sum, count) => sum + count, 0) + 1;
-    const ranked = rules.map((rule) => {
-      const current = assignmentCounts.get(rule.salesId) || 0;
-      const targetExact = totalAfter * rule.percent / 100;
-      return { rule, current, gap: Math.round(targetExact) - current, exactGap: targetExact - current };
-    }).sort((a, b) => b.gap - a.gap || b.exactGap - a.exactGap || a.current - b.current || b.rule.percent - a.rule.percent);
-    const winner = ranked[0]?.rule;
-    if (!winner) return null;
-    return { id: winner.salesId, fullName: winner.salesName };
-  };
-
-  const applyAssignmentCountChange = (existing: LeadState | null, next: LeadState) => {
-    const previousSalesId = cleanText(existing?.assignedTo);
-    const nextSalesId = cleanText(next.assignedTo);
-    if (previousSalesId === nextSalesId) return;
-    if (assignmentCounts.has(previousSalesId)) {
-      assignmentCounts.set(previousSalesId, Math.max(0, (assignmentCounts.get(previousSalesId) || 0) - 1));
-    }
-    if (assignmentCounts.has(nextSalesId)) {
-      assignmentCounts.set(nextSalesId, (assignmentCounts.get(nextSalesId) || 0) + 1);
-    }
-  };
 
   const explicitIds = Array.from(new Set(preparedRows.map((row) => row.inputId).filter(Boolean)));
   const indexIds = Array.from(new Set(preparedRows.map((row) => row.identity?.indexId || '').filter(Boolean)));
@@ -559,9 +464,7 @@ async function handleLeadImport(req: VercelRequest, res: VercelResponse) {
           Object.assign(merged, applyAssignment(merged, { id: requestedSales.id, fullName: requestedSales.fullName }, apiUser.id, now, nowMs));
         }
       } else if (!existing) {
-        const autoSales = chooseAutoAssignedSales();
-        Object.assign(merged, applyAssignment(merged, autoSales, autoSales ? 'auto-assignment-rule' : '', now, nowMs));
-        if (!autoSales && assignmentConfigWarning) warnings.push(assignmentConfigWarning);
+        Object.assign(merged, applyAssignment(merged, null, '', now, nowMs));
       }
 
       merged.createdAt = cleanText(existing?.createdAt) || cleanText(row.lead.createdAt) || now;
@@ -582,7 +485,6 @@ async function handleLeadImport(req: VercelRequest, res: VercelResponse) {
       }
 
       validateLead(merged);
-      applyAssignmentCountChange(existing, merged);
       const mode: ImportMode = existing ? 'update' : 'create';
       stateById.set(merged.id, stripUndefined(merged));
       if (row.identity) {

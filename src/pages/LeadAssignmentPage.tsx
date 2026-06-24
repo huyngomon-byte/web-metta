@@ -1,8 +1,9 @@
-import { ArrowDownRight, ArrowUpRight, RefreshCcw, Save, Search, Settings2, Shuffle, Trash2, UserCheck } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, RefreshCcw, Search, Trash2, UserCheck } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LeadPagination } from '@/components/leads/LeadPagination';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
@@ -12,11 +13,8 @@ import { DEAL_QUOTED_STATUS, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses } f
 import { expectedRevenueAmount, revenueAmount } from '@/lib/leadFinance';
 import { canDeleteLead } from '@/lib/permissions';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { assignmentRuleService, assignmentRulesTotal } from '@/services/assignmentRuleService';
 import { leadService } from '@/services/leadService';
-import type { LeadPageCursor } from '@/services/leadService';
 import { userService } from '@/services/userService';
-import type { SalesAssignmentRule } from '@/types/assignment';
 import type { Lead } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
 
@@ -99,12 +97,6 @@ function leadBelongsToSales(lead: Lead, sales: AdminUser) {
   return lead.assignedTo === sales.id || lead.assignedTo === sales.fullName || lead.assignedToName === sales.fullName;
 }
 
-function newLeadMatchesRule(lead: Lead, rule: SalesAssignmentRule) {
-  return lead.status === leadStatuses[0]
-    && lead.assignedStatus !== 'returned'
-    && (lead.assignedTo === rule.salesId || lead.assignedTo === rule.salesName || lead.assignedToName === rule.salesName);
-}
-
 function leadReturnedToSales(lead: Lead, sales: AdminUser) {
   return lead.failedAssignedTo === sales.id || lead.failedAssignedTo === sales.fullName || lead.failedAssignedToName === sales.fullName || (leadBelongsToSales(lead, sales) && lead.assignedStatus === 'returned');
 }
@@ -125,10 +117,9 @@ export default function LeadAssignmentPage() {
   const { courseDealSizes } = useCourseCatalog();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [assignmentRules, setAssignmentRules] = useState<SalesAssignmentRule[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [salesId, setSalesId] = useState('');
-  const [activeGroup, setActiveGroup] = useState<GroupKey>('unassigned');
+  const [activeGroup, setActiveGroup] = useState<GroupKey>('all');
   const [search, setSearch] = useState('');
   const [currentSalesFilter, setCurrentSalesFilter] = useState('');
   const [dateFrom, setDateFrom] = useState(daysAgo(29));
@@ -136,15 +127,12 @@ export default function LeadAssignmentPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [bulkAssigning, setBulkAssigning] = useState(false);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLeads, setTotalLeads] = useState(0);
 
   const salesUsers = useMemo(() => users.filter((item) => item.role === 'sales' && item.active), [users]);
   const salesNameById = useMemo(() => new Map(salesUsers.map((sales) => [sales.id, sales.fullName])), [salesUsers]);
-  const rulesTotal = useMemo(() => assignmentRulesTotal(assignmentRules), [assignmentRules]);
-  const rulesValid = rulesTotal === 100;
 
   const groups = useMemo(() => {
     const result: Record<GroupKey, Lead[]> = { all: [], unassigned: [], stale: [], returned: [], assigned: [] };
@@ -245,44 +233,37 @@ export default function LeadAssignmentPage() {
       .sort((a, b) => b.revenue - a.revenue || b.expectedRevenue - a.expectedRevenue || b.converted - a.converted);
   }, [courseDealSizes, previousLeads, rangeLeads, salesUsers]);
 
-  const refresh = useCallback(async () => {
+  const loadPage = useCallback(async (targetPage: number) => {
     setLoading(true);
     try {
       const [leadPage, userItems] = await Promise.all([
-        leadService.getLeadsPage({ pageSize: LEAD_ASSIGNMENT_PAGE_SIZE, dateFrom, dateTo }),
+        leadService.getNumberedLeadsPage({
+          page: targetPage,
+          pageSize: LEAD_ASSIGNMENT_PAGE_SIZE,
+          sinceDays: 3_650,
+        }),
         userService.getUsers(),
       ]);
       setLeads(leadPage.leads);
-      setNextCursor(leadPage.nextCursor);
-      setHasMore(leadPage.hasMore);
+      setPage(leadPage.page);
+      setTotalPages(leadPage.totalPages);
+      setTotalLeads(leadPage.total);
       setUsers(userItems);
-      setAssignmentRules(await assignmentRuleService.getRules(userItems));
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo]);
+  }, []);
 
-  const loadMore = useCallback(async () => {
-    if (!hasMore || !nextCursor || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const leadPage = await leadService.getLeadsPage({
-        pageSize: LEAD_ASSIGNMENT_PAGE_SIZE,
-        cursor: nextCursor,
-        dateFrom,
-        dateTo,
-      });
-      setLeads(leadPage.leads);
-      setNextCursor(leadPage.nextCursor);
-      setHasMore(leadPage.hasMore);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [dateFrom, dateTo, hasMore, loadingMore, nextCursor]);
+  const refresh = useCallback(() => loadPage(page), [loadPage, page]);
+
+  const goToPage = useCallback(async (targetPage: number) => {
+    setSelected([]);
+    await loadPage(targetPage);
+  }, [loadPage]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void loadPage(1);
+  }, [loadPage]);
 
   function toggle(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -293,22 +274,6 @@ export default function LeadAssignmentPage() {
       if (allVisibleSelected) return current.filter((id) => !selectedVisibleIds.includes(id));
       return Array.from(new Set([...current, ...selectedVisibleIds]));
     });
-  }
-
-  function updateRule(salesIdValue: string, patch: Partial<SalesAssignmentRule>) {
-    setAssignmentRules((current) => current.map((rule) => (rule.salesId === salesIdValue ? { ...rule, ...patch } : rule)));
-  }
-
-  async function saveRules() {
-    setError('');
-    setMessage('');
-    try {
-      const saved = await assignmentRuleService.saveRules(users, assignmentRules);
-      setAssignmentRules(saved);
-      setMessage('Đã lưu rule auto chia lead. Rule áp dụng ngay khi tạo lead mới; lead đã phân có thời hạn xử lý 24 giờ.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không lưu được rule chia lead.');
-    }
   }
 
   async function deleteOne(lead: Lead) {
@@ -363,157 +328,67 @@ export default function LeadAssignmentPage() {
     }
   }
 
-  async function bulkAutoAssignNewLeads() {
-    setError('');
-    setMessage('');
-    if (!user) {
-      setError('Vui lòng đăng nhập lại trước khi auto chia lead.');
-      return;
-    }
-    if (!rulesValid || !assignmentRules.length) {
-      setError('Tổng tỷ lệ active trong rule chia lead phải bằng 100%.');
-      return;
-    }
-    if (!salesUsers.length) {
-      setError('Chưa có sales active để nhận lead.');
-      return;
-    }
-    if (!confirm('Auto chia toàn bộ Lead mới chưa có PIC active theo rule hiện tại?')) return;
-
-    setBulkAssigning(true);
-    try {
-      const result = await assignmentRuleService.bulkAutoAssignNewLeads();
-      const distribution = result.distribution
-        .filter((item) => item.assigned > 0)
-        .map((item) => `${item.salesName}: ${item.assigned}`)
-        .join(', ');
-      setMessage(result.assignedCount
-        ? `Đã auto chia ${result.assignedCount}/${result.candidateCount} Lead mới chưa có PIC. ${distribution}`
-        : `Không có Lead mới chưa có PIC active cần chia. Hiện có ${result.baselineAssignedCount}/${result.totalNewLeadCount} Lead mới đã có sales active.`);
-      setSelected([]);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không auto chia được lead mới.');
-    } finally {
-      setBulkAssigning(false);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-950">Phân lead</h1>
-          <p className="mt-1 text-slate-500">Tự động chia lead theo tỷ lệ leader setup, theo dõi lead bị trả về và ranking sales.</p>
+          <p className="mt-1 text-slate-500">Admin và Manager chọn lead rồi phân thủ công cho sales phụ trách.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {hasMore && (
-            <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
-              <RefreshCcw className={loadingMore ? 'animate-spin' : ''} /> {loadingMore ? 'Đang tải' : 'Tải thêm lead'}
-            </Button>
-          )}
           <Button variant="outline" onClick={() => void refresh()} disabled={loading}>
             <RefreshCcw className={loading ? 'animate-spin' : ''} /> Làm mới
           </Button>
         </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-2">
-          <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Settings2 size={18} className="text-[#003B7A]" /> Rule auto chia lead
-              </CardTitle>
-              <p className="mt-1 text-sm text-slate-500">
-                Rule chạy ngay khi tạo lead mới trong CRM, không có timer 30 phút. Lead đã phân sẽ giữ trong 24 giờ; nếu sales không cập nhật status thì tự trả về.
-                Tổng tỷ lệ active phải bằng 100%.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-              <Badge tone={rulesValid ? 'green' : 'red'}>Tổng {rulesTotal}%</Badge>
-              <Button variant="outline" onClick={bulkAutoAssignNewLeads} disabled={!rulesValid || !assignmentRules.length || !salesUsers.length || bulkAssigning}>
-                <Shuffle className={bulkAssigning ? 'animate-spin' : ''} /> {bulkAssigning ? 'Đang chia' : 'Auto chia Lead mới'}
-              </Button>
-              <Button onClick={saveRules} disabled={!rulesValid || !assignmentRules.length}>
-                <Save /> Lưu rule
-              </Button>
-            </div>
+      <Card className="border-blue-100 bg-blue-50/50">
+        <CardContent className="flex items-start gap-3 p-4">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#003B7A] shadow-sm">
+            <UserCheck size={20} />
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="py-2">Sales</th>
-                  <th className="py-2 text-center">Active</th>
-                  <th className="py-2 text-center">Tỷ lệ assign</th>
-                  <th className="py-2 text-center">Lead mới đang nhận</th>
-                  <th className="py-2 text-center">Share thực tế</th>
-                </tr>
-              </thead>
-              <tbody>
-                {assignmentRules.map((rule) => {
-                  const assigned = leads.filter((lead) => newLeadMatchesRule(lead, rule)).length;
-                  const assignedTotal = leads.filter((lead) => assignmentRules.some((item) => newLeadMatchesRule(lead, item))).length;
-                  return (
-                    <tr key={rule.salesId} className="border-b border-slate-50">
-                      <td className="py-2 font-bold text-slate-900">{rule.salesName}</td>
-                      <td className="py-2 text-center">
-                        <input type="checkbox" checked={rule.active} onChange={(event) => updateRule(rule.salesId, { active: event.target.checked })} />
-                      </td>
-                      <td className="py-2">
-                        <div className="mx-auto flex max-w-32 items-center gap-2">
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={rule.percent}
-                            onChange={(event) => updateRule(rule.salesId, { percent: Number(event.target.value) })}
-                            className="text-center"
-                          />
-                          <span className="text-xs font-bold text-slate-400">%</span>
-                        </div>
-                      </td>
-                      <td className="py-2 text-center font-bold text-slate-800">{assigned}</td>
-                      <td className="py-2 text-center">
-                        <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">{pct(assigned, assignedTotal)}%</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!assignmentRules.length && (
-                  <tr><td colSpan={5} className="py-8 text-center font-semibold text-slate-400">Chưa có sales active để setup rule.</td></tr>
-                )}
-              </tbody>
-            </table>
+          <div>
+            <p className="font-extrabold text-slate-900">Phân lead thủ công</p>
+            <p className="mt-1 text-sm text-slate-600">Lead mới không tự động gán sales. Chỉ Admin hoặc Manager có thể chọn lead và bấm “Phân lead”.</p>
           </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        {groupTabs.map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            onClick={() => { setActiveGroup(tab.key); setSelected([]); }}
-            className={`rounded-xl border p-4 text-left shadow-sm transition ${activeGroup === tab.key ? 'border-[#003B7A] bg-[#003B7A] text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-[#003B7A]/40'}`}
-          >
-            <p className="text-sm font-bold">{tab.title}</p>
-            <div className="mt-2 flex items-end justify-between gap-2">
-              <p className="text-3xl font-extrabold">{groups[tab.key].length}</p>
-              <p className={`text-sm font-bold ${activeGroup === tab.key ? 'text-blue-100' : 'text-slate-400'}`}>{pct(groups[tab.key].length, leads.length)}%</p>
-            </div>
-          </button>
-        ))}
+        {groupTabs.map((tab) => {
+          const count = tab.key === 'all' ? totalLeads : groups[tab.key].length;
+          const percentage = tab.key === 'all' ? 100 : pct(count, leads.length);
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => { setActiveGroup(tab.key); setSelected([]); }}
+              className={`rounded-xl border p-4 text-left shadow-sm transition ${activeGroup === tab.key ? 'border-[#003B7A] bg-[#003B7A] text-white' : 'border-slate-200 bg-white text-slate-700 hover:border-[#003B7A]/40'}`}
+            >
+              <p className="text-sm font-bold">{tab.title}</p>
+              <div className="mt-2 flex items-end justify-between gap-2">
+                <p className="text-3xl font-extrabold">{count.toLocaleString('vi-VN')}</p>
+                <p className={`text-sm font-bold ${activeGroup === tab.key ? 'text-blue-100' : 'text-slate-400'}`}>{tab.key === 'all' ? `${percentage}%` : `${percentage}% trang này`}</p>
+              </div>
+            </button>
+          );
+        })}
       </div>
+
+      <LeadPagination
+        page={page}
+        totalPages={totalPages}
+        totalLeads={totalLeads}
+        pageSize={LEAD_ASSIGNMENT_PAGE_SIZE}
+        loading={loading}
+        onPageChange={goToPage}
+      />
 
       <Card>
         <CardContent className="grid gap-3 p-4 xl:grid-cols-[minmax(260px,1fr)_240px_240px_auto_auto_auto] xl:items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <Input className="pl-10" placeholder="Tìm tên / SĐT / email / sales" value={search} onChange={(event) => setSearch(event.target.value)} />
+            <Input className="pl-10" placeholder="Tìm trong trang hiện tại" value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
           <Select value={currentSalesFilter} onChange={(event) => setCurrentSalesFilter(event.target.value)}>
             <option value="">Lọc PIC hiện tại: tất cả</option>
@@ -551,7 +426,7 @@ export default function LeadAssignmentPage() {
           <div className="flex items-center justify-between border-b border-slate-100 p-4">
             <div>
               <p className="text-lg font-extrabold text-slate-950">{visibleLeads.length} lead</p>
-              <p className="text-sm text-slate-500">{groupTabs.find((item) => item.key === activeGroup)?.title}</p>
+              <p className="text-sm text-slate-500">{groupTabs.find((item) => item.key === activeGroup)?.title} · Trang {page}/{totalPages}</p>
             </div>
             <Badge tone={activeGroup === 'returned' ? 'red' : activeGroup === 'assigned' ? 'green' : 'blue'}>
               Đã chọn {selected.length}
@@ -613,6 +488,15 @@ export default function LeadAssignmentPage() {
         </CardContent>
       </Card>
 
+      <LeadPagination
+        page={page}
+        totalPages={totalPages}
+        totalLeads={totalLeads}
+        pageSize={LEAD_ASSIGNMENT_PAGE_SIZE}
+        loading={loading}
+        onPageChange={goToPage}
+      />
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(360px,1fr)]">
         <Card>
           <CardHeader className="pb-2">
@@ -625,7 +509,7 @@ export default function LeadAssignmentPage() {
                 <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} className="w-40" />
               </div>
             </div>
-            <p className="text-sm text-slate-500">{dateFrom} - {dateTo} • So sánh kỳ trước {prevFrom} - {prevTo}</p>
+            <p className="text-sm text-slate-500">{dateFrom} - {dateTo} • Dữ liệu trên trang hiện tại • So sánh kỳ trước {prevFrom} - {prevTo}</p>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
