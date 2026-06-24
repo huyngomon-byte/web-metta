@@ -349,7 +349,7 @@ export default function LeadAssignmentPage() {
           </div>
           <div>
             <p className="font-extrabold text-slate-900">Phân lead thủ công</p>
-            <p className="mt-1 text-sm text-slate-600">Lead mới không tự động gán sales. Chỉ Admin hoặc Manager có thể chọn lead và bấm “Phân lead”.</p>
+            <p className="mt-1 text-sm text-slate-600">Lead từ data chung hoặc do Admin/Manager nhập mà chưa có PIC sẽ chờ phân thủ công. Lead do sales tự tạo hoặc import vẫn thuộc chính sales đó.</p>
           </div>
         </CardContent>
       </Card>

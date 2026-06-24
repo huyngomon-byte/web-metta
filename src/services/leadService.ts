@@ -1083,12 +1083,12 @@ export const leadService = {
       }
       store.leads = store.leads.map((item) => (item.id === lead.id ? normalizeLead({ ...item, ...patch } as Lead) : item));
     } else {
-      const canSetAssignment = canViewAllLeads(user);
-      const assignedTo = canSetAssignment ? (lead.assignedTo || '') : '';
-      const assignedToName = canSetAssignment ? (lead.assignedToName || salesNameById(assignedTo)) : '';
-      const assignedBy = canSetAssignment ? (lead.assignedBy || user?.id || '') : '';
+      const salesSelfCreate = user?.role === 'sales';
+      const assignedTo = salesSelfCreate ? user.id : (lead.assignedTo || '');
+      const assignedToName = salesSelfCreate ? user.fullName : (lead.assignedToName || salesNameById(assignedTo));
+      const assignedBy = salesSelfCreate ? user.id : (lead.assignedBy || '');
       const hasAssignment = Boolean(assignedTo);
-      const assignedStatus = hasAssignment ? 'active' : 'unassigned';
+      const assignedStatus = hasAssignment ? (salesSelfCreate ? 'accepted' : 'active') : 'unassigned';
       const draftForValidation = normalizeLead({
         id: `lead-${Date.now()}`,
         fullName: lead.fullName || '',
@@ -1114,7 +1114,7 @@ export const leadService = {
         assignedStatus,
         assignedAt: hasAssignment ? (lead.assignedAt || timestamp) : '',
         assignedAtMs: hasAssignment ? (lead.assignedAtMs || nowMs) : undefined,
-        assignedExpiresAtMs: hasAssignment ? (lead.assignedExpiresAtMs || nowMs + DAY_MS) : undefined,
+        assignedExpiresAtMs: hasAssignment && !salesSelfCreate ? (lead.assignedExpiresAtMs || nowMs + DAY_MS) : undefined,
         followUpDate: lead.followUpDate,
         consultationDate: lead.consultationDate,
         dealSize: lead.dealSize,
@@ -1145,7 +1145,7 @@ export const leadService = {
       store.leads.unshift(normalizeLead({
         ...draftForValidation,
       }));
-      if (hasAssignment) {
+      if (hasAssignment && !salesSelfCreate) {
         assignmentNotification = {
           salesId: assignedTo,
           assignedByName: user?.fullName,
