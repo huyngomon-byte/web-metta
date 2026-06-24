@@ -78,6 +78,8 @@ const MAX_WRITES_PER_BATCH = 440;
 const WRITES_PER_LEAD = 4;
 const MAX_LEADS_PER_BATCH = Math.floor(MAX_WRITES_PER_BATCH / WRITES_PER_LEAD);
 const PUBLIC_CMS_NO_STORE_HEADER = 'no-store, max-age=0, must-revalidate';
+const LEAD_PAGE_SIZE = 100;
+const LEAD_PAGE_DEFAULT_SINCE_DAYS = 30;
 
 const configFields: Record<string, 'configs' | 'rules'> = {
   leadCenterConfigs: 'configs',
@@ -443,6 +445,59 @@ async function bulkAutoAssignNewLeads(req: VercelRequest, res: VercelResponse) {
   });
 }
 
+function positiveInteger(value: unknown, fallback: number, max: number) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.min(max, Math.round(parsed)));
+}
+
+function leadPageDateStart(value?: string) {
+  if (!value) return '';
+  return value.length === 10 ? `${value}T00:00:00.000Z` : value;
+}
+
+function leadPageDateEnd(value?: string) {
+  if (!value) return '';
+  return value.length === 10 ? `${value}T23:59:59.999Z` : value;
+}
+
+async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
+  const user = await requireActiveUser(req);
+  if (!['admin', 'manager', 'sales'].includes(user.role)) throw new Error('User cannot read leads');
+
+  const requestedPage = positiveInteger(queryValue(req.query?.page), 1, 100_000);
+  const pageSize = positiveInteger(queryValue(req.query?.pageSize), LEAD_PAGE_SIZE, LEAD_PAGE_SIZE);
+  const sinceDays = positiveInteger(queryValue(req.query?.sinceDays), LEAD_PAGE_DEFAULT_SINCE_DAYS, 3_650);
+  const fallbackDate = new Date();
+  fallbackDate.setDate(fallbackDate.getDate() - sinceDays);
+  const dateFrom = leadPageDateStart(queryValue(req.query?.dateFrom)) || fallbackDate.toISOString();
+  const dateTo = leadPageDateEnd(queryValue(req.query?.dateTo));
+
+  const db = adminDb();
+  let baseQuery: FirebaseFirestore.Query = db.collection('leads');
+  if (user.role === 'sales') baseQuery = baseQuery.where('assignedTo', '==', user.id);
+  baseQuery = baseQuery.where('createdAt', '>=', dateFrom);
+  if (dateTo) baseQuery = baseQuery.where('createdAt', '<=', dateTo);
+  baseQuery = baseQuery.orderBy('createdAt', 'desc');
+
+  const countSnap = await baseQuery.count().get();
+  const total = countSnap.data().count;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const pageSnap = await baseQuery.offset((page - 1) * pageSize).limit(pageSize).get();
+  const leads = pageSnap.docs.map((item) => ({ ...item.data(), id: item.id }));
+
+  return res.status(200).json({
+    leads,
+    page,
+    pageSize,
+    total,
+    totalPages,
+    hasPrevious: page > 1,
+    hasNext: page < totalPages,
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const id = String(queryValue(req.query?.id) || req.body?.id || '');
@@ -494,6 +549,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (id === 'bulkAutoAssignNewLeads' && req.method === 'POST') {
       return await bulkAutoAssignNewLeads(req, res);
+    }
+
+    if (id === 'leadPage' && req.method === 'GET') {
+      return await readLeadNumberedPage(req, res);
     }
 
     const field = configFields[id];

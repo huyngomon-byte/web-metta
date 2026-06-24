@@ -758,7 +758,8 @@ export const leadService = {
     });
     if (options.dateFrom) params.set('dateFrom', options.dateFrom);
     if (options.dateTo) params.set('dateTo', options.dateTo);
-    const response = await fetch(`/api/lead-page?${params.toString()}`, {
+    params.set('id', 'leadPage');
+    const response = await fetch(`/api/app-config?${params.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const payload = await response.json().catch(() => ({})) as Partial<LeadNumberedPageResult> & { error?: string };
