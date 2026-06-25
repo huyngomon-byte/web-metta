@@ -42,6 +42,9 @@ type AppConfigUser = {
 };
 
 const PUBLIC_CMS_NO_STORE_HEADER = 'no-store, max-age=0, must-revalidate';
+const PUBLIC_CMS_CACHE_HEADER = 'public, max-age=300, stale-while-revalidate=1800';
+const PUBLIC_CMS_MEMORY_TTL_MS = 5 * 60 * 1000;
+const PUBLIC_CMS_MEMORY_STALE_MS = 30 * 60 * 1000;
 const LEAD_PAGE_SIZE = 100;
 const LEAD_PAGE_DEFAULT_SINCE_DAYS = 30;
 const LEAD_ASSIGNMENT_GROUPS = ['all', 'unassigned', 'stale', 'returned', 'assigned'] as const;
@@ -114,6 +117,10 @@ const configFields: Record<string, 'configs'> = {
 
 const activeUserReadableConfigs = new Set(['leadCenterConfigs', 'leadSourceConfigs']);
 
+let publicCmsMemoryCache: { snapshot: PublicCmsSnapshot; expiresAt: number; staleUntil: number } | null = null;
+let publicCmsReadInFlight: Promise<PublicCmsSnapshot> | null = null;
+const dashboardMemoryCache = new Map<string, { payload: unknown; expiresAt: number }>();
+
 function bearer(req: VercelRequest) {
   const raw = req.headers?.authorization;
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -158,6 +165,57 @@ async function readPublicCmsSnapshot(): Promise<PublicCmsSnapshot> {
     source: 'firestore',
     schemaVersion: 1,
   };
+}
+
+async function readCachedPublicCmsSnapshot(): Promise<{ snapshot: PublicCmsSnapshot; cache: 'fresh' | 'refreshed' | 'stale' }> {
+  const nowMs = Date.now();
+  if (publicCmsMemoryCache && publicCmsMemoryCache.expiresAt > nowMs) {
+    return { snapshot: publicCmsMemoryCache.snapshot, cache: 'fresh' };
+  }
+
+  if (!publicCmsReadInFlight) {
+    publicCmsReadInFlight = readPublicCmsSnapshot()
+      .then((snapshot) => {
+        publicCmsMemoryCache = {
+          snapshot,
+          expiresAt: Date.now() + PUBLIC_CMS_MEMORY_TTL_MS,
+          staleUntil: Date.now() + PUBLIC_CMS_MEMORY_STALE_MS,
+        };
+        return snapshot;
+      })
+      .finally(() => {
+        publicCmsReadInFlight = null;
+      });
+  }
+
+  try {
+    return { snapshot: await publicCmsReadInFlight, cache: 'refreshed' };
+  } catch (error) {
+    if (publicCmsMemoryCache && publicCmsMemoryCache.staleUntil > nowMs) {
+      return {
+        snapshot: {
+          ...publicCmsMemoryCache.snapshot,
+          stale: true,
+          staleReason: error instanceof Error ? error.message : 'Firestore read failed',
+        },
+        cache: 'stale',
+      };
+    }
+    throw error;
+  }
+}
+
+function invalidatePublicCmsCache() {
+  publicCmsMemoryCache = null;
+  publicCmsReadInFlight = null;
+}
+
+function rememberDashboardPayload(key: string, payload: unknown) {
+  dashboardMemoryCache.set(key, { payload, expiresAt: Date.now() + 60_000 });
+  if (dashboardMemoryCache.size > 100) {
+    const oldestKey = dashboardMemoryCache.keys().next().value as string | undefined;
+    if (oldestKey) dashboardMemoryCache.delete(oldestKey);
+  }
 }
 
 async function requireActiveUser(req: VercelRequest): Promise<AppConfigUser> {
@@ -489,7 +547,13 @@ async function readDashboardSummary(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ leads: [], cached: false, generatedAt: new Date().toISOString() });
   }
 
-  const cacheRef = db.collection('appCache').doc(dashboardSummaryCacheKey(user, filters));
+  const cacheKey = dashboardSummaryCacheKey(user, filters);
+  const memoryCached = dashboardMemoryCache.get(cacheKey);
+  if (memoryCached && memoryCached.expiresAt > Date.now()) {
+    return res.status(200).json({ ...(memoryCached.payload as Record<string, unknown>), cached: true, memoryCached: true });
+  }
+
+  const cacheRef = db.collection('appCache').doc(cacheKey);
   const [latestSnap, visibleCountSnap, cacheSnap] = await Promise.all([
     db.collection('leads').orderBy('updatedAt', 'desc').limit(1).select('updatedAt', 'createdAt').get(),
     visibleBase.count().get(),
@@ -505,6 +569,7 @@ async function readDashboardSummary(req: VercelRequest, res: VercelResponse) {
     && cached.visibleLeadCount === visibleLeadCount
     && cached.payload
   ) {
+    rememberDashboardPayload(cacheKey, cached.payload);
     return res.status(200).json({ ...cached.payload, cached: true });
   }
 
@@ -520,6 +585,7 @@ async function readDashboardSummary(req: VercelRequest, res: VercelResponse) {
     cached: false,
     generatedAt: new Date().toISOString(),
   };
+  rememberDashboardPayload(cacheKey, payload);
 
   if (dashboardPayloadSize(payload) <= DASHBOARD_SUMMARY_CACHE_MAX_BYTES) {
     await cacheRef.set({
@@ -541,14 +607,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = String(queryValue(req.query?.id) || req.body?.id || '');
 
     if (req.method === 'GET' && id === 'publicCms') {
-      res.setHeader?.('Cache-Control', PUBLIC_CMS_NO_STORE_HEADER);
-      const firestoreSnapshot = await readPublicCmsSnapshot().catch((error) => {
+      res.setHeader?.('Cache-Control', PUBLIC_CMS_CACHE_HEADER);
+      const cachedSnapshot = await readCachedPublicCmsSnapshot().catch((error) => {
         console.warn('[PublicCMS] Cannot read Firestore public CMS:', error);
         return null;
       });
-      if (firestoreSnapshot) {
-        res.setHeader?.('X-Public-CMS-Source', 'firestore');
-        return res.status(200).json(firestoreSnapshot);
+      if (cachedSnapshot) {
+        res.setHeader?.('X-Public-CMS-Source', cachedSnapshot.cache);
+        return res.status(200).json(cachedSnapshot.snapshot);
       }
 
       res.setHeader?.('X-Public-CMS-Source', 'unavailable');
@@ -559,6 +625,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const user = await requireActiveUser(req);
       if (!canManageCms(user)) throw new Error('Only CMS users can publish public CMS snapshots');
 
+      invalidatePublicCmsCache();
       res.setHeader?.('Cache-Control', PUBLIC_CMS_NO_STORE_HEADER);
       res.setHeader?.('X-Public-CMS-Source', 'firestore');
       return res.status(200).json({

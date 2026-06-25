@@ -282,6 +282,8 @@ const LOCAL_SNAPSHOT: PublicCmsSnapshot = {
 
 const PUBLIC_CMS_FETCH_TIMEOUT_MS = 6000;
 const SNAPSHOT_REQUEST_DEDUPE_MS = 500;
+const SNAPSHOT_MEMORY_TTL_MS = 5 * 60 * 1000;
+let snapshotCache: { snapshot: PublicCmsSnapshot; expiresAt: number } | null = null;
 let snapshotRequest: Promise<PublicCmsSnapshot> | null = null;
 
 function hasUsableHomepageSections(items: PageSection[]) {
@@ -367,8 +369,7 @@ async function loadRemoteSnapshot() {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), PUBLIC_CMS_FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(`/api/app-config?id=publicCms&t=${Date.now()}`, {
-      cache: 'no-store',
+    const response = await fetch('/api/app-config?id=publicCms', {
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
@@ -384,9 +385,15 @@ async function loadRemoteSnapshot() {
 
 async function getSnapshot() {
   if (typeof window === 'undefined') return LOCAL_SNAPSHOT;
+  const now = Date.now();
+  if (snapshotCache && snapshotCache.expiresAt > now) return snapshotCache.snapshot;
   if (!snapshotRequest) {
     snapshotRequest = loadRemoteSnapshot()
-      .then((snapshot) => snapshot || LOCAL_SNAPSHOT)
+      .then((snapshot) => {
+        const resolved = snapshot || snapshotCache?.snapshot || LOCAL_SNAPSHOT;
+        snapshotCache = { snapshot: resolved, expiresAt: Date.now() + SNAPSHOT_MEMORY_TTL_MS };
+        return resolved;
+      })
       .finally(() => {
         window.setTimeout(() => {
           snapshotRequest = null;

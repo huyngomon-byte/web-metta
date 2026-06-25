@@ -2216,7 +2216,7 @@ function Kanban({
       setApptTypeByLead(map);
       setAppointmentsLoaded(true);
     }).catch(() => setAppointmentsLoaded(true));
-  }, [leads]);
+  }, []);
 
   useEffect(() => {
     const updateScrollState = () => {
