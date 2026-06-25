@@ -402,13 +402,15 @@ export default function LeadsPage() {
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [filters, setFilters] = useState(defaultLeadFilters);
+  const isSalesUser = user?.role === 'sales';
+  const effectiveAssignedTo = isSalesUser ? (user?.id || '') : filters.assignedTo;
   const { leads, refresh, page, totalPages, totalLeads, statusCounts, goToPage, loadingPage } = useLeads({
     realtime: false,
     mode: 'numbered',
     pageSize: LEADS_PAGE_SIZE,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
-    assignedTo: filters.assignedTo,
+    assignedTo: effectiveAssignedTo,
     status: filters.status,
     source: filters.source,
     centerName: filters.centerName,
@@ -445,10 +447,10 @@ export default function LeadsPage() {
       filters.centerName,
       filters.priorityLevel,
       filters.course,
-      filters.assignedTo,
+      isSalesUser ? '' : filters.assignedTo,
     ].filter(Boolean).length + (dateRangeActive ? 1 : 0);
-  }, [filters]);
-  const resetFilters = () => setFilters(defaultLeadFilters());
+  }, [filters, isSalesUser]);
+  const resetFilters = () => setFilters({ ...defaultLeadFilters(), ...(isSalesUser ? { assignedTo: user?.id || '' } : {}) });
 
   const refreshCallLogs = useCallback(async () => {
     setCallLogs(await callCenterService.getLogs());
@@ -520,7 +522,7 @@ export default function LeadsPage() {
         pageSize: LEADS_PAGE_SIZE,
         dateFrom: filters.dateFrom,
         dateTo: filters.dateTo,
-        assignedTo: filters.assignedTo,
+        assignedTo: effectiveAssignedTo,
         status: filters.status,
         source: filters.source,
         centerName: filters.centerName,
@@ -539,11 +541,11 @@ export default function LeadsPage() {
     }
   }, [
     exporting,
-    filters.assignedTo,
     filters.centerName,
     filters.course,
     filters.dateFrom,
     filters.dateTo,
+    effectiveAssignedTo,
     filters.source,
     filters.status,
     matchesClientFilters,
@@ -589,13 +591,16 @@ export default function LeadsPage() {
         next.course = '';
         changed = true;
       }
-      if (next.assignedTo && !allowedSalesIds.has(next.assignedTo)) {
+      if (isSalesUser && next.assignedTo !== (user?.id || '')) {
+        next.assignedTo = user?.id || '';
+        changed = true;
+      } else if (!isSalesUser && next.assignedTo && !allowedSalesIds.has(next.assignedTo)) {
         next.assignedTo = '';
         changed = true;
       }
       return changed ? next : current;
     });
-  }, [centerOptions, courseOptions, salesFilterOptions, sourceOptions]);
+  }, [centerOptions, courseOptions, isSalesUser, salesFilterOptions, sourceOptions, user?.id]);
 
   function priorityForSource(source?: string, fallback?: number) {
     return sourcePriority(sourceConfigs, source, fallback);
@@ -1198,9 +1203,14 @@ export default function LeadsPage() {
             <option value="">Tất cả khóa</option>
             {courseOptions.map((course) => <option key={course} value={course}>{course}</option>)}
           </Select>
-          <Select value={filters.assignedTo} onChange={(event) => setFilters({ ...filters, assignedTo: event.target.value })}>
-            <option value="">Tất cả sales</option>
-            {salesFilterOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
+          <Select
+            value={effectiveAssignedTo}
+            onChange={(event) => setFilters({ ...filters, assignedTo: isSalesUser ? (user?.id || '') : event.target.value })}
+          >
+            <option value={isSalesUser ? (user?.id || '') : ''}>
+              {isSalesUser ? `Tất cả lead của ${user?.fullName || 'tôi'}` : 'Tất cả sales'}
+            </option>
+            {!isSalesUser && salesFilterOptions.map((sales) => <option key={sales.id} value={sales.id}>{sales.fullName}</option>)}
           </Select>
           <DateRangePicker
             from={filters.dateFrom}
