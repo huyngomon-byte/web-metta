@@ -1291,6 +1291,24 @@ export const leadService = {
     return delay(store.leadActivities.filter((activity) => activity.leadId === leadId));
   },
 
+  getActivitiesForLeads: async (leadIds: string[]): Promise<LeadActivity[]> => {
+    const user = currentUser();
+    if (!canViewAllLeads(user)) return [];
+    if (!USE_FIREBASE) {
+      loadActivities();
+      const set = new Set(leadIds);
+      return store.leadActivities.filter((activity) => set.has(activity.leadId));
+    }
+    const snap = await getDocs(query(collection(db!, COL_ACTIVITIES), orderBy('createdAt', 'desc')));
+    const byLead = new Map<string, LeadActivity[]>();
+    snap.docs.forEach((item) => {
+      const activity = { ...(item.data() as LeadActivity), id: item.id };
+      if (!byLead.has(activity.leadId)) byLead.set(activity.leadId, []);
+      byLead.get(activity.leadId)!.push(activity);
+    });
+    return leadIds.flatMap((id) => byLead.get(id) ?? []);
+  },
+
   addActivity: async (activity: Partial<LeadActivity>) => {
     await appendLeadActivity(activity);
     return delay(store.leadActivities);

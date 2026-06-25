@@ -290,7 +290,7 @@ export default function LeadDatabasePage() {
     setMessage('');
     setBusy(true);
     try {
-      const activities = (await Promise.all(leads.map((lead) => leadService.getActivities(lead.id)))).flat();
+      const activities = await leadService.getActivitiesForLeads(leads.map((lead) => lead.id));
       const appointments = await appointmentService.getAppointments();
       downloadWorkbook(makeLeadWorkbook(leads, activities, appointments), timestampFileName('metta-lead-database'));
       setMessage('Đã tạo file export gồm Leads, Lead Activities và Appointments.');
