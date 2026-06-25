@@ -39,9 +39,9 @@ import { buildReasonShareData, buildStageCohortData, formatDurationHours } from 
 import { expectedRevenueAmount, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
 import { formatCurrency } from '@/lib/utils';
 import { useCourseCatalog } from '@/hooks/useCms';
-import { useLeads } from '@/hooks/useLeads';
 import { appointmentService } from '@/services/appointmentService';
 import { centerConfigService } from '@/services/centerConfigService';
+import { dashboardService } from '@/services/dashboardService';
 import { userService } from '@/services/userService';
 import type { Appointment, Lead, LeadCenterConfig } from '@/types/crm';
 import type { AdminUser } from '@/types/user';
@@ -187,6 +187,9 @@ export default function DashboardPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadsError, setLeadsError] = useState('');
+  const [leadsLoading, setLeadsLoading] = useState(false);
   const [dashboardError, setDashboardError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const today = todayStr();
@@ -200,15 +203,29 @@ export default function DashboardPage() {
   const [fSource, setFSource] = useState('');
   const [fCourse, setFCourse] = useState('');
   const [fCenter, setFCenter] = useState('');
-  const { leads, error: leadsError, refresh: refreshLeads } = useLeads({
-    realtime: false,
-    mode: 'paged',
-    pageSize: 500,
-    dateFrom,
-    dateTo,
-  });
+
+  const refreshLeads = useCallback(async () => {
+    setLeadsLoading(true);
+    setLeadsError('');
+    try {
+      const summary = await dashboardService.getSummary({
+        sales: fSales,
+        source: fSource,
+        course: fCourse,
+        center: fCenter,
+      });
+      setLeads(summary.leads);
+    } catch (error) {
+      console.warn('[Dashboard] Cannot load lead summary:', error);
+      setLeads([]);
+      setLeadsError(describeFriendlyDataError(error, 'dữ liệu dashboard lead'));
+    } finally {
+      setLeadsLoading(false);
+    }
+  }, [fCenter, fCourse, fSales, fSource]);
 
   useEffect(() => { if (preset !== 'custom') { const [f, t] = presetRange(preset); setDateFrom(f); setDateTo(t); } }, [preset]);
+  useEffect(() => { void refreshLeads(); }, [refreshLeads]);
   useEffect(() => {
     appointmentService.getAppointments({
       dateFrom: today,
@@ -507,9 +524,9 @@ export default function DashboardPage() {
         <p className="text-sm text-slate-500 mt-0.5">Tổng quan CRM tuyển sinh METTA Academy</p>
       </div>
 
-        <Button variant="outline" onClick={() => void refreshDashboard()} disabled={refreshing} className="w-fit">
-          <RefreshCcw className={refreshing ? 'animate-spin' : ''} />
-          {refreshing ? 'Đang làm mới' : 'Làm mới'}
+        <Button variant="outline" onClick={() => void refreshDashboard()} disabled={refreshing || leadsLoading} className="w-fit">
+          <RefreshCcw className={refreshing || leadsLoading ? 'animate-spin' : ''} />
+          {refreshing || leadsLoading ? 'Đang làm mới' : 'Làm mới'}
         </Button>
       </div>
 

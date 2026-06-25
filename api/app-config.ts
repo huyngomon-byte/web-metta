@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { adminAuth, adminDb } from './_firebaseAdmin.js';
 import leadImportHandler from './_leadImport.js';
 import { sendBlogPage, sendPublicBlogPost, sendPublicBlogPosts, sendSitemap } from './_publicSeoServer.js';
@@ -44,8 +45,46 @@ const PUBLIC_CMS_NO_STORE_HEADER = 'no-store, max-age=0, must-revalidate';
 const LEAD_PAGE_SIZE = 100;
 const LEAD_PAGE_DEFAULT_SINCE_DAYS = 30;
 const LEAD_ASSIGNMENT_GROUPS = ['all', 'unassigned', 'stale', 'returned', 'assigned'] as const;
+const DASHBOARD_SUMMARY_CACHE_SCHEMA = 1;
+const DASHBOARD_SUMMARY_CACHE_MAX_BYTES = 900_000;
+const DASHBOARD_LEAD_FIELDS = [
+  'id',
+  'fullName',
+  'parentName',
+  'studentName',
+  'phone',
+  'email',
+  'age',
+  'source',
+  'interestedCourse',
+  'centerName',
+  'status',
+  'assignedTo',
+  'assignedToName',
+  'assignedStatus',
+  'failedAssignedTo',
+  'failedAssignedToName',
+  'followUpDate',
+  'createdAt',
+  'updatedAt',
+  'convertedToStudentId',
+  'dealSize',
+  'discountPercent',
+  'expectedRevenue',
+  'revenue',
+  'pendingReason',
+  'lostReason',
+  'stageHistory',
+] as const;
 
 type LeadAssignmentGroup = typeof LEAD_ASSIGNMENT_GROUPS[number];
+
+type DashboardSummaryFilters = {
+  sales: string;
+  source: string;
+  course: string;
+  center: string;
+};
 
 const configFields: Record<string, 'configs'> = {
   leadCenterConfigs: 'configs',
@@ -278,6 +317,137 @@ async function readLeadAssignmentPage(req: VercelRequest, res: VercelResponse) {
   });
 }
 
+function dashboardSummaryFilters(req: VercelRequest): DashboardSummaryFilters {
+  return {
+    sales: String(queryValue(req.query?.sales) || '').trim(),
+    source: String(queryValue(req.query?.source) || '').trim(),
+    course: String(queryValue(req.query?.course) || '').trim(),
+    center: String(queryValue(req.query?.center) || '').trim(),
+  };
+}
+
+function dashboardSummaryCacheKey(user: AppConfigUser, filters: DashboardSummaryFilters) {
+  const scope = user.role === 'sales' ? `sales:${user.id}` : 'all';
+  const raw = JSON.stringify({ schema: DASHBOARD_SUMMARY_CACHE_SCHEMA, scope, filters });
+  return `dashboardSummary_${createHash('sha256').update(raw).digest('hex')}`;
+}
+
+function isDashboardDemoLead(lead: Record<string, any>) {
+  const id = String(lead.id || '');
+  const email = String(lead.email || '').toLowerCase();
+  return id.startsWith('lead-demo-stage-')
+    || id.startsWith('lead-demo-priority-')
+    || /^lead-[1-5]$/.test(id)
+    || /^lead-x\d+$/.test(id)
+    || email.includes('@metta.test')
+    || email.includes('@example.com');
+}
+
+function compactDashboardLead(doc: FirebaseFirestore.QueryDocumentSnapshot) {
+  const data = doc.data() as Record<string, any>;
+  return {
+    ...data,
+    id: String(data.id || doc.id),
+    fullName: String(data.fullName || data.studentName || data.parentName || ''),
+    parentName: String(data.parentName || ''),
+    studentName: String(data.studentName || ''),
+    phone: String(data.phone || ''),
+    age: String(data.age || ''),
+    source: String(data.source || ''),
+    interestedCourse: String(data.interestedCourse || ''),
+    centerName: String(data.centerName || ''),
+    status: String(data.status || ''),
+    assignedTo: String(data.assignedTo || ''),
+    assignedToName: String(data.assignedToName || ''),
+    assignedStatus: data.assignedStatus || (data.assignedTo ? 'accepted' : 'unassigned'),
+    failedAssignedTo: String(data.failedAssignedTo || ''),
+    failedAssignedToName: String(data.failedAssignedToName || ''),
+    followUpDate: String(data.followUpDate || ''),
+    createdAt: String(data.createdAt || data.updatedAt || ''),
+    updatedAt: String(data.updatedAt || data.createdAt || ''),
+    convertedToStudentId: String(data.convertedToStudentId || ''),
+    dealSize: Number(data.dealSize || 0) || 0,
+    discountPercent: Number(data.discountPercent || 0) || 0,
+    expectedRevenue: Number(data.expectedRevenue || 0) || 0,
+    revenue: Number(data.revenue || 0) || 0,
+    pendingReason: String(data.pendingReason || ''),
+    lostReason: String(data.lostReason || ''),
+    stageHistory: Array.isArray(data.stageHistory) ? data.stageHistory : [],
+  };
+}
+
+function matchesDashboardFilters(lead: Record<string, any>, filters: DashboardSummaryFilters) {
+  if (filters.sales && lead.assignedTo !== filters.sales && lead.assignedToName !== filters.sales) return false;
+  if (filters.source && lead.source !== filters.source) return false;
+  if (filters.course && lead.interestedCourse !== filters.course) return false;
+  if (filters.center && lead.centerName !== filters.center) return false;
+  return true;
+}
+
+function dashboardPayloadSize(payload: unknown) {
+  return Buffer.byteLength(JSON.stringify(payload), 'utf8');
+}
+
+async function readDashboardSummary(req: VercelRequest, res: VercelResponse) {
+  const user = await requireActiveUser(req);
+  if (!['admin', 'manager', 'sales'].includes(user.role)) throw new Error('User cannot read dashboard');
+
+  const filters = dashboardSummaryFilters(req);
+  const db = adminDb();
+  let visibleBase: FirebaseFirestore.Query = db.collection('leads');
+  if (user.role === 'sales') visibleBase = visibleBase.where('assignedTo', '==', user.id);
+
+  if (user.role === 'sales' && filters.sales && filters.sales !== user.id && filters.sales !== user.fullName) {
+    return res.status(200).json({ leads: [], cached: false, generatedAt: new Date().toISOString() });
+  }
+
+  const cacheRef = db.collection('appCache').doc(dashboardSummaryCacheKey(user, filters));
+  const [latestSnap, visibleCountSnap, cacheSnap] = await Promise.all([
+    db.collection('leads').orderBy('updatedAt', 'desc').limit(1).select('updatedAt', 'createdAt').get(),
+    visibleBase.count().get(),
+    cacheRef.get().catch(() => null),
+  ]);
+  const latestDoc = latestSnap.docs[0]?.data() || {};
+  const latestUpdatedAt = String(latestDoc.updatedAt || latestDoc.createdAt || '');
+  const visibleLeadCount = Number(visibleCountSnap.data().count || 0);
+  const cached = cacheSnap?.exists ? cacheSnap.data() || {} : {};
+  if (
+    cached.schema === DASHBOARD_SUMMARY_CACHE_SCHEMA
+    && cached.latestUpdatedAt === latestUpdatedAt
+    && cached.visibleLeadCount === visibleLeadCount
+    && cached.payload
+  ) {
+    return res.status(200).json({ ...cached.payload, cached: true });
+  }
+
+  const snap = await visibleBase.select(...DASHBOARD_LEAD_FIELDS).get();
+  const leads = snap.docs
+    .map(compactDashboardLead)
+    .filter((lead) => (isLeadManager(user) ? !isDashboardDemoLead(lead) : true))
+    .filter((lead) => matchesDashboardFilters(lead, filters))
+    .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+
+  const payload = {
+    leads,
+    cached: false,
+    generatedAt: new Date().toISOString(),
+  };
+
+  if (dashboardPayloadSize(payload) <= DASHBOARD_SUMMARY_CACHE_MAX_BYTES) {
+    await cacheRef.set({
+      schema: DASHBOARD_SUMMARY_CACHE_SCHEMA,
+      latestUpdatedAt,
+      visibleLeadCount,
+      generatedAt: payload.generatedAt,
+      payload: { ...payload, cached: false },
+    }).catch((error) => {
+      console.warn('[DashboardSummary] Cache write failed:', error);
+    });
+  }
+
+  return res.status(200).json(payload);
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const id = String(queryValue(req.query?.id) || req.body?.id || '');
@@ -337,6 +507,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (id === 'leadAssignmentPage' && req.method === 'GET') {
       return await readLeadAssignmentPage(req, res);
+    }
+
+    if (id === 'dashboardSummary' && req.method === 'GET') {
+      return await readDashboardSummary(req, res);
     }
 
     if (id === 'leadImport' && req.method === 'POST') {
