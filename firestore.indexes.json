@@ -64,6 +64,14 @@
         { "fieldPath": "assignedTo", "order": "ASCENDING" },
         { "fieldPath": "updatedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "leadActivities",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

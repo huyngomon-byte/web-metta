@@ -1272,15 +1272,18 @@ export const leadService = {
   },
 
   getActivities: async (leadId: string) => {
-    const user = currentUser();
     if (USE_FIREBASE) {
-      const activityQuery = user?.role === 'sales'
-        ? query(collection(db!, COL_ACTIVITIES), where('leadId', '==', leadId), orderBy('createdAt', 'desc'))
-        : query(collection(db!, COL_ACTIVITIES), orderBy('createdAt', 'desc'));
+      const activityQuery = query(
+        collection(db!, COL_ACTIVITIES),
+        where('leadId', '==', leadId),
+        orderBy('createdAt', 'desc'),
+      );
       const snap = await getDocs(activityQuery);
-      let remoteActivities = snap.docs.map((item) => ({ ...item.data(), id: item.id }) as LeadActivity);
-      if (canViewAllLeads(user)) remoteActivities = await replaceFirestoreDemoActivities(remoteActivities);
-      store.leadActivities = remoteActivities;
+      const remoteActivities = snap.docs.map((item) => ({ ...item.data(), id: item.id }) as LeadActivity);
+      store.leadActivities = [
+        ...store.leadActivities.filter((activity) => activity.leadId !== leadId),
+        ...remoteActivities,
+      ];
       persistActivities();
     } else {
       loadActivities();
