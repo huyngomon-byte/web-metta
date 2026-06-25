@@ -4,9 +4,15 @@ import { delay, store } from '@/services/store';
 import type { AdminUser } from '@/types/user';
 
 const USE_FIREBASE = isFirebaseConfigured && !!db;
+const USERS_TTL_MS = 2 * 60_000;
+
+let usersCache: { at: number; data: AdminUser[] } | null = null;
 
 export const userService = {
-  getUsers: async () => {
+  getUsers: async (force = false) => {
+    if (!force && usersCache && Date.now() - usersCache.at < USERS_TTL_MS) {
+      return delay(usersCache.data);
+    }
     if (USE_FIREBASE) {
       try {
         const snap = await getDocs(query(collection(db!, 'users'), orderBy('fullName', 'asc')));
@@ -15,6 +21,7 @@ export const userService = {
         console.warn('[Users] Firestore read failed, using local:', error);
       }
     }
+    usersCache = { at: Date.now(), data: store.users };
     return delay(store.users);
   },
 
@@ -27,7 +34,7 @@ export const userService = {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'Không lưu được user.');
-    await userService.getUsers();
+    await userService.getUsers(true);
     return payload.user as AdminUser;
   },
 
@@ -41,6 +48,7 @@ export const userService = {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'Không xóa được user.');
     store.users = store.users.filter((user) => user.id !== id);
+    await userService.getUsers(true);
     return true;
   },
 };
