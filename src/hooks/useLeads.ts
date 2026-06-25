@@ -12,6 +12,11 @@ type UseLeadsOptions = {
   sinceDays?: number;
   dateFrom?: string;
   dateTo?: string;
+  assignedTo?: string;
+  status?: string;
+  source?: string;
+  centerName?: string;
+  course?: string;
 };
 
 function mergeLeads(incoming: Lead[], existing: Lead[]) {
@@ -29,6 +34,11 @@ export function useLeads({
   sinceDays = 30,
   dateFrom,
   dateTo,
+  assignedTo,
+  status,
+  source,
+  centerName,
+  course,
 }: UseLeadsOptions = {}) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [nextCursor, setNextCursor] = useState<LeadPageCursor | null>(null);
@@ -38,6 +48,7 @@ export function useLeads({
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalLeads, setTotalLeads] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [error, setError] = useState('');
   const currentPageRef = useRef(1);
   const totalPagesRef = useRef(1);
@@ -63,12 +74,18 @@ export function useLeads({
         sinceDays,
         dateFrom,
         dateTo,
+        assignedTo,
+        status,
+        source,
+        centerName,
+        course,
       });
       currentPageRef.current = result.page;
       totalPagesRef.current = result.totalPages;
       setPage(result.page);
       setTotalPages(result.totalPages);
       setTotalLeads(result.total);
+      setStatusCounts(result.statusCounts || {});
       setHasMore(result.hasNext);
       setLeads(result.leads);
       const cache = numberedPageCacheRef.current;
@@ -85,7 +102,7 @@ export function useLeads({
     } finally {
       setLoadingPage(false);
     }
-  }, [dateFrom, dateTo, pageSize, sinceDays]);
+  }, [assignedTo, centerName, course, dateFrom, dateTo, pageSize, sinceDays, source, status]);
 
   const refresh = useCallback(async () => {
     setError('');
@@ -95,7 +112,7 @@ export function useLeads({
         return;
       }
       if (mode === 'paged') {
-        const page = await leadService.getLeadsPage({ pageSize, sinceDays, dateFrom, dateTo });
+        const page = await leadService.getLeadsPage({ pageSize, sinceDays, dateFrom, dateTo, assignedTo, status, source, centerName, course });
         setLeads(page.leads);
         setNextCursor(page.nextCursor);
         setHasMore(page.hasMore);
@@ -113,11 +130,11 @@ export function useLeads({
       setNextCursor(null);
       setHasMore(false);
     }
-  }, [dateFrom, dateTo, loadNumberedPage, mode, pageSize, sinceDays]);
+  }, [assignedTo, centerName, course, dateFrom, dateTo, loadNumberedPage, mode, pageSize, sinceDays, source, status]);
 
   const goToPage = useCallback(async (targetPage: number, force = false) => {
     if (mode !== 'numbered' || loadingPage) return;
-    const safeTarget = Math.max(1, Math.min(totalPages, Math.round(targetPage || 1)));
+    const safeTarget = Math.max(1, Math.min(Math.max(1, totalPages), Math.round(targetPage || 1)));
     await loadNumberedPage(safeTarget, force);
   }, [loadNumberedPage, loadingPage, mode, totalPages]);
 
@@ -126,7 +143,7 @@ export function useLeads({
     setLoadingMore(true);
     setError('');
     try {
-      const page = await leadService.getLeadsPage({ pageSize, cursor: nextCursor, sinceDays, dateFrom, dateTo });
+      const page = await leadService.getLeadsPage({ pageSize, cursor: nextCursor, sinceDays, dateFrom, dateTo, assignedTo, status, source, centerName, course });
       setLeads((current) => mergeLeads(page.leads, current));
       setNextCursor(page.nextCursor);
       setHasMore(page.hasMore);
@@ -136,7 +153,7 @@ export function useLeads({
     } finally {
       setLoadingMore(false);
     }
-  }, [dateFrom, dateTo, hasMore, loadingMore, nextCursor, pageSize, sinceDays]);
+  }, [assignedTo, centerName, course, dateFrom, dateTo, hasMore, loadingMore, nextCursor, pageSize, sinceDays, source, status]);
 
   useEffect(() => {
     if (mode === 'numbered') {
@@ -146,6 +163,7 @@ export function useLeads({
       setPage(1);
       setTotalPages(1);
       setTotalLeads(0);
+      setStatusCounts({});
       void loadNumberedPage(1, true);
       if (!pollMs) return undefined;
       const timer = window.setInterval(() => void loadNumberedPage(currentPageRef.current, true), pollMs);
@@ -181,6 +199,7 @@ export function useLeads({
     page,
     totalPages,
     totalLeads,
+    statusCounts,
     goToPage,
     loadingPage,
     hasPreviousPage: page > 1,

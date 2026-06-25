@@ -45,6 +45,17 @@ const PUBLIC_CMS_NO_STORE_HEADER = 'no-store, max-age=0, must-revalidate';
 const LEAD_PAGE_SIZE = 100;
 const LEAD_PAGE_DEFAULT_SINCE_DAYS = 30;
 const LEAD_ASSIGNMENT_GROUPS = ['all', 'unassigned', 'stale', 'returned', 'assigned'] as const;
+const LEAD_STATUSES = [
+  'Lead mới',
+  'Đã liên hệ',
+  'Chưa nghe máy',
+  'Đã hẹn tư vấn',
+  'Đã tư vấn/Đặt lịch test',
+  'Đã test/Học thử',
+  'Đã báo phí/Chờ chốt',
+  'Đã đăng ký học',
+  'Mất lead',
+] as const;
 const DASHBOARD_SUMMARY_CACHE_SCHEMA = 1;
 const DASHBOARD_SUMMARY_CACHE_MAX_BYTES = 900_000;
 const DASHBOARD_LEAD_FIELDS = [
@@ -79,6 +90,16 @@ const DASHBOARD_LEAD_FIELDS = [
 
 type LeadAssignmentGroup = typeof LEAD_ASSIGNMENT_GROUPS[number];
 
+type LeadPageFilters = {
+  assignedTo: string;
+  status: string;
+  source: string;
+  centerName: string;
+  course: string;
+  dateFrom: string;
+  dateTo: string;
+};
+
 type DashboardSummaryFilters = {
   sales: string;
   source: string;
@@ -101,6 +122,10 @@ function bearer(req: VercelRequest) {
 
 function queryValue(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function cleanQueryValue(value?: string | string[]) {
+  return String(queryValue(value) || '').trim();
 }
 
 function serializable(data: Record<string, unknown> | undefined, id: string): PublicCmsDocument {
@@ -175,14 +200,70 @@ function positiveInteger(value: unknown, fallback: number, max: number) {
   return Math.max(1, Math.min(max, Math.round(parsed)));
 }
 
+function dateBoundaryToComparableIso(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
 function leadPageDateStart(value?: string) {
   if (!value) return '';
-  return value.length === 10 ? `${value}T00:00:00.000Z` : value;
+  const normalized = value.length === 10 ? `${value}T00:00:00.000+07:00` : value;
+  return dateBoundaryToComparableIso(normalized);
 }
 
 function leadPageDateEnd(value?: string) {
   if (!value) return '';
-  return value.length === 10 ? `${value}T23:59:59.999Z` : value;
+  const normalized = value.length === 10 ? `${value}T23:59:59.999+07:00` : value;
+  return dateBoundaryToComparableIso(normalized);
+}
+
+function readLeadPageFilters(req: VercelRequest, sinceDays: number): LeadPageFilters {
+  const fallbackDate = new Date();
+  fallbackDate.setDate(fallbackDate.getDate() - sinceDays);
+  return {
+    assignedTo: cleanQueryValue(req.query?.assignedTo),
+    status: cleanQueryValue(req.query?.status),
+    source: cleanQueryValue(req.query?.source),
+    centerName: cleanQueryValue(req.query?.centerName),
+    course: cleanQueryValue(req.query?.course),
+    dateFrom: leadPageDateStart(cleanQueryValue(req.query?.dateFrom)) || fallbackDate.toISOString(),
+    dateTo: leadPageDateEnd(cleanQueryValue(req.query?.dateTo)),
+  };
+}
+
+function buildLeadPageQuery(
+  db: FirebaseFirestore.Firestore,
+  user: AppConfigUser,
+  filters: LeadPageFilters,
+  statusOverride?: string,
+) {
+  let baseQuery: FirebaseFirestore.Query = db.collection('leads');
+  if (user.role === 'sales') {
+    baseQuery = baseQuery.where('assignedTo', '==', user.id);
+  } else if (filters.assignedTo) {
+    baseQuery = baseQuery.where('assignedTo', '==', filters.assignedTo);
+  }
+
+  const status = statusOverride ?? filters.status;
+  if (status) baseQuery = baseQuery.where('status', '==', status);
+  if (filters.source) baseQuery = baseQuery.where('source', '==', filters.source);
+  if (filters.centerName) baseQuery = baseQuery.where('centerName', '==', filters.centerName);
+  if (filters.course) baseQuery = baseQuery.where('interestedCourse', '==', filters.course);
+  baseQuery = baseQuery.where('createdAt', '>=', filters.dateFrom);
+  if (filters.dateTo) baseQuery = baseQuery.where('createdAt', '<=', filters.dateTo);
+  return baseQuery.orderBy('createdAt', 'desc');
+}
+
+async function countLeadStatuses(db: FirebaseFirestore.Firestore, user: AppConfigUser, filters: LeadPageFilters) {
+  const statuses = filters.status
+    ? LEAD_STATUSES.filter((status) => status === filters.status)
+    : LEAD_STATUSES;
+  const entries = await Promise.all(statuses.map(async (status) => {
+    const snap = await buildLeadPageQuery(db, user, filters, status).count().get();
+    return [status, snap.data().count] as const;
+  }));
+  const counted = new Map<string, number>(entries);
+  return Object.fromEntries(LEAD_STATUSES.map((status) => [status, counted.get(status) || 0]));
 }
 
 async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
@@ -192,22 +273,18 @@ async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
   const requestedPage = positiveInteger(queryValue(req.query?.page), 1, 100_000);
   const pageSize = positiveInteger(queryValue(req.query?.pageSize), LEAD_PAGE_SIZE, LEAD_PAGE_SIZE);
   const sinceDays = positiveInteger(queryValue(req.query?.sinceDays), LEAD_PAGE_DEFAULT_SINCE_DAYS, 3_650);
-  const fallbackDate = new Date();
-  fallbackDate.setDate(fallbackDate.getDate() - sinceDays);
-  const dateFrom = leadPageDateStart(queryValue(req.query?.dateFrom)) || fallbackDate.toISOString();
-  const dateTo = leadPageDateEnd(queryValue(req.query?.dateTo));
+  const filters = readLeadPageFilters(req, sinceDays);
 
   const db = adminDb();
-  let baseQuery: FirebaseFirestore.Query = db.collection('leads');
-  if (user.role === 'sales') baseQuery = baseQuery.where('assignedTo', '==', user.id);
-  baseQuery = baseQuery.where('createdAt', '>=', dateFrom);
-  if (dateTo) baseQuery = baseQuery.where('createdAt', '<=', dateTo);
-  baseQuery = baseQuery.orderBy('createdAt', 'desc');
+  const baseQuery = buildLeadPageQuery(db, user, filters);
 
-  const countSnap = await baseQuery.count().get();
+  const [countSnap, statusCounts] = await Promise.all([
+    baseQuery.count().get(),
+    countLeadStatuses(db, user, filters),
+  ]);
   const total = countSnap.data().count;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(requestedPage, totalPages);
+  const totalPages = Math.ceil(total / pageSize);
+  const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
   const pageSnap = await baseQuery.offset((page - 1) * pageSize).limit(pageSize).get();
   const leads = pageSnap.docs.map((item) => ({ ...item.data(), id: item.id }));
 
@@ -217,9 +294,20 @@ async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
     pageSize,
     total,
     totalPages,
+    statusCounts,
     hasPrevious: page > 1,
     hasNext: page < totalPages,
   });
+}
+
+async function readLeadStatusCounts(req: VercelRequest, res: VercelResponse) {
+  const user = await requireActiveUser(req);
+  if (!['admin', 'manager', 'sales'].includes(user.role)) throw new Error('User cannot read leads');
+
+  const sinceDays = positiveInteger(queryValue(req.query?.sinceDays), LEAD_PAGE_DEFAULT_SINCE_DAYS, 3_650);
+  const filters = readLeadPageFilters(req, sinceDays);
+  const statusCounts = await countLeadStatuses(adminDb(), user, filters);
+  return res.status(200).json({ statusCounts });
 }
 
 async function readLeadAssignmentPage(req: VercelRequest, res: VercelResponse) {
@@ -503,6 +591,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (id === 'leadPage' && req.method === 'GET') {
       return await readLeadNumberedPage(req, res);
+    }
+
+    if (id === 'leadStatusCounts' && req.method === 'GET') {
+      return await readLeadStatusCounts(req, res);
     }
 
     if (id === 'leadAssignmentPage' && req.method === 'GET') {

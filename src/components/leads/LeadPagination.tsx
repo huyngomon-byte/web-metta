@@ -21,6 +21,7 @@ export function LeadPagination({
   onPageChange,
 }: LeadPaginationProps) {
   const [draftPage, setDraftPage] = useState(String(page));
+  const safeTotalPages = Math.max(1, totalPages);
 
   useEffect(() => {
     setDraftPage(String(page));
@@ -33,7 +34,7 @@ export function LeadPagination({
       setDraftPage(String(page));
       return;
     }
-    const nextPage = Math.max(1, Math.min(totalPages, Math.round(parsed)));
+    const nextPage = Math.max(1, Math.min(safeTotalPages, Math.round(parsed)));
     setDraftPage(String(nextPage));
     void onPageChange(nextPage);
   }
@@ -63,7 +64,7 @@ export function LeadPagination({
             aria-label="Số trang"
             type="number"
             min={1}
-            max={totalPages}
+            max={safeTotalPages}
             value={draftPage}
             disabled={loading}
             onChange={(event) => setDraftPage(event.target.value)}
@@ -72,7 +73,7 @@ export function LeadPagination({
           <span className="text-sm font-semibold text-slate-600">/ {totalPages}</span>
           <Button type="submit" variant="outline" size="sm" disabled={loading}>Đi</Button>
         </form>
-        <Button className="w-full" variant="outline" size="sm" disabled={loading || page >= totalPages} onClick={() => void onPageChange(page + 1)}>
+        <Button className="w-full" variant="outline" size="sm" disabled={loading || page >= safeTotalPages} onClick={() => void onPageChange(page + 1)}>
           Sau <ChevronRight size={16} />
         </Button>
       </div>

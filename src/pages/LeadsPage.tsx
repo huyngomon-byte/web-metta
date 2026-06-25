@@ -115,8 +115,8 @@ const emptyLeadImportProgress: LeadImportProgress = {
 const LEADS_PAGE_SIZE = 100;
 
 function dateOnlyOffset(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
+  const date = new Date(Date.now() + 7 * 60 * 60 * 1000);
+  date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
 
@@ -167,6 +167,34 @@ function sourceLabel(source: string) {
 
 function leadDisplayName(lead: Partial<Lead>) {
   return String(lead.studentName || lead.parentName || lead.fullName || '').trim();
+}
+
+// Bỏ dấu tiếng Việt + lowercase + trim để search không phân biệt dấu/hoa-thường/khoảng trắng.
+function normalizeSearchText(value = '') {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[đ]/g, 'd')
+    .trim();
+}
+
+// Chuẩn hóa SĐT: bỏ ký tự không phải số, quy +84/84 về 0 để "0901..." và "+84901..." khớp nhau.
+function normalizePhone(value = '') {
+  return value.replace(/\D/g, '').replace(/^84/, '0');
+}
+
+function matchesLeadSearch(lead: Partial<Lead>, rawQuery: string) {
+  const query = (rawQuery || '').trim();
+  if (!query) return true;
+  const textQuery = normalizeSearchText(query);
+  const haystack = normalizeSearchText(
+    `${lead.fullName || ''} ${lead.parentName || ''} ${lead.studentName || ''} ${lead.email || ''}`,
+  );
+  if (textQuery && haystack.includes(textQuery)) return true;
+  const phoneQuery = normalizePhone(query);
+  if (phoneQuery.length >= 3 && normalizePhone(lead.phone || '').includes(phoneQuery)) return true;
+  return false;
 }
 
 function priorityLabel(level?: number) {
@@ -374,12 +402,17 @@ export default function LeadsPage() {
   const [centerConfigs, setCenterConfigs] = useState<LeadCenterConfig[]>([]);
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [filters, setFilters] = useState(defaultLeadFilters);
-  const { leads, refresh, page, totalPages, totalLeads, goToPage, loadingPage } = useLeads({
+  const { leads, refresh, page, totalPages, totalLeads, statusCounts, goToPage, loadingPage } = useLeads({
     realtime: false,
     mode: 'numbered',
     pageSize: LEADS_PAGE_SIZE,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
+    assignedTo: filters.assignedTo,
+    status: filters.status,
+    source: filters.source,
+    centerName: filters.centerName,
+    course: filters.course,
   });
   const [view, setView] = useState<'table' | 'kanban'>(searchParams.get('view') === 'table' ? 'table' : 'kanban');
   const focusLeadId = searchParams.get('leadId') || '';
@@ -387,6 +420,7 @@ export default function LeadsPage() {
   const [detailLead, setDetailLead] = useState<Lead | null>(null);
   const [quickLead, setQuickLead] = useState({ parentName: '', studentName: '', phone: '', centerName: '', assignedTo: '' });
   const leadImportFileInputRef = useRef<HTMLInputElement | null>(null);
+  const refreshedForCourseDealSizesRef = useRef(false);
   const [leadImportOpen, setLeadImportOpen] = useState(false);
   const [leadImportFileName, setLeadImportFileName] = useState('');
   const [leadImportParsed, setLeadImportParsed] = useState<ParsedLeadImportResult | null>(null);
@@ -399,6 +433,7 @@ export default function LeadsPage() {
   const [showCenterSettings, setShowCenterSettings] = useState(false);
   const [error, setError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
+  const [exporting, setExporting] = useState(false);
   const canAssign = canAssignLead(user);
   const canCreate = canCreateLead(user);
   const activeFilterCount = useMemo(() => {
@@ -437,7 +472,10 @@ export default function LeadsPage() {
   }, [refreshCallLogs]);
 
   useEffect(() => {
-    if (courseDealSizes.length > 0) void refresh();
+    if (courseDealSizes.length > 0 && !refreshedForCourseDealSizesRef.current) {
+      refreshedForCourseDealSizesRef.current = true;
+      void refresh();
+    }
   }, [courseDealSizes, refresh]);
 
   useEffect(() => {
@@ -463,22 +501,53 @@ export default function LeadsPage() {
     [leadOwnerOptions, salesOptions, user],
   );
 
-  const filtered = useMemo(() => leads.filter((lead) => {
-    const haystack = `${lead.fullName} ${lead.parentName || ''} ${lead.studentName || ''} ${lead.phone} ${lead.email}`.toLowerCase();
-    const createdDate = lead.createdAt?.slice(0, 10) || '';
+  const matchesClientFilters = useCallback((lead: Lead) => {
     const priority = priorityForLead(sourceConfigs, lead);
     return (
-      (!filters.search || haystack.includes(filters.search.toLowerCase())) &&
-      (!filters.status || lead.status === filters.status) &&
-      (!filters.source || lead.source === filters.source) &&
-      (!filters.centerName || lead.centerName === filters.centerName) &&
-      (!filters.priorityLevel || String(priority) === filters.priorityLevel) &&
-      (!filters.course || lead.interestedCourse === filters.course) &&
-      (!filters.assignedTo || lead.assignedTo === filters.assignedTo) &&
-      (!filters.dateFrom || createdDate >= filters.dateFrom) &&
-      (!filters.dateTo || createdDate <= filters.dateTo)
+      matchesLeadSearch(lead, filters.search) &&
+      (!filters.priorityLevel || String(priority) === filters.priorityLevel)
     );
-  }), [filters, leads, sourceConfigs]);
+  }, [filters.priorityLevel, filters.search, sourceConfigs]);
+
+  const filtered = useMemo(() => leads.filter(matchesClientFilters), [leads, matchesClientFilters]);
+
+  const exportFilteredLeads = useCallback(async () => {
+    if (exporting) return;
+    setError('');
+    setExporting(true);
+    try {
+      const exportLeads = await leadService.getAllNumberedLeadsForExport({
+        pageSize: LEADS_PAGE_SIZE,
+        dateFrom: filters.dateFrom,
+        dateTo: filters.dateTo,
+        assignedTo: filters.assignedTo,
+        status: filters.status,
+        source: filters.source,
+        centerName: filters.centerName,
+        course: filters.course,
+      });
+      const rows = exportLeads.filter(matchesClientFilters);
+      if (!rows.length) {
+        setError('Không có lead phù hợp để export.');
+        return;
+      }
+      exportCsv('metta-leads.csv', rows as unknown as Record<string, unknown>[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không export được CSV leads.');
+    } finally {
+      setExporting(false);
+    }
+  }, [
+    exporting,
+    filters.assignedTo,
+    filters.centerName,
+    filters.course,
+    filters.dateFrom,
+    filters.dateTo,
+    filters.source,
+    filters.status,
+    matchesClientFilters,
+  ]);
 
   const sourceOptions = useMemo(() => {
     const names = new Set([
@@ -883,8 +952,8 @@ export default function LeadsPage() {
               <LayoutGrid size={15} /> Kanban
             </button>
           </div>
-          <Button variant="outline" className="w-full sm:w-auto" onClick={() => exportCsv('metta-leads.csv', filtered as unknown as Record<string, unknown>[])}>
-            <Download /> Export CSV
+          <Button variant="outline" className="w-full sm:w-auto" disabled={exporting} onClick={() => void exportFilteredLeads()}>
+            <Download /> {exporting ? 'Đang export' : 'Export CSV'}
           </Button>
           {canCreate && <Button variant="outline" className="w-full sm:w-auto" onClick={() => setLeadImportOpen((open) => !open)}>
             <Upload /> Import Excel
@@ -1206,7 +1275,7 @@ export default function LeadsPage() {
       {view === 'table' ? (
         <LeadsTable leads={filtered} canAssign={canAssign} onEdit={setDetailLead} onDetail={setDetailLead} onDelete={removeLead} onCall={callLead} callLogs={callLogs} sourceConfigs={sourceConfigs} courseDealSizes={courseDealSizes} />
       ) : (
-        <Kanban leads={filtered} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} courseOptions={courseOptions} courseDealSizes={courseDealSizes} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
+        <Kanban leads={filtered} statusCounts={statusCounts} salesOptions={salesOptions} canAssign={canAssign} refresh={refresh} sourceConfigs={sourceConfigs} sourceOptions={sourceOptions} centerOptions={centerOptions} courseOptions={courseOptions} courseDealSizes={courseDealSizes} focusLeadId={focusLeadId} onOpenDetail={setDetailLead} onCall={callLead} callLogs={callLogs} />
       )}
 
       <div className={view === 'kanban' ? 'mb-20' : undefined}>
@@ -2092,6 +2161,7 @@ function CallLogInline({ log }: { log?: CallLog }) {
 
 function Kanban({
   leads,
+  statusCounts,
   salesOptions,
   canAssign,
   refresh,
@@ -2106,6 +2176,7 @@ function Kanban({
   callLogs,
 }: {
   leads: Lead[];
+  statusCounts: Record<string, number>;
   salesOptions: AdminUser[];
   canAssign: boolean;
   refresh: () => Promise<void>;
@@ -2131,7 +2202,7 @@ function Kanban({
 
   useEffect(() => {
     setAppointmentsLoaded(false);
-    void appointmentService.getAppointments().then((items) => {
+    void appointmentService.getAppointments({ limit: 1000 }).then((items) => {
       const map = new Map<string, Appointment['type']>();
       // Ưu tiên Test > Tư vấn > Gọi lại nếu một lead có nhiều lịch
       const priority: Record<string, number> = { [APPT_TEST]: 3, [APPT_CONSULTATION]: 2, [APPT_CALLBACK]: 1 };
@@ -2240,6 +2311,7 @@ function Kanban({
             priorityForLead(sourceConfigs, b) - priorityForLead(sourceConfigs, a) ||
             (b.createdAt || '').localeCompare(a.createdAt || ''),
           );
+        const statusTotal = statusCounts[status] ?? colLeads.length;
         const isDropTarget = dragOverStatus === status;
 
         return (
@@ -2261,12 +2333,17 @@ function Kanban({
           >
             <div className="mb-3 flex items-center justify-between">
               <Badge tone={statusTone[index]}>{statusLabel(status)}</Badge>
-              <span className="text-xs font-bold text-slate-400">{colLeads.length}</span>
+              <span className="text-xs font-bold text-slate-400">{statusTotal}</span>
             </div>
             <div className="flex flex-col gap-3">
-              {!colLeads.length && (
+              {!colLeads.length && statusTotal === 0 && (
                 <div className="rounded-lg border-2 border-dashed border-slate-200 bg-white/40 p-10 text-center text-xs font-semibold text-slate-400">
                   {isDropTarget ? 'Thả vào đây' : 'Trống'}
+                </div>
+              )}
+              {!colLeads.length && statusTotal > 0 && (
+                <div className="rounded-lg border-2 border-dashed border-slate-200 bg-white/40 p-10 text-center text-xs font-semibold text-slate-400">
+                  {isDropTarget ? 'Thả vào đây' : 'Không có trong trang này'}
                 </div>
               )}
               {colLeads.map((lead) => (

@@ -58,6 +58,11 @@ type LeadPageOptions = {
   sinceDays?: number;
   dateFrom?: string;
   dateTo?: string;
+  assignedTo?: string;
+  status?: string;
+  source?: string;
+  centerName?: string;
+  course?: string;
 };
 
 export type LeadNumberedPageOptions = {
@@ -66,6 +71,11 @@ export type LeadNumberedPageOptions = {
   sinceDays?: number;
   dateFrom?: string;
   dateTo?: string;
+  assignedTo?: string;
+  status?: string;
+  source?: string;
+  centerName?: string;
+  course?: string;
 };
 
 export type LeadNumberedPageResult = {
@@ -76,6 +86,7 @@ export type LeadNumberedPageResult = {
   totalPages: number;
   hasPrevious: boolean;
   hasNext: boolean;
+  statusCounts: Record<string, number>;
 };
 
 export type LeadAssignmentGroup = 'all' | 'unassigned' | 'stale' | 'returned' | 'assigned';
@@ -655,18 +666,24 @@ function daysAgoIso(days: number) {
 
 function normalizeDateStart(value?: string) {
   if (!value) return '';
-  return value.length === 10 ? `${value}T00:00:00.000Z` : value;
+  return value.length === 10 ? `${value}T00:00:00.000+07:00` : value;
 }
 
 function normalizeDateEnd(value?: string) {
   if (!value) return '';
-  return value.length === 10 ? `${value}T23:59:59.999Z` : value;
+  return value.length === 10 ? `${value}T23:59:59.999+07:00` : value;
+}
+
+function dateBoundaryToComparableIso(value: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
 }
 
 function leadPageDateRange(options: LeadPageOptions) {
   return {
-    dateFrom: normalizeDateStart(options.dateFrom) || daysAgoIso(options.sinceDays ?? DEFAULT_LEADS_SINCE_DAYS),
-    dateTo: normalizeDateEnd(options.dateTo),
+    dateFrom: dateBoundaryToComparableIso(normalizeDateStart(options.dateFrom)) || daysAgoIso(options.sinceDays ?? DEFAULT_LEADS_SINCE_DAYS),
+    dateTo: dateBoundaryToComparableIso(normalizeDateEnd(options.dateTo)),
   };
 }
 
@@ -676,6 +693,68 @@ function inLeadPageDateRange(lead: Lead, dateFrom: string, dateTo: string) {
   if (dateFrom && createdAt < dateFrom) return false;
   if (dateTo && createdAt > dateTo) return false;
   return true;
+}
+
+function leadMatchesServerFilters(lead: Lead, options: LeadPageOptions | LeadNumberedPageOptions, dateFrom: string, dateTo: string) {
+  if (options.assignedTo && lead.assignedTo !== options.assignedTo) return false;
+  if (options.status && lead.status !== options.status) return false;
+  if (options.source && lead.source !== options.source) return false;
+  if (options.centerName && lead.centerName !== options.centerName) return false;
+  if (options.course && lead.interestedCourse !== options.course) return false;
+  return inLeadPageDateRange(lead, dateFrom, dateTo);
+}
+
+function statusCountsForLeads(leads: Lead[], activeStatus?: string) {
+  const counts = Object.fromEntries(leadStatuses.map((status) => [status, 0])) as Record<string, number>;
+  leads.forEach((lead) => {
+    if (activeStatus && lead.status !== activeStatus) return;
+    counts[lead.status] = (counts[lead.status] || 0) + 1;
+  });
+  return counts;
+}
+
+function appendLeadPageFilterParams(params: URLSearchParams, options: LeadNumberedPageOptions | LeadPageOptions) {
+  const dateFrom = normalizeDateStart(options.dateFrom);
+  const dateTo = normalizeDateEnd(options.dateTo);
+  if (dateFrom) params.set('dateFrom', dateFrom);
+  if (dateTo) params.set('dateTo', dateTo);
+  if (options.assignedTo) params.set('assignedTo', options.assignedTo);
+  if (options.status) params.set('status', options.status);
+  if (options.source) params.set('source', options.source);
+  if (options.centerName) params.set('centerName', options.centerName);
+  if (options.course) params.set('course', options.course);
+}
+
+async function fetchRemoteNumberedLeadPage(options: LeadNumberedPageOptions, pageSize: number, requestedPage: number): Promise<LeadNumberedPageResult> {
+  const user = currentUser();
+  const token = await auth?.currentUser?.getIdToken();
+  if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+  const params = new URLSearchParams({
+    page: String(requestedPage),
+    pageSize: String(pageSize),
+    sinceDays: String(options.sinceDays ?? DEFAULT_LEADS_SINCE_DAYS),
+  });
+  appendLeadPageFilterParams(params, options);
+  params.set('id', 'leadPage');
+  const response = await fetch(`/api/app-config?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const payload = await response.json().catch(() => ({})) as Partial<LeadNumberedPageResult> & { error?: string };
+  if (!response.ok) throw new Error(payload.error || 'Không tải được trang leads.');
+  if (!Array.isArray(payload.leads)) throw new Error('Server trả về trang leads không hợp lệ.');
+
+  let remoteLeads = payload.leads.map((lead) => normalizeLead(lead));
+  if (canViewAllLeads(user)) remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
+  return {
+    leads: remoteLeads.filter((lead) => canViewLead(user, lead)),
+    page: Number(payload.page || 1),
+    pageSize: Number(payload.pageSize || pageSize),
+    total: Number(payload.total || 0),
+    totalPages: Number(payload.totalPages ?? 0),
+    hasPrevious: Boolean(payload.hasPrevious),
+    hasNext: Boolean(payload.hasNext),
+    statusCounts: payload.statusCounts || {},
+  };
 }
 
 async function syncEnrollmentToLms(lead: Lead) {
@@ -747,11 +826,11 @@ export const leadService = {
     if (!USE_FIREBASE) {
       loadLeads();
       const allLeads = visibleLeads(user)
-        .filter((lead) => inLeadPageDateRange(lead, dateFrom, dateTo))
+        .filter((lead) => leadMatchesServerFilters(lead, options, dateFrom, dateTo))
         .sort((a, b) => (b.createdAt || b.updatedAt || '').localeCompare(a.createdAt || a.updatedAt || ''));
       const total = allLeads.length;
-      const totalPages = Math.max(1, Math.ceil(total / pageSize));
-      const page = Math.min(requestedPage, totalPages);
+      const totalPages = Math.ceil(total / pageSize);
+      const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
       return delay({
         leads: allLeads.slice((page - 1) * pageSize, page * pageSize),
         page,
@@ -760,39 +839,46 @@ export const leadService = {
         totalPages,
         hasPrevious: page > 1,
         hasNext: page < totalPages,
+        statusCounts: statusCountsForLeads(allLeads, options.status),
       });
     }
 
-    const token = await auth?.currentUser?.getIdToken();
-    if (!token) throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
-    const params = new URLSearchParams({
-      page: String(requestedPage),
-      pageSize: String(pageSize),
-      sinceDays: String(options.sinceDays ?? DEFAULT_LEADS_SINCE_DAYS),
-    });
-    if (options.dateFrom) params.set('dateFrom', options.dateFrom);
-    if (options.dateTo) params.set('dateTo', options.dateTo);
-    params.set('id', 'leadPage');
-    const response = await fetch(`/api/app-config?${params.toString()}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    const payload = await response.json().catch(() => ({})) as Partial<LeadNumberedPageResult> & { error?: string };
-    if (!response.ok) throw new Error(payload.error || 'Không tải được trang leads.');
-    if (!Array.isArray(payload.leads)) throw new Error('Server trả về trang leads không hợp lệ.');
-
-    let remoteLeads = payload.leads.map((lead) => normalizeLead(lead));
-    if (canViewAllLeads(user)) remoteLeads = await replaceFirestoreDemoLeads(remoteLeads);
-    setStoreLeads(remoteLeads, true);
+    const result = await fetchRemoteNumberedLeadPage(options, pageSize, requestedPage);
+    setStoreLeads(result.leads, true);
     persistLeads();
     return {
       leads: visibleLeads(user),
-      page: Number(payload.page || 1),
-      pageSize: Number(payload.pageSize || pageSize),
-      total: Number(payload.total || 0),
-      totalPages: Number(payload.totalPages || 1),
-      hasPrevious: Boolean(payload.hasPrevious),
-      hasNext: Boolean(payload.hasNext),
+      page: result.page,
+      pageSize: result.pageSize,
+      total: result.total,
+      totalPages: result.totalPages,
+      hasPrevious: result.hasPrevious,
+      hasNext: result.hasNext,
+      statusCounts: result.statusCounts,
     };
+  },
+
+  getAllNumberedLeadsForExport: async (options: LeadNumberedPageOptions = {}): Promise<Lead[]> => {
+    const pageSize = Math.max(1, Math.min(DEFAULT_LEADS_PAGE_SIZE, Math.round(options.pageSize || DEFAULT_LEADS_PAGE_SIZE)));
+    const user = currentUser();
+    const { dateFrom, dateTo } = leadPageDateRange(options);
+
+    if (!USE_FIREBASE) {
+      loadLeads();
+      return delay(visibleLeads(user)
+        .filter((lead) => leadMatchesServerFilters(lead, options, dateFrom, dateTo))
+        .sort((a, b) => (b.createdAt || b.updatedAt || '').localeCompare(a.createdAt || a.updatedAt || '')));
+    }
+
+    const first = await fetchRemoteNumberedLeadPage({ ...options, page: 1 }, pageSize, 1);
+    const allLeads = [...first.leads];
+    for (let page = 2; page <= first.totalPages; page += 1) {
+      const next = await fetchRemoteNumberedLeadPage({ ...options, page }, pageSize, page);
+      allLeads.push(...next.leads);
+    }
+    const byId = new Map<string, Lead>();
+    allLeads.forEach((lead) => byId.set(lead.id, lead));
+    return Array.from(byId.values());
   },
 
   getLeadAssignmentPage: async (options: LeadAssignmentPageOptions = {}): Promise<LeadAssignmentPageResult> => {
@@ -827,6 +913,7 @@ export const leadService = {
         totalPages,
         hasPrevious: page > 1,
         hasNext: page < totalPages,
+        statusCounts: {},
       });
     }
 
@@ -859,6 +946,7 @@ export const leadService = {
       totalPages: Number(payload.totalPages || 1),
       hasPrevious: Boolean(payload.hasPrevious),
       hasNext: Boolean(payload.hasNext),
+      statusCounts: payload.statusCounts || {},
     };
   },
 
@@ -902,7 +990,7 @@ export const leadService = {
     if (!USE_FIREBASE) {
       loadLeads();
       const allLeads = visibleLeads(user)
-        .filter((lead) => inLeadPageDateRange(lead, dateFrom, dateTo))
+        .filter((lead) => leadMatchesServerFilters(lead, options, dateFrom, dateTo))
         .sort((a, b) => (b.createdAt || b.updatedAt || '').localeCompare(a.createdAt || a.updatedAt || ''));
       const startIndex = cursor?.id ? Math.max(0, allLeads.findIndex((lead) => lead.id === cursor.id) + 1) : 0;
       const page = allLeads.slice(startIndex, startIndex + safePageSize);
@@ -919,6 +1007,11 @@ export const leadService = {
 
     const constraints = [
       ...(user?.role === 'sales' ? [where('assignedTo', '==', user.id)] : []),
+      ...(user?.role !== 'sales' && options.assignedTo ? [where('assignedTo', '==', options.assignedTo)] : []),
+      ...(options.status ? [where('status', '==', options.status)] : []),
+      ...(options.source ? [where('source', '==', options.source)] : []),
+      ...(options.centerName ? [where('centerName', '==', options.centerName)] : []),
+      ...(options.course ? [where('interestedCourse', '==', options.course)] : []),
       where('createdAt', '>=', dateFrom),
       ...(dateTo ? [where('createdAt', '<=', dateTo)] : []),
       orderBy('createdAt', 'desc'),
