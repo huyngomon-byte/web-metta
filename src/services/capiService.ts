@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   orderBy,
   query,
   setDoc,
@@ -35,7 +36,7 @@ async function readMappings() {
 
 async function readEvents() {
   if (!USE_FIREBASE) return null;
-  const snap = await getDocs(query(collection(db!, COL_EVENTS), orderBy('createdAt', 'desc'))).catch(() => null);
+  const snap = await getDocs(query(collection(db!, COL_EVENTS), orderBy('createdAt', 'desc'), limit(100))).catch(() => null);
   return snap ? snap.docs.map((item) => ({ id: item.id, ...item.data() }) as CapiEventLog) : null;
 }
 
