@@ -30,8 +30,11 @@ const SETTINGS_DOC_ID = 'stringee';
 const DEFAULT_CALL_LOG_PAGE_SIZE = 100;
 const DEFAULT_CALL_LOG_SINCE_DAYS = 30;
 const DEFAULT_STRINGEE_FROM_NUMBER = '842488921797';
+const CALL_SETTINGS_TTL_MS = 2 * 60_000;
 let cachedLogs: CallLog[] = [];
 let cachedSettings: CallCenterSettings | null = null;
+let cachedSettingsAt = 0;
+let settingsReadInFlight: Promise<CallCenterSettings> | null = null;
 
 type CallLogListOptions = {
   pageSize?: number;
@@ -83,6 +86,7 @@ function readLocalSettings(): CallCenterSettings | null {
 
 function writeLocalSettings(settings: CallCenterSettings) {
   cachedSettings = settings;
+  cachedSettingsAt = Date.now();
   window.dispatchEvent(new Event('metta-call-settings-updated'));
 }
 
@@ -177,16 +181,29 @@ async function writeFirestorePresence(presence: AgentPresence) {
 }
 
 export const callCenterService = {
-  getSettings: async () => {
-    let settings = mapSettings(defaultCallCenterSettings());
-    if (USE_FIREBASE) {
-      const snap = await getDoc(doc(db!, COL_CALL_SETTINGS, SETTINGS_DOC_ID));
-      if (snap.exists()) settings = mapSettings(snap.data() as Partial<CallCenterSettings>);
-    } else {
-      settings = mapSettings(readLocalSettings() || defaultCallCenterSettings());
+  getSettings: async (force = false) => {
+    if (!force && cachedSettings && Date.now() - cachedSettingsAt < CALL_SETTINGS_TTL_MS) {
+      return delay(cachedSettings);
     }
-    writeLocalSettings(settings);
-    return delay(settings);
+    if (!force && settingsReadInFlight) return delay(await settingsReadInFlight);
+
+    settingsReadInFlight = (async () => {
+      let settings = mapSettings(defaultCallCenterSettings());
+      if (USE_FIREBASE) {
+        const snap = await getDoc(doc(db!, COL_CALL_SETTINGS, SETTINGS_DOC_ID));
+        if (snap.exists()) settings = mapSettings(snap.data() as Partial<CallCenterSettings>);
+      } else {
+        settings = mapSettings(readLocalSettings() || defaultCallCenterSettings());
+      }
+      writeLocalSettings(settings);
+      return settings;
+    })();
+
+    try {
+      return delay(await settingsReadInFlight);
+    } finally {
+      settingsReadInFlight = null;
+    }
   },
 
   saveSettings: async (settings: CallCenterSettings) => {

@@ -69,6 +69,7 @@ type LeadPageOptions = {
 export type LeadNumberedPageOptions = {
   page?: number;
   pageSize?: number;
+  afterDocId?: string;
   sinceDays?: number;
   dateFrom?: string;
   dateTo?: string;
@@ -88,6 +89,7 @@ export type LeadNumberedPageResult = {
   hasPrevious: boolean;
   hasNext: boolean;
   statusCounts: Record<string, number>;
+  nextPageCursor?: { id: string } | null;
 };
 
 export type LeadAssignmentGroup = 'all' | 'unassigned' | 'stale' | 'returned' | 'assigned';
@@ -736,6 +738,7 @@ async function fetchRemoteNumberedLeadPage(options: LeadNumberedPageOptions, pag
     sinceDays: String(options.sinceDays ?? DEFAULT_LEADS_SINCE_DAYS),
   });
   appendLeadPageFilterParams(params, options);
+  if (options.afterDocId) params.set('afterDocId', options.afterDocId);
   params.set('id', 'leadPage');
   const response = await fetch(`/api/app-config?${params.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -755,6 +758,7 @@ async function fetchRemoteNumberedLeadPage(options: LeadNumberedPageOptions, pag
     hasPrevious: Boolean(payload.hasPrevious),
     hasNext: Boolean(payload.hasNext),
     statusCounts: payload.statusCounts || {},
+    nextPageCursor: payload.nextPageCursor || null,
   };
 }
 
@@ -841,6 +845,7 @@ export const leadService = {
         hasPrevious: page > 1,
         hasNext: page < totalPages,
         statusCounts: statusCountsForLeads(allLeads, options.status),
+        nextPageCursor: null,
       });
     }
 
@@ -856,6 +861,7 @@ export const leadService = {
       hasPrevious: result.hasPrevious,
       hasNext: result.hasNext,
       statusCounts: result.statusCounts,
+      nextPageCursor: result.nextPageCursor,
     };
   },
 
@@ -873,9 +879,11 @@ export const leadService = {
 
     const first = await fetchRemoteNumberedLeadPage({ ...options, page: 1 }, pageSize, 1);
     const allLeads = [...first.leads];
+    let afterDocId = first.nextPageCursor?.id;
     for (let page = 2; page <= first.totalPages; page += 1) {
-      const next = await fetchRemoteNumberedLeadPage({ ...options, page }, pageSize, page);
+      const next = await fetchRemoteNumberedLeadPage({ ...options, page, afterDocId }, pageSize, page);
       allLeads.push(...next.leads);
+      afterDocId = next.nextPageCursor?.id;
     }
     const byId = new Map<string, Lead>();
     allLeads.forEach((lead) => byId.set(lead.id, lead));
@@ -1388,19 +1396,28 @@ export const leadService = {
   getActivitiesForLeads: async (leadIds: string[]): Promise<LeadActivity[]> => {
     const user = currentUser();
     if (!canViewAllLeads(user)) return [];
+    const ids = Array.from(new Set(leadIds.filter(Boolean)));
+    if (!ids.length) return [];
     if (!USE_FIREBASE) {
       loadActivities();
-      const set = new Set(leadIds);
+      const set = new Set(ids);
       return store.leadActivities.filter((activity) => set.has(activity.leadId));
     }
-    const snap = await getDocs(query(collection(db!, COL_ACTIVITIES), orderBy('createdAt', 'desc')));
+    const snaps = await Promise.all(
+      Array.from({ length: Math.ceil(ids.length / 30) }, (_, index) => ids.slice(index * 30, index * 30 + 30))
+        .map((batchIds) => getDocs(query(
+          collection(db!, COL_ACTIVITIES),
+          where('leadId', 'in', batchIds),
+        ))),
+    );
     const byLead = new Map<string, LeadActivity[]>();
-    snap.docs.forEach((item) => {
+    snaps.flatMap((snap) => snap.docs).forEach((item) => {
       const activity = { ...(item.data() as LeadActivity), id: item.id };
       if (!byLead.has(activity.leadId)) byLead.set(activity.leadId, []);
       byLead.get(activity.leadId)!.push(activity);
     });
-    return leadIds.flatMap((id) => byLead.get(id) ?? []);
+    byLead.forEach((items) => items.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')));
+    return ids.flatMap((id) => byLead.get(id) ?? []);
   },
 
   addActivity: async (activity: Partial<LeadActivity>) => {

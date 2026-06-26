@@ -61,6 +61,8 @@ const LEAD_STATUSES = [
 ] as const;
 const DASHBOARD_SUMMARY_CACHE_SCHEMA = 1;
 const DASHBOARD_SUMMARY_CACHE_MAX_BYTES = 900_000;
+const DASHBOARD_SUMMARY_CACHE_CHUNK_BYTES = 700_000;
+const DASHBOARD_SUMMARY_CACHE_MAX_CHUNKS = 100;
 const DASHBOARD_LEAD_FIELDS = [
   'id',
   'fullName',
@@ -332,6 +334,7 @@ async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
   const pageSize = positiveInteger(queryValue(req.query?.pageSize), LEAD_PAGE_SIZE, LEAD_PAGE_SIZE);
   const sinceDays = positiveInteger(queryValue(req.query?.sinceDays), LEAD_PAGE_DEFAULT_SINCE_DAYS, 3_650);
   const filters = readLeadPageFilters(req, sinceDays);
+  const afterDocId = cleanQueryValue(req.query?.afterDocId);
 
   const db = adminDb();
   const baseQuery = buildLeadPageQuery(db, user, filters);
@@ -343,8 +346,19 @@ async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
   const total = countSnap.data().count;
   const totalPages = Math.ceil(total / pageSize);
   const page = totalPages > 0 ? Math.min(requestedPage, totalPages) : 1;
-  const pageSnap = await baseQuery.offset((page - 1) * pageSize).limit(pageSize).get();
+  let pageQuery = baseQuery;
+  let usedCursor = false;
+  if (afterDocId && page > 1) {
+    const cursorSnap = await db.collection('leads').doc(afterDocId).get().catch(() => null);
+    if (cursorSnap?.exists) {
+      pageQuery = pageQuery.startAfter(cursorSnap);
+      usedCursor = true;
+    }
+  }
+  if (!usedCursor) pageQuery = pageQuery.offset((page - 1) * pageSize);
+  const pageSnap = await pageQuery.limit(pageSize).get();
   const leads = pageSnap.docs.map((item) => ({ ...item.data(), id: item.id }));
+  const lastDoc = pageSnap.docs[pageSnap.docs.length - 1];
 
   return res.status(200).json({
     leads,
@@ -355,6 +369,8 @@ async function readLeadNumberedPage(req: VercelRequest, res: VercelResponse) {
     statusCounts,
     hasPrevious: page > 1,
     hasNext: page < totalPages,
+    nextPageCursor: lastDoc ? { id: lastDoc.id } : null,
+    cursorUsed: usedCursor,
   });
 }
 
@@ -534,6 +550,100 @@ function dashboardPayloadSize(payload: unknown) {
   return Buffer.byteLength(JSON.stringify(payload), 'utf8');
 }
 
+function dashboardCacheChunkId(cacheKey: string, index: number) {
+  return `${cacheKey}_chunk_${index}`;
+}
+
+function splitDashboardPayload(payload: unknown) {
+  const json = JSON.stringify(payload);
+  const chunks: string[] = [];
+  let start = 0;
+
+  while (start < json.length) {
+    let end = Math.min(json.length, start + DASHBOARD_SUMMARY_CACHE_CHUNK_BYTES);
+    while (
+      end > start + 1
+      && Buffer.byteLength(json.slice(start, end), 'utf8') > DASHBOARD_SUMMARY_CACHE_CHUNK_BYTES
+    ) {
+      end = start + Math.max(1, Math.floor((end - start) * 0.9));
+    }
+    chunks.push(json.slice(start, end));
+    start = end;
+  }
+
+  return chunks;
+}
+
+async function readDashboardCachedPayload(db: FirebaseFirestore.Firestore, cacheKey: string, cached: Record<string, any>) {
+  if (cached.payload) return cached.payload;
+
+  const chunkCount = Number(cached.chunkCount || 0);
+  if (!Number.isFinite(chunkCount) || chunkCount <= 0 || chunkCount > DASHBOARD_SUMMARY_CACHE_MAX_CHUNKS) return null;
+
+  const chunkRefs = Array.from({ length: chunkCount }, (_, index) =>
+    db.collection('appCache').doc(dashboardCacheChunkId(cacheKey, index)),
+  );
+  const chunkSnaps = await Promise.all(chunkRefs.map((ref) => ref.get()));
+  if (chunkSnaps.some((snap) => !snap.exists)) return null;
+
+  const json = chunkSnaps
+    .map((snap) => String(snap.data()?.payloadJson || ''))
+    .join('');
+  if (!json) return null;
+
+  try {
+    return JSON.parse(json);
+  } catch (error) {
+    console.warn('[DashboardSummary] Cached chunk payload is invalid:', error);
+    return null;
+  }
+}
+
+async function writeDashboardCache(input: {
+  db: FirebaseFirestore.Firestore;
+  cacheKey: string;
+  cacheRef: FirebaseFirestore.DocumentReference;
+  latestUpdatedAt: string;
+  visibleLeadCount: number;
+  payload: Record<string, unknown>;
+}) {
+  const generatedAt = String(input.payload.generatedAt || new Date().toISOString());
+  const payloadSize = dashboardPayloadSize(input.payload);
+
+  if (payloadSize <= DASHBOARD_SUMMARY_CACHE_MAX_BYTES) {
+    await input.cacheRef.set({
+      schema: DASHBOARD_SUMMARY_CACHE_SCHEMA,
+      latestUpdatedAt: input.latestUpdatedAt,
+      visibleLeadCount: input.visibleLeadCount,
+      generatedAt,
+      chunkCount: 0,
+      payload: { ...input.payload, cached: false },
+    });
+    return;
+  }
+
+  const chunks = splitDashboardPayload({ ...input.payload, cached: false });
+  if (chunks.length > DASHBOARD_SUMMARY_CACHE_MAX_CHUNKS) return;
+  const batch = input.db.batch();
+  batch.set(input.cacheRef, {
+    schema: DASHBOARD_SUMMARY_CACHE_SCHEMA,
+    latestUpdatedAt: input.latestUpdatedAt,
+    visibleLeadCount: input.visibleLeadCount,
+    generatedAt,
+    chunkCount: chunks.length,
+    payload: null,
+  });
+  chunks.forEach((payloadJson, index) => {
+    batch.set(input.db.collection('appCache').doc(dashboardCacheChunkId(input.cacheKey, index)), {
+      cacheKey: input.cacheKey,
+      index,
+      payloadJson,
+      updatedAt: generatedAt,
+    });
+  });
+  await batch.commit();
+}
+
 async function readDashboardSummary(req: VercelRequest, res: VercelResponse) {
   const user = await requireActiveUser(req);
   if (!['admin', 'manager', 'sales'].includes(user.role)) throw new Error('User cannot read dashboard');
@@ -567,10 +677,12 @@ async function readDashboardSummary(req: VercelRequest, res: VercelResponse) {
     cached.schema === DASHBOARD_SUMMARY_CACHE_SCHEMA
     && cached.latestUpdatedAt === latestUpdatedAt
     && cached.visibleLeadCount === visibleLeadCount
-    && cached.payload
   ) {
-    rememberDashboardPayload(cacheKey, cached.payload);
-    return res.status(200).json({ ...cached.payload, cached: true });
+    const cachedPayload = await readDashboardCachedPayload(db, cacheKey, cached);
+    if (cachedPayload) {
+      rememberDashboardPayload(cacheKey, cachedPayload);
+      return res.status(200).json({ ...cachedPayload, cached: true });
+    }
   }
 
   const snap = await visibleBase.select(...DASHBOARD_LEAD_FIELDS).get();
@@ -587,17 +699,10 @@ async function readDashboardSummary(req: VercelRequest, res: VercelResponse) {
   };
   rememberDashboardPayload(cacheKey, payload);
 
-  if (dashboardPayloadSize(payload) <= DASHBOARD_SUMMARY_CACHE_MAX_BYTES) {
-    await cacheRef.set({
-      schema: DASHBOARD_SUMMARY_CACHE_SCHEMA,
-      latestUpdatedAt,
-      visibleLeadCount,
-      generatedAt: payload.generatedAt,
-      payload: { ...payload, cached: false },
-    }).catch((error) => {
+  await writeDashboardCache({ db, cacheKey, cacheRef, latestUpdatedAt, visibleLeadCount, payload })
+    .catch((error) => {
       console.warn('[DashboardSummary] Cache write failed:', error);
     });
-  }
 
   return res.status(200).json(payload);
 }

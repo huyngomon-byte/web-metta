@@ -124,7 +124,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const db = adminDb();
 
     if (req.method === 'GET') {
-      await cleanSampleProfiles();
       const snap = await db.collection(COL).orderBy('updatedAt', 'desc').get();
       const profiles = snap.docs
         .map((docSnap) => normalizeProfile({ ...docSnap.data(), id: docSnap.id }))

@@ -53,6 +53,7 @@ export function useLeads({
   const currentPageRef = useRef(1);
   const totalPagesRef = useRef(1);
   const numberedPageCacheRef = useRef(new Map<number, Lead[]>());
+  const numberedCursorCacheRef = useRef(new Map<number, string>());
 
   const loadNumberedPage = useCallback(async (targetPage: number, force = false) => {
     const safeTarget = Math.max(1, Math.round(targetPage || 1));
@@ -71,6 +72,7 @@ export function useLeads({
       const result = await leadService.getNumberedLeadsPage({
         page: safeTarget,
         pageSize,
+        afterDocId: numberedCursorCacheRef.current.get(safeTarget),
         sinceDays,
         dateFrom,
         dateTo,
@@ -91,6 +93,9 @@ export function useLeads({
       const cache = numberedPageCacheRef.current;
       cache.delete(result.page);
       cache.set(result.page, result.leads);
+      if (result.nextPageCursor?.id) {
+        numberedCursorCacheRef.current.set(result.page + 1, result.nextPageCursor.id);
+      }
       while (cache.size > 5) {
         const oldestPage = cache.keys().next().value as number | undefined;
         if (oldestPage === undefined) break;
@@ -158,6 +163,7 @@ export function useLeads({
   useEffect(() => {
     if (mode === 'numbered') {
       numberedPageCacheRef.current.clear();
+      numberedCursorCacheRef.current.clear();
       currentPageRef.current = 1;
       totalPagesRef.current = 1;
       setPage(1);

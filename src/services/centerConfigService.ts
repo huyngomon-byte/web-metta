@@ -7,7 +7,10 @@ import type { LeadCenterConfig } from '@/types/crm';
 const USE_FIREBASE = isFirebaseConfigured && !!db;
 const CONFIG_COLLECTION = 'appConfig';
 const CONFIG_DOC_ID = 'leadCenterConfigs';
+const CONFIG_CACHE_TTL_MS = 2 * 60_000;
 let cachedConfigs: LeadCenterConfig[] | null = null;
+let cachedConfigsAt = 0;
+let readInFlight: Promise<LeadCenterConfig[] | null> | null = null;
 
 function centerId(name: string) {
   return name
@@ -64,6 +67,7 @@ function isLegacyDefaultConfig(configs: LeadCenterConfig[]) {
 
 function cacheConfigs(configs: LeadCenterConfig[]) {
   cachedConfigs = configs;
+  cachedConfigsAt = Date.now();
 }
 
 function readLocalConfigs() {
@@ -86,21 +90,33 @@ function resolveRemoteConfigs(configs: LeadCenterConfig[]) {
 
 async function readRemoteConfigs() {
   if (!USE_FIREBASE) return null;
+  const local = readLocalConfigs();
+  if (local && Date.now() - cachedConfigsAt < CONFIG_CACHE_TTL_MS) return local;
+  if (readInFlight) return readInFlight;
+
+  readInFlight = (async () => {
+    try {
+      const apiConfigs = await readAppConfig<LeadCenterConfig>(CONFIG_DOC_ID, 'configs');
+      if (apiConfigs) return resolveRemoteConfigs(apiConfigs);
+    } catch (error) {
+      console.warn('[LeadCenterConfigs] API read failed, trying Firestore client:', error);
+    }
+    try {
+      const snap = await getDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID));
+      if (!snap.exists()) return null;
+      const data = snap.data() as { configs?: LeadCenterConfig[] };
+      if (!Array.isArray(data.configs)) return null;
+      return resolveRemoteConfigs(data.configs);
+    } catch (error) {
+      console.warn('[LeadCenterConfigs] Firestore read failed:', error);
+      throw error;
+    }
+  })();
+
   try {
-    const apiConfigs = await readAppConfig<LeadCenterConfig>(CONFIG_DOC_ID, 'configs');
-    if (apiConfigs) return resolveRemoteConfigs(apiConfigs);
-  } catch (error) {
-    console.warn('[LeadCenterConfigs] API read failed, trying Firestore client:', error);
-  }
-  try {
-    const snap = await getDoc(doc(db!, CONFIG_COLLECTION, CONFIG_DOC_ID));
-    if (!snap.exists()) return null;
-    const data = snap.data() as { configs?: LeadCenterConfig[] };
-    if (!Array.isArray(data.configs)) return null;
-    return resolveRemoteConfigs(data.configs);
-  } catch (error) {
-    console.warn('[LeadCenterConfigs] Firestore read failed:', error);
-    throw error;
+    return await readInFlight;
+  } finally {
+    readInFlight = null;
   }
 }
 

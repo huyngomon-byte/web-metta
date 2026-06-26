@@ -76,6 +76,30 @@ function mergeAppointments(localItems: Appointment[], firestoreItems: Appointmen
   return Array.from(map.values()).sort((a, b) => b.startTime.localeCompare(a.startTime));
 }
 
+async function readFirestoreAppointmentsForLead(leadId: string) {
+  if (!USE_FIREBASE || !leadId) return [];
+  const user = currentUser();
+  const appointmentsQuery = user?.role === 'sales'
+    ? query(collection(db!, COL), where('leadId', '==', leadId), where('assignedTo', '==', user.id))
+    : query(collection(db!, COL), where('leadId', '==', leadId));
+  const snap = await getDocs(appointmentsQuery);
+  return snap.docs
+    .map((item) => item.data() as Appointment)
+    .sort((a, b) => b.startTime.localeCompare(a.startTime));
+}
+
+async function refreshAppointmentsForLead(leadId: string) {
+  if (USE_FIREBASE) {
+    const remoteItems = await readFirestoreAppointmentsForLead(leadId);
+    store.appointments = mergeAppointments(
+      store.appointments.filter((item) => item.leadId !== leadId),
+      remoteItems,
+    );
+  } else {
+    loadLocal();
+  }
+}
+
 function defaultDuration(type: Appointment['type']) {
   if (type === 'Gọi lại') return 20;
   if (type === 'Tư vấn' || type === 'Test đầu vào') return 45;
@@ -265,12 +289,12 @@ export const appointmentService = {
   },
 
   getByLead: async (leadId: string) => {
-    await appointmentService.getAppointments();
+    await refreshAppointmentsForLead(leadId);
     return delay(store.appointments.filter((item) => item.leadId === leadId));
   },
 
   deleteLeadAppointmentType: async (leadId: string, type: Appointment['type']) => {
-    await appointmentService.getAppointments();
+    await refreshAppointmentsForLead(leadId);
     const targetType = appointmentTypeKey(type);
     const targets = store.appointments.filter((item) => item.leadId === leadId && appointmentTypeKey(item.type) === targetType);
     await Promise.all(targets.map((item) => deleteFirestore(item.id)));
@@ -281,7 +305,7 @@ export const appointmentService = {
 
   /** Xóa toàn bộ lịch hẹn liên quan đến một lead — gọi khi xóa lead để giữ data sync. */
   deleteAllForLead: async (leadId: string) => {
-    await appointmentService.getAppointments();
+    await refreshAppointmentsForLead(leadId);
     const targets = store.appointments.filter((item) => item.leadId === leadId);
     await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     store.appointments = store.appointments.filter((item) => item.leadId !== leadId);
@@ -290,7 +314,7 @@ export const appointmentService = {
   },
 
   deleteOtherForLead: async (leadId: string, keepId: string) => {
-    await appointmentService.getAppointments();
+    await refreshAppointmentsForLead(leadId);
     const targets = store.appointments.filter((item) => item.leadId === leadId && item.id !== keepId);
     await Promise.all(targets.map((item) => deleteFirestore(item.id)));
     store.appointments = store.appointments.filter((item) => !(item.leadId === leadId && item.id !== keepId));
@@ -308,7 +332,7 @@ export const appointmentService = {
     assignedToName?: string;
     notes?: string;
   }) => {
-    await appointmentService.getAppointments();
+    await refreshAppointmentsForLead(data.leadId);
     const timestamp = now();
     const title = data.phone ? `${data.leadName} - ${data.phone}` : data.leadName;
     const existing = store.appointments.find((item) => item.leadId === data.leadId && appointmentTypeKey(item.type) === appointmentTypeKey(data.type));
