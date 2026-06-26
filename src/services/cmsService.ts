@@ -378,14 +378,36 @@ function hasEbookLanding(items: PageSection[]) {
 
 const METTA_PLUS_SPLIT_TYPES = new Set([
   'Metta+ Hero',
+  'Metta+ Skills',
   'Metta+ Benefits',
   'Metta+ Age Clubs',
   'Metta+ Pass',
   'Metta+ Journey',
   'Metta+ Weekly Plan',
   'Metta+ Reasons',
+  'Metta+ Video',
   'Metta+ Form',
 ]);
+
+const METTA_PLUS_DEFAULT_SECTION_IDS = [
+  'sec-metta-plus-skills',
+  'sec-metta-plus-weekly-plan',
+  'sec-metta-plus-video',
+];
+
+const METTA_PLUS_CANONICAL_TYPE_ORDER: Record<string, number> = {
+  'Metta+ Hero': 1,
+  'Metta+ Skills': 2,
+  'Metta+ Benefits': 3,
+  'Metta+ Age Clubs': 4,
+  'Metta+ Pass': 5,
+  'Metta+ Journey': 6,
+  'Metta+ Weekly Plan': 7,
+  'Metta+ Reasons': 8,
+  'Metta+ Video': 9,
+  'Metta+ Form': 10,
+  'Metta+ Landing': 99,
+};
 
 function hasMettaPlusLanding(items: PageSection[]) {
   return items.some((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
@@ -430,11 +452,20 @@ function ensureFacilitiesSection(items: PageSection[]) {
   return sortSections([...items, { ...seed, updatedAt: now() }]);
 }
 
-function ensureMettaPlusWeeklyPlanSection(items: PageSection[]) {
-  if (items.some((section) => section.type === 'Metta+ Weekly Plan')) return items;
-  const seed = seedSections.find((section) => section.id === 'sec-metta-plus-weekly-plan');
-  if (!seed) return items;
-  return sortSections([...items, { ...seed, updatedAt: now() }]);
+function ensureMettaPlusDefaultSections(items: PageSection[]) {
+  const existingTypes = new Set(items.map((section) => section.type));
+  const additions = METTA_PLUS_DEFAULT_SECTION_IDS
+    .map((id) => seedSections.find((section) => section.id === id))
+    .filter((section): section is PageSection => Boolean(section) && !existingTypes.has(section.type))
+    .map((section) => ({ ...section, updatedAt: now() }));
+  const combined = [...items, ...additions].filter((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
+  return combined
+    .sort((a, b) => {
+      const orderA = METTA_PLUS_CANONICAL_TYPE_ORDER[a.type] ?? a.order;
+      const orderB = METTA_PLUS_CANONICAL_TYPE_ORDER[b.type] ?? b.order;
+      return orderA - orderB || a.order - b.order;
+    })
+    .map((section, index) => ({ ...section, order: index + 1 }));
 }
 
 function mergeHomepageDefaults(items: PageSection[]) {
@@ -778,7 +809,7 @@ export const cmsService = {
       let nextRemote = remote;
       if (pageId === 'page-phonics' && !hasEbookLanding(nextRemote)) nextRemote = fallbackSectionsForPage(pageId);
       if (shouldUseMettaPlusFallback(pageId, nextRemote)) nextRemote = fallbackSectionsForPage(pageId);
-      else if (pageId === 'page-metta-plus') nextRemote = ensureMettaPlusWeeklyPlanSection(nextRemote);
+      else if (pageId === 'page-metta-plus') nextRemote = ensureMettaPlusDefaultSections(nextRemote);
       const otherSections = store.sections.filter((section) => section.pageId !== pageId);
       store.sections = [...otherSections, ...nextRemote];
       persistCMS();
@@ -795,7 +826,7 @@ export const cmsService = {
       persistCMS();
       return delay(fallback);
     }
-    if (pageId === 'page-metta-plus') return delay(ensureMettaPlusWeeklyPlanSection(mergedLocal));
+    if (pageId === 'page-metta-plus') return delay(ensureMettaPlusDefaultSections(mergedLocal));
     return delay(mergedLocal);
   },
 

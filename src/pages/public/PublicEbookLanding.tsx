@@ -12,6 +12,7 @@ import { publicCmsService } from '@/services/publicCmsService';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { CmsPage, PageSection } from '@/types/cms';
 import { BRAND_LOGOS } from '@/lib/constants';
+import { trackMetaEvent } from '@/lib/metaPixel';
 
 const FALLBACK_SLUG = 'ebook-mam-non';
 const LEGACY_SLUG = 'landing-page-phonics';
@@ -84,7 +85,7 @@ export default function PublicEbookLanding() {
     if (!page) return;
     const prev = document.title;
     document.title = page.metaTitle || page.title || 'Sách tiền tiểu học | METTA Academy';
-    (window as any).fbq?.('track', 'ViewContent', { content_name: 'Preschool Ebook Landing' });
+    trackMetaEvent('ViewContent', { content_name: 'Preschool Ebook Landing' });
     return () => { document.title = prev; };
   }, [page]);
 
@@ -94,8 +95,9 @@ export default function PublicEbookLanding() {
   if (page === null) return <Navigate to="/" replace />;
 
   return (
-    <div className="lp-root min-h-screen bg-[var(--lp-surface-dim)] font-inter text-[var(--lp-ink)] antialiased">
+    <div id="top" className="lp-root min-h-screen bg-[var(--lp-surface-dim)] font-inter text-[var(--lp-ink)] antialiased">
       <MiniHeader />
+      <div className="h-[73px] sm:h-[79px]" aria-hidden />
       {sections.map((section) => <SectionRenderer key={section.id} section={section} />)}
       <MiniFooter />
       <StickyMobileCta />
@@ -114,7 +116,7 @@ function MiniHeader() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
   return (
-    <header className={`sticky top-0 z-50 transition-all ${scrolled ? 'bg-white/95 shadow-[0_8px_30px_-12px_rgba(0,47,95,.35)] backdrop-blur' : 'bg-white/80 backdrop-blur'}`}>
+    <header className={`fixed inset-x-0 top-0 z-50 transition-all ${scrolled ? 'bg-white/95 shadow-[0_8px_30px_-12px_rgba(0,47,95,.35)] backdrop-blur' : 'bg-white/80 shadow-[0_8px_28px_-24px_rgba(0,47,95,.35)] backdrop-blur'}`}>
       <div className="mx-auto flex max-w-[1220px] items-center justify-between gap-3 px-5 py-2.5 sm:px-6">
         <a href="#top" className="flex items-center gap-2.5">
           <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />

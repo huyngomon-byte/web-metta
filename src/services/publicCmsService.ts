@@ -43,14 +43,36 @@ const CLASSIC_MOJIBAKE = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â)/;
 const SUSPECT_TEXT = /(?:Ã|Ä|Å|Æ|Â|áº|á»|â|�|Ē)/g;
 const METTA_PLUS_SPLIT_TYPES = new Set([
   'Metta+ Hero',
+  'Metta+ Skills',
   'Metta+ Benefits',
   'Metta+ Age Clubs',
   'Metta+ Pass',
   'Metta+ Journey',
   'Metta+ Weekly Plan',
   'Metta+ Reasons',
+  'Metta+ Video',
   'Metta+ Form',
 ]);
+
+const METTA_PLUS_DEFAULT_SECTION_IDS = [
+  'sec-metta-plus-skills',
+  'sec-metta-plus-weekly-plan',
+  'sec-metta-plus-video',
+];
+
+const METTA_PLUS_CANONICAL_TYPE_ORDER: Record<string, number> = {
+  'Metta+ Hero': 1,
+  'Metta+ Skills': 2,
+  'Metta+ Benefits': 3,
+  'Metta+ Age Clubs': 4,
+  'Metta+ Pass': 5,
+  'Metta+ Journey': 6,
+  'Metta+ Weekly Plan': 7,
+  'Metta+ Reasons': 8,
+  'Metta+ Video': 9,
+  'Metta+ Form': 10,
+  'Metta+ Landing': 99,
+};
 
 const CANONICAL_HOME_BENEFITS = {
   title: 'Tại sao ba mẹ chọn METTA Academy?',
@@ -336,11 +358,19 @@ function ensureFacilitiesSection(items: PageSection[]) {
   return sortSections([...items, seed]);
 }
 
-function ensureMettaPlusWeeklyPlanSection(items: PageSection[]) {
-  if (items.some((section) => section.type === 'Metta+ Weekly Plan')) return items;
-  const seed = PUBLIC_SECTIONS.find((section) => section.id === 'sec-metta-plus-weekly-plan');
-  if (!seed) return items;
-  return sortSections([...items, seed]);
+function ensureMettaPlusDefaultSections(items: PageSection[]) {
+  const existingTypes = new Set(items.map((section) => section.type));
+  const additions = METTA_PLUS_DEFAULT_SECTION_IDS
+    .map((id) => PUBLIC_SECTIONS.find((section) => section.id === id))
+    .filter((section): section is PageSection => Boolean(section) && !existingTypes.has(section.type));
+  const combined = [...items, ...additions].filter((section) => METTA_PLUS_SPLIT_TYPES.has(section.type));
+  return combined
+    .sort((a, b) => {
+      const orderA = METTA_PLUS_CANONICAL_TYPE_ORDER[a.type] ?? a.order;
+      const orderB = METTA_PLUS_CANONICAL_TYPE_ORDER[b.type] ?? b.order;
+      return orderA - orderB || a.order - b.order;
+    })
+    .map((section, index) => ({ ...section, order: index + 1 }));
 }
 
 function sectionsForPage(pageId: string, sections = PUBLIC_SECTIONS) {
@@ -348,7 +378,7 @@ function sectionsForPage(pageId: string, sections = PUBLIC_SECTIONS) {
   if (pageId === 'page-home' && !hasUsableHomepageSections(local)) return fallbackSectionsForPage(pageId);
   if (pageId === 'page-phonics' && !hasEbookLanding(local)) return fallbackSectionsForPage(pageId);
   if (shouldUseMettaPlusFallback(pageId, local)) return fallbackSectionsForPage(pageId);
-  if (pageId === 'page-metta-plus') return ensureMettaPlusWeeklyPlanSection(local);
+  if (pageId === 'page-metta-plus') return ensureMettaPlusDefaultSections(local);
   return pageId === 'page-home' ? ensureFacilitiesSection(local) : local;
 }
 

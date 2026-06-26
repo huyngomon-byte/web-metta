@@ -536,12 +536,27 @@ export const sections: PageSection[] = [
     }),
   },
   {
-    id: 'sec-metta-plus-benefits', pageId: 'page-metta-plus', type: 'Metta+ Benefits', order: 2, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-skills', pageId: 'page-metta-plus', type: 'Metta+ Skills', order: 2, visible: true, createdAt: now, updatedAt: now,
+    title: 'METTA giúp ba mẹ giải tỏa nỗi lo về kỹ năng của con',
+    subtitle: 'Mỗi nỗi lo của ba mẹ đều được METTA giải quyết bằng một năng lực con phát triển thật sau mùa hè.',
+    extraData: JSON.stringify({
+      skills: [
+        { title: 'Tự tin giao tiếp tiếng Anh', icon: 'Send', color: 'orange' },
+        { title: 'Tư duy phản xạ & logic', icon: 'Compass', color: 'blue' },
+        { title: 'Kỹ năng làm việc nhóm', icon: 'Users', color: 'green' },
+        { title: 'Tự tin trước đám đông', icon: 'Mic2', color: 'pink' },
+        { title: 'Kỹ năng mềm & tự lập', icon: 'BadgeCheck', color: 'purple' },
+        { title: 'Sáng tạo & biểu đạt', icon: 'Palette', color: 'yellow' },
+      ],
+    }),
+  },
+  {
+    id: 'sec-metta-plus-benefits', pageId: 'page-metta-plus', type: 'Metta+ Benefits', order: 3, visible: true, createdAt: now, updatedAt: now,
     title: 'Con nhận được gì trong mùa hè này?',
     subtitle: 'Một chương trình hè cân bằng giữa nghệ thuật, tư duy, âm nhạc và vận động.',
     extraData: JSON.stringify([
       { title: 'Mỹ thuật sáng tạo', desc: 'Vẽ, phối màu, thủ công và hoàn thiện sản phẩm trưng bày.', icon: 'Palette', color: 'orange' },
-      { title: 'Cờ vua tư duy', desc: 'Làm quen luật chơi, nước đi và mini tournament vui vẻ.', icon: 'Compass', color: 'blue' },
+      { title: 'Cờ vua tư duy', desc: 'Làm quen luật chơi, nước đi và mini tournament vui vẻ.', icon: 'ChessPiece', color: 'blue' },
       { title: 'Thanh nhạc tự tin', desc: 'Luyện nhịp, phát âm, hơi thở và biểu diễn trước tập thể.', icon: 'Mic2', color: 'pink' },
       { title: 'Nhảy & Múa', desc: 'Rèn nhịp điệu, đội hình, phối hợp nhóm và biểu cảm sân khấu.', icon: 'Sparkles', color: 'green' },
       { title: 'Hoạt động tiếng Anh', desc: '10–15 phút đầu giờ với greeting, vocabulary và mini game.', icon: 'Users', color: 'purple' },
@@ -549,7 +564,7 @@ export const sections: PageSection[] = [
     ]),
   },
   {
-    id: 'sec-metta-plus-ages', pageId: 'page-metta-plus', type: 'Metta+ Age Clubs', order: 3, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-ages', pageId: 'page-metta-plus', type: 'Metta+ Age Clubs', order: 4, visible: true, createdAt: now, updatedAt: now,
     title: 'Lộ trình phù hợp cho trẻ 4–11 tuổi',
     subtitle: 'Nội dung được chia theo nhịp phát triển của trẻ mầm non và tiểu học.',
     extraData: JSON.stringify([
@@ -560,7 +575,7 @@ export const sections: PageSection[] = [
     ]),
   },
   {
-    id: 'sec-metta-plus-pass', pageId: 'page-metta-plus', type: 'Metta+ Pass', order: 4, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-pass', pageId: 'page-metta-plus', type: 'Metta+ Pass', order: 5, visible: true, createdAt: now, updatedAt: now,
     title: 'METTA Summer 2026 trên một landing page',
     subtitle: 'Tất cả thông tin chính của chương trình hè được gom gọn để phụ huynh xem nhanh và đăng ký ngay.',
     buttonText: 'Đăng ký ngay',
@@ -571,7 +586,7 @@ export const sections: PageSection[] = [
     }),
   },
   {
-    id: 'sec-metta-plus-journey', pageId: 'page-metta-plus', type: 'Metta+ Journey', order: 5, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-journey', pageId: 'page-metta-plus', type: 'Metta+ Journey', order: 6, visible: true, createdAt: now, updatedAt: now,
     title: 'Lộ trình học 6 tuần',
     subtitle: 'Từ làm quen, phát triển kỹ năng đến hoàn thiện sản phẩm và biểu diễn.',
     extraData: JSON.stringify([
@@ -582,7 +597,7 @@ export const sections: PageSection[] = [
     ]),
   },
   {
-    id: 'sec-metta-plus-weekly-plan', pageId: 'page-metta-plus', type: 'Metta+ Weekly Plan', order: 6, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-weekly-plan', pageId: 'page-metta-plus', type: 'Metta+ Weekly Plan', order: 7, visible: true, createdAt: now, updatedAt: now,
     title: 'Lộ trình chi tiết từng tuần',
     subtitle: 'Mỗi tuần có nội dung cụ thể theo từng bộ môn để phụ huynh dễ theo dõi.',
     extraData: JSON.stringify({
@@ -600,7 +615,7 @@ export const sections: PageSection[] = [
     }),
   },
   {
-    id: 'sec-metta-plus-reasons', pageId: 'page-metta-plus', type: 'Metta+ Reasons', order: 7, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-reasons', pageId: 'page-metta-plus', type: 'Metta+ Reasons', order: 8, visible: true, createdAt: now, updatedAt: now,
     title: 'Vì sao phụ huynh chọn METTA Summer?',
     subtitle: 'Lịch học rõ, bộ môn đa dạng, đầu ra có sản phẩm và sân khấu cho con.',
     extraData: JSON.stringify([
@@ -612,7 +627,23 @@ export const sections: PageSection[] = [
     ]),
   },
   {
-    id: 'sec-metta-plus-form', pageId: 'page-metta-plus', type: 'Metta+ Form', order: 8, visible: true, createdAt: now, updatedAt: now,
+    id: 'sec-metta-plus-video', pageId: 'page-metta-plus', type: 'Metta+ Video', order: 9, visible: true, createdAt: now, updatedAt: now,
+    title: 'Video & Cảm nhận phụ huynh',
+    subtitle: 'Những khoảnh khắc lớp học và chia sẻ thật giúp ba mẹ hình dung rõ hơn về METTA Summer.',
+    extraData: JSON.stringify({
+      videos: [
+        {
+          youtubeUrl: '',
+          poster: '/brand/metta-summer-hero-4x3.jpg',
+          title: 'Ngày trải nghiệm 21/6',
+          caption: 'Poster đã sẵn sàng. Dán link YouTube trong CMS để bật video facade.',
+        },
+      ],
+      testimonials: [],
+    }),
+  },
+  {
+    id: 'sec-metta-plus-form', pageId: 'page-metta-plus', type: 'Metta+ Form', order: 10, visible: true, createdAt: now, updatedAt: now,
     title: 'Đăng ký tư vấn METTA Summer 2026',
     subtitle: 'Để lại thông tin, METTA Academy sẽ tư vấn lớp hè phù hợp và hướng dẫn phụ huynh hoàn tất đăng ký.',
     buttonText: 'Đăng ký tư vấn',

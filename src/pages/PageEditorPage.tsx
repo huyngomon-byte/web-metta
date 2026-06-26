@@ -1,7 +1,37 @@
-import { ArrowDown, ArrowUp, ChevronDown, Eye, EyeOff, ImagePlus, Plus, Save, Trash2, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  BadgeCheck,
+  Bot,
+  CalendarCheck,
+  CheckCircle2,
+  ChevronDown,
+  ClipboardList,
+  Compass,
+  Eye,
+  EyeOff,
+  FileBadge2,
+  GraduationCap,
+  ImagePlus,
+  Lightbulb,
+  Mic2,
+  Palette,
+  Plus,
+  Rocket,
+  Save,
+  Send,
+  Sparkles,
+  Star,
+  Trash2,
+  Trophy,
+  Users,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { ChessPieceIcon } from '@/components/icons/ChessPieceIcon';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -17,8 +47,8 @@ const BLOCK_TYPES: BlockType[] = [
   'Hero', 'Stats', 'Benefits', 'Courses', 'Facilities', 'Testimonials', 'Teachers', 'News',
   'Lead Form', 'FAQ', 'CTA', 'About', 'Contact', 'Footer',
   'Ebook Hero', 'Ebook Skills', 'Ebook Why',
-  'Metta+ Hero', 'Metta+ Benefits', 'Metta+ Age Clubs', 'Metta+ Pass',
-  'Metta+ Journey', 'Metta+ Weekly Plan', 'Metta+ Reasons', 'Metta+ Form',
+  'Metta+ Hero', 'Metta+ Skills', 'Metta+ Benefits', 'Metta+ Age Clubs', 'Metta+ Pass',
+  'Metta+ Journey', 'Metta+ Weekly Plan', 'Metta+ Reasons', 'Metta+ Video', 'Metta+ Form',
 ];
 
 /* ── ImageUploader (full-size – dùng cho Hero, About) ───────────────── */
@@ -355,7 +385,26 @@ function StatsEditor({ value, onChange }: { value: string; onChange: (v: string)
 
 /* ── Benefits structured editor ─────────────────────────────────────── */
 type BenefitItem = { icon: string; color: string; title: string; desc: string };
-const ICON_OPTIONS = ['school','groups','rocket_launch','psychology','dashboard','monitoring','star','favorite','verified','workspace_premium','emoji_events','support_agent'];
+const MATERIAL_ICON_OPTIONS = [
+  { name: 'school', label: 'Trường học' },
+  { name: 'groups', label: 'Nhóm học viên' },
+  { name: 'rocket_launch', label: 'Tăng tốc' },
+  { name: 'psychology', label: 'Tư duy' },
+  { name: 'dashboard', label: 'Dashboard' },
+  { name: 'monitoring', label: 'Theo dõi' },
+  { name: 'star', label: 'Nổi bật' },
+  { name: 'favorite', label: 'Yêu thích' },
+  { name: 'verified', label: 'Xác thực' },
+  { name: 'workspace_premium', label: 'Chứng nhận' },
+  { name: 'emoji_events', label: 'Thành tích' },
+  { name: 'support_agent', label: 'Tư vấn' },
+  { name: 'abc', label: 'Chữ cái' },
+  { name: 'menu_book', label: 'Sách' },
+  { name: 'calculate', label: 'Tính toán' },
+  { name: 'category', label: 'Phân loại' },
+  { name: 'auto_stories', label: 'Câu chuyện' },
+  { name: 'draw', label: 'Sáng tạo' },
+];
 const COLOR_OPTIONS = [
   { label: 'Cam', value: 'text-cta-orange' },
   { label: 'Xanh dương', value: 'text-accent-cyan' },
@@ -373,6 +422,28 @@ function benefitColor(value: string) {
   if (value?.includes('cta-orange')) return '#F45A0A';
   if (value?.includes('accent-cyan')) return '#16A9D8';
   return '#003B7A';
+}
+
+function MaterialIconPicker({ value, onChange, color = '#003B7A' }: { value: string; onChange: (value: string) => void; color?: string }) {
+  return (
+    <div className="grid grid-cols-3 gap-1.5">
+      {MATERIAL_ICON_OPTIONS.map((option) => {
+        const selected = value === option.name;
+        return (
+          <button
+            key={option.name}
+            type="button"
+            title={`${option.label} (${option.name})`}
+            onClick={() => onChange(option.name)}
+            className={`flex min-h-[58px] flex-col items-center justify-center rounded-lg border px-1.5 py-2 text-center transition ${selected ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
+          >
+            <span className="material-symbols-outlined text-[22px]" style={{ color: selected ? undefined : color }}>{option.name}</span>
+            <span className="mt-1 max-w-full truncate text-[10px] font-semibold leading-tight">{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function BenefitsEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -410,12 +481,7 @@ function BenefitsEditor({ value, onChange }: { value: string; onChange: (v: stri
           <div className="grid grid-cols-2 gap-2">
             <div>
               <Label>Icon (Material Symbols)</Label>
-              <div className="flex gap-2 items-center">
-                <span className="material-symbols-outlined text-[24px]" style={{ color: benefitColor(item.color) }}>{item.icon || 'school'}</span>
-                <Select value={item.icon} onChange={(e) => update(i, 'icon', e.target.value)} className="flex-1 text-xs">
-                  {ICON_OPTIONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
-                </Select>
-              </div>
+              <MaterialIconPicker value={item.icon || 'school'} color={benefitColor(item.color)} onChange={(icon) => update(i, 'icon', icon)} />
             </div>
             <div>
               <Label>Màu icon</Label>
@@ -777,7 +843,6 @@ function ImagesGridEditor({ label, images, onChange, sizeNote }: { label: string
 
 type EbookCard = { icon: string; title: string; desc: string; iconColor?: string; cardColor?: string; borderColor?: string };
 const DEFAULT_EBOOK_CARD: EbookCard = { icon: 'star', title: '', desc: '' };
-const EBOOK_ICON_OPTIONS = Array.from(new Set([...ICON_OPTIONS, 'abc', 'menu_book', 'calculate', 'category', 'auto_stories', 'draw']));
 const EBOOK_COLOR_OPTIONS = [
   { value: '#F45A0A', label: 'Cam' },
   { value: '#16A34A', label: 'Xanh la' },
@@ -824,12 +889,7 @@ function EbookCardsEditor({ cards, onChange }: { cards: EbookCard[]; onChange: (
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label>Icon (Material Symbols)</Label>
-                <div className="flex gap-2 items-center">
-                  <span className="material-symbols-outlined text-[24px]" style={{ color: cardColor }}>{c.icon || 'star'}</span>
-                  <Select value={c.icon} onChange={(e) => update(i, 'icon', e.target.value)} className="flex-1 text-xs">
-                    {EBOOK_ICON_OPTIONS.map((ic) => <option key={ic} value={ic}>{ic}</option>)}
-                  </Select>
-                </div>
+                <MaterialIconPicker value={c.icon || 'star'} color={cardColor} onChange={(icon) => update(i, 'icon', icon)} />
               </div>
               <div>
                 <Label>Mau khung</Label>
@@ -945,12 +1005,15 @@ function EbookWhyEditor({ value, onChange }: { value: string; onChange: (v: stri
 /* ── Section Editor ─────────────────────────────────────────────────── */
 type MettaPlusColor = 'orange' | 'green' | 'purple' | 'yellow' | 'blue' | 'pink';
 type MettaPlusIcon =
-  | 'BadgeCheck' | 'Bot' | 'CalendarCheck' | 'CheckCircle2' | 'ClipboardList' | 'Compass'
+  | 'BadgeCheck' | 'Bot' | 'CalendarCheck' | 'CheckCircle2' | 'ChessPiece' | 'ClipboardList' | 'Compass'
   | 'FileBadge2' | 'GraduationCap' | 'Lightbulb' | 'Mic2' | 'Palette' | 'Rocket'
   | 'Send' | 'Sparkles' | 'Star' | 'Trophy' | 'Users';
 type MettaPlusCard = { title: string; desc: string; icon: MettaPlusIcon; color: MettaPlusColor };
+type MettaPlusSkill = { title: string; icon: MettaPlusIcon; color: MettaPlusColor };
 type HeroTagItem = { label: string; color?: MettaPlusColor };
 type MettaPlusHeroSlide = { src: string; title: string; alt?: string };
+type MettaPlusVideoItem = { youtubeUrl: string; poster: string; title: string; caption?: string };
+type MettaPlusTestimonial = { name: string; quote: string; image?: string; role?: string };
 type MettaPlusOfferFields = {
   offerOriginalPrice?: number;
   offerSalePrice?: number;
@@ -973,6 +1036,9 @@ type MettaPlusData = {
   heroSecondaryCta: string;
   heroImage: string;
   heroImageAlt: string;
+  skillsTitle: string;
+  skillsDesc: string;
+  skills: MettaPlusSkill[];
   benefitsTitle: string;
   benefitsDesc: string;
   benefits: MettaPlusCard[];
@@ -991,6 +1057,10 @@ type MettaPlusData = {
   reasonsTitle: string;
   reasonsDesc: string;
   reasons: MettaPlusCard[];
+  videoTitle: string;
+  videoDesc: string;
+  videos: MettaPlusVideoItem[];
+  testimonials: MettaPlusTestimonial[];
   formTitle: string;
   formDesc: string;
   formHighlights: string[];
@@ -1003,7 +1073,26 @@ type MettaPlusData = {
   offerCurrency: string;
 };
 
-const METTA_PLUS_ICON_OPTIONS: MettaPlusIcon[] = ['Sparkles', 'Star', 'Users', 'Bot', 'Mic2', 'Lightbulb', 'FileBadge2', 'CalendarCheck', 'Palette', 'Rocket', 'GraduationCap', 'ClipboardList', 'Compass', 'Trophy', 'BadgeCheck', 'CheckCircle2'];
+const METTA_PLUS_ICON_OPTIONS: { name: MettaPlusIcon; label: string; Icon: LucideIcon }[] = [
+  { name: 'Sparkles', label: 'Tỏa sáng', Icon: Sparkles },
+  { name: 'Star', label: 'Nổi bật', Icon: Star },
+  { name: 'Users', label: 'Nhóm', Icon: Users },
+  { name: 'Bot', label: 'AI / Tech', Icon: Bot },
+  { name: 'Mic2', label: 'Thanh nhạc', Icon: Mic2 },
+  { name: 'Lightbulb', label: 'Ý tưởng', Icon: Lightbulb },
+  { name: 'FileBadge2', label: 'Chứng nhận', Icon: FileBadge2 },
+  { name: 'CalendarCheck', label: 'Lịch trình', Icon: CalendarCheck },
+  { name: 'Palette', label: 'Mỹ thuật', Icon: Palette },
+  { name: 'Rocket', label: 'Tăng tốc', Icon: Rocket },
+  { name: 'GraduationCap', label: 'Học tập', Icon: GraduationCap },
+  { name: 'ClipboardList', label: 'Checklist', Icon: ClipboardList },
+  { name: 'ChessPiece', label: 'Cờ vua', Icon: ChessPieceIcon },
+  { name: 'Compass', label: 'Tư duy', Icon: Compass },
+  { name: 'Trophy', label: 'Thành tích', Icon: Trophy },
+  { name: 'BadgeCheck', label: 'Tin cậy', Icon: BadgeCheck },
+  { name: 'CheckCircle2', label: 'Hoàn thành', Icon: CheckCircle2 },
+  { name: 'Send', label: 'Giao tiếp', Icon: Send },
+];
 const METTA_PLUS_COLOR_OPTIONS: { value: MettaPlusColor; label: string }[] = [
   { value: 'orange', label: 'Cam' },
   { value: 'green', label: 'Xanh lá' },
@@ -1012,6 +1101,60 @@ const METTA_PLUS_COLOR_OPTIONS: { value: MettaPlusColor; label: string }[] = [
   { value: 'blue', label: 'Xanh dương' },
   { value: 'pink', label: 'Hồng' },
 ];
+
+function normalizeForSearch(value = '') {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function normalizeMettaPlusChessIcon(cards: MettaPlusCard[]) {
+  return cards.map((card) => {
+    const isChessCard = normalizeForSearch(card.title).includes('co vua');
+    return isChessCard && card.icon === 'Compass' ? { ...card, icon: 'ChessPiece' as MettaPlusIcon } : card;
+  });
+}
+
+function normalizeMettaPlusVideos(videos: MettaPlusVideoItem[]) {
+  return videos.filter((video) => {
+    const isLegacySecondaryPlaceholder =
+      !video.youtubeUrl?.trim() &&
+      video.poster === '/brand/workshop-kids.jpg' &&
+      normalizeForSearch(video.title).includes('khong khi lop hoc');
+    return !isLegacySecondaryPlaceholder;
+  });
+}
+
+function normalizeMettaPlusTestimonials(testimonials: MettaPlusTestimonial[]) {
+  return testimonials.filter((item) => {
+    const normalizedQuote = normalizeForSearch(item.quote);
+    const isLegacyPlaceholder =
+      normalizeForSearch(item.name).includes('dang cap nhat') &&
+      normalizedQuote.includes('metta se cap nhat');
+    return !isLegacyPlaceholder;
+  });
+}
+
+function MettaPlusIconPicker({ value, onChange }: { value: MettaPlusIcon; onChange: (value: MettaPlusIcon) => void }) {
+  return (
+    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
+      {METTA_PLUS_ICON_OPTIONS.map((option) => {
+        const selected = value === option.name;
+        const Icon = option.Icon;
+        return (
+          <button
+            key={option.name}
+            type="button"
+            title={`${option.label} (${option.name})`}
+            onClick={() => onChange(option.name)}
+            className={`flex min-h-[56px] flex-col items-center justify-center rounded-lg border px-1.5 py-2 text-center transition ${selected ? 'border-slate-900 bg-slate-900 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
+          >
+            <Icon size={18} />
+            <span className="mt-1 max-w-full truncate text-[10px] font-semibold leading-tight">{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const DEFAULT_METTA_PLUS_HERO_SLIDES: MettaPlusHeroSlide[] = [
   { src: '/brand/metta-summer-hero-4x3.jpg', title: 'Mỹ thuật', alt: 'Học viên METTA Summer 2026 trong hoạt động mỹ thuật' },
@@ -1049,6 +1192,16 @@ const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
   heroSecondaryCta: 'Xem lộ trình hè',
   heroImage: '/brand/metta-summer-hero-4x3.jpg',
   heroImageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè',
+  skillsTitle: 'METTA giúp ba mẹ giải tỏa nỗi lo về kỹ năng của con',
+  skillsDesc: 'Mỗi nỗi lo của ba mẹ đều được METTA giải quyết bằng một năng lực con phát triển thật sau mùa hè.',
+  skills: [
+    { title: 'Tự tin giao tiếp tiếng Anh', icon: 'Send', color: 'orange' },
+    { title: 'Tư duy phản xạ & logic', icon: 'Compass', color: 'blue' },
+    { title: 'Kỹ năng làm việc nhóm', icon: 'Users', color: 'green' },
+    { title: 'Tự tin trước đám đông', icon: 'Mic2', color: 'pink' },
+    { title: 'Kỹ năng mềm & tự lập', icon: 'BadgeCheck', color: 'purple' },
+    { title: 'Sáng tạo & biểu đạt', icon: 'Palette', color: 'yellow' },
+  ],
   offerOriginalPrice: DEFAULT_METTA_PLUS_PRICING.originalPrice,
   offerSalePrice: DEFAULT_METTA_PLUS_PRICING.salePrice,
   offerDiscountPercent: DEFAULT_METTA_PLUS_PRICING.discountPercent,
@@ -1057,7 +1210,7 @@ const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
   benefitsDesc: 'Một chương trình hè cân bằng giữa nghệ thuật, tư duy, âm nhạc và vận động.',
   benefits: [
     { title: 'Mỹ thuật sáng tạo', desc: 'Vẽ, phối màu, thủ công và hoàn thiện sản phẩm trưng bày.', icon: 'Palette', color: 'orange' },
-    { title: 'Cờ vua tư duy', desc: 'Làm quen luật chơi, nước đi và mini tournament vui vẻ.', icon: 'Compass', color: 'blue' },
+    { title: 'Cờ vua tư duy', desc: 'Làm quen luật chơi, nước đi và mini tournament vui vẻ.', icon: 'ChessPiece', color: 'blue' },
     { title: 'Thanh nhạc tự tin', desc: 'Luyện nhịp, phát âm, hơi thở và biểu diễn trước tập thể.', icon: 'Mic2', color: 'pink' },
     { title: 'Nhảy & Múa', desc: 'Rèn nhịp điệu, đội hình, phối hợp nhóm và biểu cảm sân khấu.', icon: 'Sparkles', color: 'green' },
     { title: 'Hoạt động tiếng Anh', desc: '10–15 phút đầu giờ với greeting, vocabulary và mini game.', icon: 'Users', color: 'purple' },
@@ -1094,6 +1247,17 @@ const DEFAULT_METTA_PLUS_DATA: MettaPlusData = {
     { title: 'Rèn tự tin', desc: 'Con luyện tương tác, biểu diễn và làm việc nhóm.', icon: 'Trophy', color: 'purple' },
     { title: 'Đăng ký nhanh', desc: 'Form và QR thanh toán ngay trên landing page.', icon: 'CheckCircle2', color: 'orange' },
   ],
+  videoTitle: 'Video & Cảm nhận phụ huynh',
+  videoDesc: 'Những khoảnh khắc lớp học và chia sẻ thật giúp ba mẹ hình dung rõ hơn về METTA Summer.',
+  videos: [
+    {
+      youtubeUrl: '',
+      poster: '/brand/metta-summer-hero-4x3.jpg',
+      title: 'Ngày trải nghiệm 21/6',
+      caption: 'Poster đã sẵn sàng. Dán link YouTube trong CMS để bật video facade.',
+    },
+  ],
+  testimonials: [],
   formTitle: 'Đăng ký tư vấn METTA Summer 2026',
   formDesc: 'Để lại thông tin, METTA Academy sẽ tư vấn lớp hè phù hợp và hướng dẫn phụ huynh hoàn tất đăng ký.',
   formHighlights: ['Tư vấn lớp hè theo tuổi', 'Gửi lịch học chi tiết', 'Hỗ trợ đăng ký và thanh toán QR'],
@@ -1119,7 +1283,7 @@ function MettaPlusCardsEditor({ label, cards, onChange }: { label: string; cards
             <div className="grid gap-2 md:grid-cols-2">
               <div><Label>Tiêu đề</Label><Input value={card.title} onChange={(e) => update(index, { title: e.target.value })} /></div>
               <div><Label>Mô tả 1 dòng</Label><Input value={card.desc} onChange={(e) => update(index, { desc: e.target.value })} /></div>
-              <div><Label>Icon</Label><Select value={card.icon} onChange={(e) => update(index, { icon: e.target.value as MettaPlusIcon })}>{METTA_PLUS_ICON_OPTIONS.map((icon) => <option key={icon} value={icon}>{icon}</option>)}</Select></div>
+              <div className="md:col-span-2"><Label>Icon</Label><MettaPlusIconPicker value={card.icon} onChange={(icon) => update(index, { icon })} /></div>
               <div><Label>Màu card</Label><Select value={card.color} onChange={(e) => update(index, { color: e.target.value as MettaPlusColor })}>{METTA_PLUS_COLOR_OPTIONS.map((color) => <option key={color.value} value={color.value}>{color.label}</option>)}</Select></div>
             </div>
           </div>
@@ -1356,8 +1520,10 @@ function MettaPlusEditor({ value, onChange }: { value: string; onChange: (v: str
 }
 
 type MettaPlusHeroExtra = MettaPlusOfferFields & { badge?: string; tags?: (string | HeroTagItem)[]; imageAlt?: string; slides?: MettaPlusHeroSlide[] };
+type MettaPlusSkillsExtra = { skills?: MettaPlusSkill[] };
 type MettaPlusPassExtra = { passCardTitle?: string; passCardMeta?: string; passItems?: string[] };
 type MettaPlusFormExtra = { highlights?: string[] };
+type MettaPlusVideoExtra = { videos?: MettaPlusVideoItem[]; testimonials?: MettaPlusTestimonial[] };
 
 function MettaPlusHeroSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
   const extra = parseObj<MettaPlusHeroExtra>(section.extraData, {
@@ -1409,12 +1575,138 @@ function MettaPlusCardsSectionEditor({
   fallback: MettaPlusCard[];
   onChange: (patch: Partial<PageSection>) => void;
 }) {
-  const cards = parseArr<MettaPlusCard>(section.extraData, fallback);
+  const cards = normalizeMettaPlusChessIcon(parseArr<MettaPlusCard>(section.extraData, fallback));
   return (
     <>
       <FieldCol><Label>Tiêu đề section *</Label><Input value={section.title} onChange={(e) => onChange({ title: e.target.value })} /></FieldCol>
       <FieldCol><Label>Mô tả ngắn</Label><Input value={section.subtitle || section.description || ''} onChange={(e) => onChange({ subtitle: e.target.value, description: e.target.value })} /></FieldCol>
       <MettaPlusCardsEditor label={label} cards={cards} onChange={(next) => onChange({ extraData: JSON.stringify(next) })} />
+    </>
+  );
+}
+
+function MettaPlusSkillsEditor({ skills, onChange }: { skills: MettaPlusSkill[]; onChange: (next: MettaPlusSkill[]) => void }) {
+  function update(index: number, patch: Partial<MettaPlusSkill>) {
+    onChange(skills.map((skill, i) => (i === index ? { ...skill, ...patch } : skill)));
+  }
+  return (
+    <div>
+      <Label>Danh sách năng lực <span className="text-slate-400 font-normal normal-case">— mỗi mục chỉ hiển thị tên + icon</span></Label>
+      <div className="flex flex-col gap-2">
+        {skills.map((skill, index) => (
+          <div key={index} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Năng lực {index + 1}</span>
+              <button type="button" onClick={() => onChange(skills.filter((_, i) => i !== index))} className="text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <div><Label>Tên năng lực</Label><Input value={skill.title} onChange={(e) => update(index, { title: e.target.value })} /></div>
+              <div><Label>Màu card</Label><Select value={skill.color} onChange={(e) => update(index, { color: e.target.value as MettaPlusColor })}>{METTA_PLUS_COLOR_OPTIONS.map((color) => <option key={color.value} value={color.value}>{color.label}</option>)}</Select></div>
+              <div className="md:col-span-2"><Label>Icon</Label><MettaPlusIconPicker value={skill.icon} onChange={(icon) => update(index, { icon })} /></div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...skills, { title: 'Năng lực mới', icon: 'Star', color: 'orange' }])} className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"><Plus size={13} /> Thêm năng lực</button>
+      </div>
+    </div>
+  );
+}
+
+function MettaPlusSkillsSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
+  const extra = parseObj<MettaPlusSkillsExtra>(section.extraData, {
+    skills: DEFAULT_METTA_PLUS_DATA.skills,
+  });
+  const skills = extra.skills?.length ? extra.skills : DEFAULT_METTA_PLUS_DATA.skills;
+  const syncExtra = (patch: Partial<MettaPlusSkillsExtra>) => onChange({ extraData: JSON.stringify({ ...extra, ...patch }) });
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề section *</Label><Input value={section.title} onChange={(e) => onChange({ title: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả ngắn</Label><Input value={section.subtitle || section.description || ''} onChange={(e) => onChange({ subtitle: e.target.value, description: e.target.value })} /></FieldCol>
+      </div>
+      <MettaPlusSkillsEditor skills={skills} onChange={(next) => syncExtra({ skills: next })} />
+    </>
+  );
+}
+
+function MettaPlusVideosEditor({ videos, onChange }: { videos: MettaPlusVideoItem[]; onChange: (next: MettaPlusVideoItem[]) => void }) {
+  function update(index: number, patch: Partial<MettaPlusVideoItem>) {
+    onChange(videos.map((video, i) => (i === index ? { ...video, ...patch } : video)));
+  }
+  return (
+    <div>
+      <Label>Video YouTube <span className="text-slate-400 font-normal normal-case">— iframe chỉ tải sau khi khách bấm play</span></Label>
+      <div className="flex flex-col gap-3">
+        {videos.map((video, index) => (
+          <div key={index} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Video {index + 1}</span>
+              <button type="button" onClick={() => onChange(videos.filter((_, i) => i !== index))} className="text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
+            </div>
+            <div className="flex gap-3">
+              <CompactImagePicker value={video.poster} onChange={(poster) => update(index, { poster })} shape="landscape" sizeNote="16:9" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div><Label>Tiêu đề video</Label><Input value={video.title} onChange={(e) => update(index, { title: e.target.value })} /></div>
+                <div><Label>Link YouTube</Label><Input value={video.youtubeUrl} onChange={(e) => update(index, { youtubeUrl: e.target.value })} placeholder="https://www.youtube.com/watch?v=..." className="font-mono text-xs" /></div>
+                <div><Label>Chú thích</Label><Textarea value={video.caption || ''} onChange={(e) => update(index, { caption: e.target.value })} className="h-16 text-sm" /></div>
+              </div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...videos, { youtubeUrl: '', poster: '', title: 'Video mới', caption: '' }])} className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"><Plus size={13} /> Thêm video</button>
+      </div>
+    </div>
+  );
+}
+
+function MettaPlusTestimonialsEditor({ testimonials, onChange }: { testimonials: MettaPlusTestimonial[]; onChange: (next: MettaPlusTestimonial[]) => void }) {
+  function update(index: number, patch: Partial<MettaPlusTestimonial>) {
+    onChange(testimonials.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+  return (
+    <div>
+      <Label>Cảm nhận phụ huynh</Label>
+      <div className="flex flex-col gap-3">
+        {testimonials.map((item, index) => (
+          <div key={index} className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500">Cảm nhận {index + 1}</span>
+              <button type="button" onClick={() => onChange(testimonials.filter((_, i) => i !== index))} className="text-red-400 hover:text-red-600"><Trash2 size={14} /></button>
+            </div>
+            <div className="flex gap-3">
+              <CompactImagePicker value={item.image || ''} onChange={(image) => update(index, { image })} shape="square" sizeNote="Avatar" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="grid gap-2 md:grid-cols-2">
+                  <div><Label>Tên</Label><Input value={item.name} onChange={(e) => update(index, { name: e.target.value })} /></div>
+                  <div><Label>Vai trò</Label><Input value={item.role || ''} onChange={(e) => update(index, { role: e.target.value })} placeholder="VD: Phụ huynh bé An" /></div>
+                </div>
+                <div><Label>Câu trích</Label><Textarea value={item.quote} onChange={(e) => update(index, { quote: e.target.value })} className="h-20 text-sm" /></div>
+              </div>
+            </div>
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...testimonials, { name: 'Phụ huynh', role: '', image: '', quote: 'Câu cảm nhận mới.' }])} className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-700"><Plus size={13} /> Thêm cảm nhận</button>
+      </div>
+    </div>
+  );
+}
+
+function MettaPlusVideoSectionEditor({ section, onChange }: { section: PageSection; onChange: (patch: Partial<PageSection>) => void }) {
+  const extra = parseObj<MettaPlusVideoExtra>(section.extraData, {
+    videos: DEFAULT_METTA_PLUS_DATA.videos,
+    testimonials: DEFAULT_METTA_PLUS_DATA.testimonials,
+  });
+  const videos = normalizeMettaPlusVideos(extra.videos?.length ? extra.videos : DEFAULT_METTA_PLUS_DATA.videos);
+  const testimonials = normalizeMettaPlusTestimonials(extra.testimonials?.length ? extra.testimonials : DEFAULT_METTA_PLUS_DATA.testimonials);
+  const syncExtra = (patch: Partial<MettaPlusVideoExtra>) => onChange({ extraData: JSON.stringify({ ...extra, ...patch }) });
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-2">
+        <FieldCol><Label>Tiêu đề section *</Label><Input value={section.title} onChange={(e) => onChange({ title: e.target.value })} /></FieldCol>
+        <FieldCol><Label>Mô tả ngắn</Label><Input value={section.subtitle || section.description || ''} onChange={(e) => onChange({ subtitle: e.target.value, description: e.target.value })} /></FieldCol>
+      </div>
+      <MettaPlusVideosEditor videos={videos} onChange={(next) => syncExtra({ videos: next })} />
+      <MettaPlusTestimonialsEditor testimonials={testimonials} onChange={(next) => syncExtra({ testimonials: next })} />
     </>
   );
 }
@@ -1686,6 +1978,8 @@ function SectionEditor({
 
         {val.type === 'Metta+ Hero' && <MettaPlusHeroSectionEditor section={val} onChange={set} />}
 
+        {val.type === 'Metta+ Skills' && <MettaPlusSkillsSectionEditor section={val} onChange={set} />}
+
         {val.type === 'Metta+ Benefits' && (
           <MettaPlusCardsSectionEditor section={val} label="6 card: Con nhận được gì?" fallback={DEFAULT_METTA_PLUS_DATA.benefits} onChange={set} />
         )}
@@ -1705,6 +1999,8 @@ function SectionEditor({
         {val.type === 'Metta+ Reasons' && (
           <MettaPlusCardsSectionEditor section={val} label="5 card: Vì sao phụ huynh chọn?" fallback={DEFAULT_METTA_PLUS_DATA.reasons} onChange={set} />
         )}
+
+        {val.type === 'Metta+ Video' && <MettaPlusVideoSectionEditor section={val} onChange={set} />}
 
         {val.type === 'Metta+ Form' && <MettaPlusFormSectionEditor section={val} onChange={set} />}
 

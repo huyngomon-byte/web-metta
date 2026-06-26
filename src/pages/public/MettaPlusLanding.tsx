@@ -18,6 +18,8 @@ import {
   Mic2,
   Palette,
   Phone,
+  Play,
+  Quote,
   Rocket,
   Send,
   Sparkles,
@@ -31,13 +33,14 @@ import { publicCmsService } from '@/services/publicCmsService';
 import { publicLeadService } from '@/services/publicLeadService';
 import { pages as seedPages, sections as seedSections, siteSettings as seedSettings } from '@/data/seed';
 import type { MettaPlusPricingOffer, PageSection } from '@/types/cms';
+import { ChessPieceIcon } from '@/components/icons/ChessPieceIcon';
 import {
   BRAND_LOGOS,
   DEFAULT_DEAL_CURRENCY,
   PUBLIC_PROGRAMS,
   SUMMER_ENGLISH_WARMUP_ACTIVITIES,
   SUMMER_ENGLISH_WARMUP_NOTE,
-  WON_LEAD_STATUS,
+  DEAL_QUOTED_STATUS,
   leadStatuses,
   resolveCourseDealSizeForProgram,
   summerWeeklyColumnSchedule,
@@ -63,12 +66,14 @@ const DEFAULT_OFFER_DISCOUNT_PERCENT = 20;
 
 const METTA_PLUS_SECTION_TYPES = [
   'Metta+ Hero',
+  'Metta+ Skills',
   'Metta+ Benefits',
   'Metta+ Age Clubs',
   'Metta+ Pass',
   'Metta+ Journey',
   'Metta+ Weekly Plan',
   'Metta+ Reasons',
+  'Metta+ Video',
   'Metta+ Form',
 ] as const;
 
@@ -79,6 +84,7 @@ type IconName =
   | 'Bot'
   | 'CalendarCheck'
   | 'CheckCircle2'
+  | 'ChessPiece'
   | 'ClipboardList'
   | 'Compass'
   | 'FileBadge2'
@@ -94,6 +100,7 @@ type IconName =
   | 'Users';
 type ColorKey = 'orange' | 'green' | 'purple' | 'yellow' | 'blue' | 'pink';
 type MettaPlusCard = { title: string; desc: string; icon: IconName; color: ColorKey };
+type MettaPlusSkill = { title: string; icon: IconName; color: ColorKey };
 type HeroTag = { label: string; color?: ColorKey };
 type SummerLandingHeroSlide = { src: string; title: string; alt: string };
 type SummerLandingPricing = Required<MettaPlusPricingOffer>;
@@ -103,6 +110,9 @@ type SummerWeeklyPlanExtra = {
   columns?: string[];
   rows?: string[][];
 };
+type MettaPlusVideoItem = { youtubeUrl: string; poster: string; title: string; caption?: string };
+type MettaPlusTestimonial = { name: string; quote: string; image?: string; role?: string };
+type MettaPlusVideoExtra = { videos?: MettaPlusVideoItem[]; testimonials?: MettaPlusTestimonial[] };
 
 type MettaPlusConfig = {
   heroBadge: string;
@@ -115,6 +125,9 @@ type MettaPlusConfig = {
   heroImage: string;
   heroImageAlt: string;
   heroSlides: SummerLandingHeroSlide[];
+  skillsTitle: string;
+  skillsDesc: string;
+  skills: MettaPlusSkill[];
   benefitsTitle: string;
   benefitsDesc: string;
   benefits: MettaPlusCard[];
@@ -134,6 +147,10 @@ type MettaPlusConfig = {
   reasonsTitle: string;
   reasonsDesc: string;
   reasons: MettaPlusCard[];
+  videoTitle: string;
+  videoDesc: string;
+  videos: MettaPlusVideoItem[];
+  testimonials: MettaPlusTestimonial[];
   formTitle: string;
   formDesc: string;
   formHighlights: string[];
@@ -210,6 +227,7 @@ const iconMap: Record<IconName, IconType> = {
   Bot,
   CalendarCheck,
   CheckCircle2,
+  ChessPiece: ChessPieceIcon,
   ClipboardList,
   Compass,
   FileBadge2,
@@ -227,6 +245,37 @@ const iconMap: Record<IconName, IconType> = {
 
 function getIcon(name?: string): IconType {
   return iconMap[(name || 'Star') as IconName] || Star;
+}
+
+function normalizeForSearch(value = '') {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function normalizeChessPieceIcon<T extends MettaPlusCard>(cards: T[]): T[] {
+  return cards.map((card) => {
+    const isChessCard = normalizeForSearch(card.title).includes('co vua');
+    return isChessCard && card.icon === 'Compass' ? { ...card, icon: 'ChessPiece' } : card;
+  });
+}
+
+function normalizeMettaPlusVideos(videos: MettaPlusVideoItem[]) {
+  return videos.filter((video) => {
+    const isLegacySecondaryPlaceholder =
+      !video.youtubeUrl?.trim() &&
+      video.poster === '/brand/workshop-kids.jpg' &&
+      normalizeForSearch(video.title).includes('khong khi lop hoc');
+    return !isLegacySecondaryPlaceholder;
+  });
+}
+
+function normalizeMettaPlusTestimonials(testimonials: MettaPlusTestimonial[]) {
+  return testimonials.filter((item) => {
+    const normalizedQuote = normalizeForSearch(item.quote);
+    const isLegacyPlaceholder =
+      normalizeForSearch(item.name).includes('dang cap nhat') &&
+      normalizedQuote.includes('metta se cap nhat');
+    return !isLegacyPlaceholder;
+  });
 }
 
 const colorClasses: Record<ColorKey, string> = {
@@ -284,11 +333,21 @@ const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
   heroImage: SUMMER_HERO_IMAGE,
   heroImageAlt: 'Học viên METTA Summer 2026 trong hoạt động mùa hè',
   heroSlides: DEFAULT_SUMMER_HERO_SLIDES,
+  skillsTitle: 'METTA giúp ba mẹ giải tỏa nỗi lo về kỹ năng của con',
+  skillsDesc: 'Mỗi nỗi lo của ba mẹ đều được METTA giải quyết bằng một năng lực con phát triển thật sau mùa hè.',
+  skills: [
+    { title: 'Tự tin giao tiếp tiếng Anh', icon: 'Send', color: 'orange' },
+    { title: 'Tư duy phản xạ & logic', icon: 'Compass', color: 'blue' },
+    { title: 'Kỹ năng làm việc nhóm', icon: 'Users', color: 'green' },
+    { title: 'Tự tin trước đám đông', icon: 'Mic2', color: 'pink' },
+    { title: 'Kỹ năng mềm & tự lập', icon: 'BadgeCheck', color: 'purple' },
+    { title: 'Sáng tạo & biểu đạt', icon: 'Palette', color: 'yellow' },
+  ],
   benefitsTitle: 'Con nhận được gì trong mùa hè này?',
   benefitsDesc: 'Một chương trình hè cân bằng giữa nghệ thuật, tư duy, âm nhạc và vận động.',
   benefits: [
     { title: 'Mỹ thuật sáng tạo', desc: 'Vẽ, phối màu, thủ công và hoàn thiện sản phẩm trưng bày.', icon: 'Palette', color: 'orange' },
-    { title: 'Cờ vua tư duy', desc: 'Làm quen luật chơi, nước đi và mini tournament vui vẻ.', icon: 'Compass', color: 'blue' },
+    { title: 'Cờ vua tư duy', desc: 'Làm quen luật chơi, nước đi và mini tournament vui vẻ.', icon: 'ChessPiece', color: 'blue' },
     { title: 'Thanh nhạc tự tin', desc: 'Luyện nhịp, phát âm, hơi thở và biểu diễn trước tập thể.', icon: 'Mic2', color: 'pink' },
     { title: 'Nhảy & Múa', desc: 'Rèn nhịp điệu, đội hình, phối hợp nhóm và biểu cảm sân khấu.', icon: 'Sparkles', color: 'green' },
     { title: 'Hoạt động tiếng Anh', desc: '10–15 phút đầu giờ với greeting, vocabulary và mini game.', icon: 'Users', color: 'purple' },
@@ -326,6 +385,17 @@ const DEFAULT_METTA_PLUS_CONFIG: MettaPlusConfig = {
     { title: 'Rèn tự tin', desc: 'Con luyện tương tác, biểu diễn và làm việc nhóm.', icon: 'Trophy', color: 'purple' },
     { title: 'Đăng ký nhanh', desc: 'Form và QR thanh toán ngay trên landing page.', icon: 'CheckCircle2', color: 'orange' },
   ],
+  videoTitle: 'Video & Cảm nhận phụ huynh',
+  videoDesc: 'Những khoảnh khắc lớp học và chia sẻ thật giúp ba mẹ hình dung rõ hơn về METTA Summer.',
+  videos: [
+    {
+      youtubeUrl: '',
+      poster: '/brand/metta-summer-hero-4x3.jpg',
+      title: 'Ngày trải nghiệm 21/6',
+      caption: 'Poster đã sẵn sàng. Dán link YouTube trong CMS để bật video facade.',
+    },
+  ],
+  testimonials: [],
   formTitle: 'Đăng ký tư vấn METTA Summer 2026',
   formDesc: 'Để lại thông tin, METTA Academy sẽ tư vấn lớp hè phù hợp và hướng dẫn phụ huynh hoàn tất đăng ký.',
   formHighlights: ['Tư vấn lớp hè theo tuổi', 'Gửi lịch học chi tiết', 'Hỗ trợ đăng ký và thanh toán QR'],
@@ -433,10 +503,19 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
         config.formId = section.formId ?? config.formId;
         break;
       }
+      case 'Metta+ Skills': {
+        const extra = parseObj(section.extraData, {
+          skills: config.skills,
+        });
+        config.skillsTitle = section.title || config.skillsTitle;
+        config.skillsDesc = section.subtitle || section.description || config.skillsDesc;
+        config.skills = extra.skills?.length ? extra.skills : config.skills;
+        break;
+      }
       case 'Metta+ Benefits':
         config.benefitsTitle = section.title || config.benefitsTitle;
         config.benefitsDesc = section.subtitle || section.description || config.benefitsDesc;
-        config.benefits = parseArr<MettaPlusCard>(section.extraData, config.benefits);
+        config.benefits = normalizeChessPieceIcon(parseArr<MettaPlusCard>(section.extraData, config.benefits));
         break;
       case 'Metta+ Age Clubs':
         config.agesTitle = section.title || config.agesTitle;
@@ -468,6 +547,17 @@ function buildMettaPlusConfig(sections: PageSection[]): MettaPlusConfig {
         config.reasonsDesc = section.subtitle || section.description || config.reasonsDesc;
         config.reasons = parseArr<MettaPlusCard>(section.extraData, config.reasons);
         break;
+      case 'Metta+ Video': {
+        const extra = parseObj<MettaPlusVideoExtra>(section.extraData, {
+          videos: config.videos,
+          testimonials: config.testimonials,
+        });
+        config.videoTitle = section.title || config.videoTitle;
+        config.videoDesc = section.subtitle || section.description || config.videoDesc;
+        config.videos = normalizeMettaPlusVideos(extra.videos?.length ? extra.videos : config.videos);
+        config.testimonials = normalizeMettaPlusTestimonials(extra.testimonials?.length ? extra.testimonials : config.testimonials);
+        break;
+      }
       case 'Metta+ Form': {
         const extra = parseObj(section.extraData, { highlights: config.formHighlights });
         config.formTitle = section.title || config.formTitle;
@@ -503,6 +593,91 @@ function MiniCard({ title, desc, icon, color }: MettaPlusCard) {
       </div>
       <h3 className="font-montserrat text-[18px] font-extrabold leading-tight">{title}</h3>
       <p className="mt-2 text-[14px] font-semibold leading-5 opacity-75">{desc}</p>
+    </article>
+  );
+}
+
+function SkillChip({ title, icon, color }: MettaPlusSkill) {
+  const Icon = getIcon(icon);
+  return (
+    <article className="group flex min-h-[92px] items-center gap-4 rounded-[26px] bg-white p-4 shadow-[0_18px_42px_-28px_rgba(8,36,74,.45)] ring-1 ring-[#E8EEF7] transition hover:-translate-y-0.5 hover:shadow-[0_22px_46px_-28px_rgba(8,36,74,.58)]">
+      <span className={`flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-2xl ring-1 ${colorClasses[color] || colorClasses.orange}`}>
+        <Icon className="h-6 w-6" strokeWidth={2.5} />
+      </span>
+      <h3 className="font-montserrat text-[17px] font-extrabold leading-snug text-[#08244A] sm:text-[18px]">{title}</h3>
+    </article>
+  );
+}
+
+function youtubeIdFromUrl(url: string) {
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+  const direct = trimmed.match(/^[a-zA-Z0-9_-]{11}$/);
+  if (direct) return direct[0];
+  const patterns = [
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/watch\?.*v=([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+  ];
+  return patterns.map((pattern) => trimmed.match(pattern)?.[1]).find(Boolean) || '';
+}
+
+function VideoFacade({ video, large = false }: { video: MettaPlusVideoItem; large?: boolean }) {
+  const [playing, setPlaying] = useState(false);
+  const youtubeId = youtubeIdFromUrl(video.youtubeUrl || '');
+  const poster = video.poster || SUMMER_HERO_IMAGE;
+  const title = video.title || 'METTA Summer video';
+
+  return (
+    <article className="overflow-hidden rounded-[30px] bg-white shadow-[0_22px_54px_-30px_rgba(8,36,74,.45)] ring-1 ring-[#E2EAF5]">
+      <div className="relative aspect-video overflow-hidden bg-[#EAF5FF]">
+        {playing && youtubeId ? (
+          <iframe
+            title={title}
+            src={`https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1&rel=0&modestbranding=1`}
+            className="h-full w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
+        ) : (
+          <>
+            <img src={poster} alt={title} loading="lazy" decoding="async" className="h-full w-full object-cover object-center" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#08244A]/82 via-[#08244A]/18 to-transparent" />
+            <button
+              type="button"
+              onClick={() => youtubeId && setPlaying(true)}
+              disabled={!youtubeId}
+              aria-label={youtubeId ? `Phát video ${title}` : `Video ${title} đang cập nhật`}
+              className={`absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full shadow-2xl transition ${large ? 'h-20 w-20' : 'h-16 w-16'} ${youtubeId ? 'bg-[#F37021] text-white hover:scale-105 hover:bg-[#E85D12]' : 'cursor-default bg-white/88 text-[#5D6B82]'}`}
+            >
+              <Play className={`${large ? 'h-9 w-9' : 'h-7 w-7'} translate-x-0.5`} fill="currentColor" />
+            </button>
+          </>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function TestimonialCard({ item }: { item: MettaPlusTestimonial }) {
+  return (
+    <article className="rounded-[26px] bg-white p-5 shadow-[0_18px_42px_-28px_rgba(8,36,74,.45)] ring-1 ring-[#E8EEF7]">
+      <Quote className="h-7 w-7 text-[#F37021]" />
+      <p className="mt-3 text-[15px] font-semibold leading-7 text-[#31435F]">{item.quote}</p>
+      <div className="mt-5 flex items-center gap-3">
+        {item.image ? (
+          <img src={item.image} alt={item.name} loading="lazy" decoding="async" className="h-12 w-12 rounded-full object-cover" />
+        ) : (
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EAF5FF] text-[#1268C4]">
+            <Users className="h-6 w-6" />
+          </span>
+        )}
+        <div>
+          <p className="font-montserrat text-[15px] font-extrabold text-[#08244A]">{item.name}</p>
+          {item.role && <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#8A97AA]">{item.role}</p>}
+        </div>
+      </div>
     </article>
   );
 }
@@ -666,7 +841,6 @@ function MettaPlusForm({ ctaText, formId, pricing }: { ctaText: string; formId: 
         },
         formId || 'metta-summer-2026-landing',
       );
-      (window as any).fbq?.('track', 'Lead', { content_name: SUMMER_COURSE_NAME });
       setForm({ parentName: '', studentName: '', phone: '', age: '' });
       setDone(true);
     } catch (err) {
@@ -784,12 +958,14 @@ function SummerLandingRegistrationModal({ onClose, pricing }: { onClose: () => v
         contactType: 'parent',
         source: paid ? 'Landing Page - METTA Summer 2026 QR chuyển khoản' : 'Landing Page - METTA Summer 2026 đăng ký ngay',
         interestedCourse: SUMMER_COURSE_NAME,
-        status: paid ? WON_LEAD_STATUS : leadStatuses[0],
+        // Clicking “Đã chuyển khoản” is only a payment claim. Sales must verify it
+        // before moving the lead to “Đã đăng ký học”, which emits Purchase.
+        status: paid ? DEAL_QUOTED_STATUS : leadStatuses[0],
         tags: paid ? ['Cần check CK'] : undefined,
         dealSize: pricing.salePrice,
         dealCurrency: pricing.currency,
         expectedRevenue: pricing.salePrice,
-        revenue: paid ? pricing.salePrice : undefined,
+        revenue: undefined,
         dealPackage: SUMMER_COURSE_PACKAGE,
         dealNote: `ND CK: ${cleanParentName} - ${cleanPhone}`,
         initialNote: paid
@@ -800,7 +976,6 @@ function SummerLandingRegistrationModal({ onClose, pricing }: { onClose: () => v
       setSuccessMessage(paid
         ? 'Đã ghi nhận đăng ký học METTA Summer 2026. Sales METTA sẽ kiểm tra chuyển khoản.'
         : 'METTA đã nhận thông tin. Tư vấn viên sẽ liên hệ để hỗ trợ phụ huynh đăng ký lớp hè.');
-      (window as any).fbq?.('track', 'Lead', { content_name: SUMMER_COURSE_NAME });
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'Không gửi được thông tin. Vui lòng thử lại.');
     } finally {
@@ -1182,6 +1357,32 @@ export default function MettaPlusLanding() {
             </div>
           </section>
         );
+      case 'Metta+ Skills':
+        return (
+          <section className="bg-[#F6FAFF] px-5 py-14 sm:px-6 lg:py-18">
+            <div className="mx-auto max-w-[1180px]">
+              <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-3xl">
+                  <span className="inline-flex rounded-full bg-[#FFF0E6] px-4 py-2 text-[12px] font-black uppercase tracking-[0.16em] text-[#E85D12]">
+                    Kỹ năng mùa hè
+                  </span>
+                  <h2 className="mt-4 font-montserrat text-[30px] font-black leading-tight text-[#08244A] sm:text-[40px]">
+                    {config.skillsTitle}
+                  </h2>
+                  <p className="mt-3 text-[16px] font-semibold leading-7 text-[#5D6B82]">
+                    {config.skillsDesc}
+                  </p>
+                </div>
+                <div className="hidden shrink-0 rounded-[24px] bg-[#FFC83D] p-4 text-[#08244A] shadow-xl md:block">
+                  <BadgeCheck className="h-8 w-8" />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {config.skills.map((skill) => <SkillChip key={skill.title} {...skill} />)}
+              </div>
+            </div>
+          </section>
+        );
       case 'Metta+ Benefits':
         return (
           <section className="bg-white px-5 py-14 sm:px-6 lg:py-18">
@@ -1314,6 +1515,25 @@ export default function MettaPlusLanding() {
             </div>
           </section>
         );
+      case 'Metta+ Video': {
+        return (
+          <section className="bg-[#FFF7EC] px-5 py-14 sm:px-6 lg:py-18">
+            <div className="mx-auto max-w-[1180px]">
+              <SectionHeader title={config.videoTitle} desc={config.videoDesc} wide />
+              <div className="mx-auto grid max-w-[960px] gap-5">
+                {config.videos.map((video, index) => (
+                  <VideoFacade key={`${video.title}-${video.poster}-${index}`} video={video} large />
+                ))}
+              </div>
+              {config.testimonials.length > 0 && (
+                <div className="mx-auto mt-5 grid max-w-[960px] gap-4 md:grid-cols-2">
+                  {config.testimonials.map((item) => <TestimonialCard key={`${item.name}-${item.quote}`} item={item} />)}
+                </div>
+              )}
+            </div>
+          </section>
+        );
+      }
       case 'Metta+ Form':
         return (
           <section id="metta-plus-form" className="relative bg-[#EAF5FF] px-5 py-14 sm:px-6 lg:py-18">
@@ -1355,8 +1575,8 @@ export default function MettaPlusLanding() {
   };
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#FFFDF8] font-inter text-[#08244A] antialiased">
-      <header className="sticky top-0 z-50 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
+    <div id="top" className="min-h-screen overflow-hidden bg-[#FFFDF8] font-inter text-[#08244A] antialiased">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl shadow-[0_10px_32px_-24px_rgba(8,36,74,.55)]">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
           <a href="#top" className="flex items-center gap-2.5">
             <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />
@@ -1367,6 +1587,7 @@ export default function MettaPlusLanding() {
           </button>
         </div>
       </header>
+      <div className="h-[77px] sm:h-[83px]" aria-hidden />
 
       <main>
         {sections
@@ -1386,7 +1607,7 @@ export default function MettaPlusLanding() {
 function MettaPlusSkeleton() {
   return (
     <div className="min-h-screen overflow-hidden bg-[#FFFDF8] font-inter text-[#08244A] antialiased">
-      <header className="sticky top-0 z-50 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-[#E8EEF7] bg-white/88 backdrop-blur-xl shadow-[0_10px_32px_-24px_rgba(8,36,74,.55)]">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-4 px-5 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
             <img src={HEADER_LOGO} alt="METTA Academy" className="h-[52px] w-auto object-contain sm:h-[58px]" />
@@ -1394,6 +1615,7 @@ function MettaPlusSkeleton() {
           <div className="h-11 w-40 animate-pulse rounded-full bg-orange-100" />
         </div>
       </header>
+      <div className="h-[77px] sm:h-[83px]" aria-hidden />
       <main>
         <section className="relative">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_12%,rgba(255,200,61,.26),transparent_28%),radial-gradient(circle_at_92%_10%,rgba(123,97,255,.16),transparent_30%),linear-gradient(180deg,#FFFFFF_0%,#FFF7EC_100%)]" />

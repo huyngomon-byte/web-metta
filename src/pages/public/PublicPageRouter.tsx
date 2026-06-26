@@ -11,12 +11,14 @@ import type { PageSection } from '@/types/cms';
 
 const METTA_PLUS_SECTION_TYPES = new Set([
   'Metta+ Hero',
+  'Metta+ Skills',
   'Metta+ Benefits',
   'Metta+ Age Clubs',
   'Metta+ Pass',
   'Metta+ Journey',
   'Metta+ Weekly Plan',
   'Metta+ Reasons',
+  'Metta+ Video',
   'Metta+ Form',
 ]);
 
