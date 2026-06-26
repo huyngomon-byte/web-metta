@@ -119,6 +119,7 @@ Server-only variables must not use `VITE_`:
 - `REQUIRE_APP_CHECK`
 - `CRON_SECRET`
 - `META_PIXEL_ID`
+- `VITE_META_PIXEL_ID` (public browser Pixel ID; keep equal to `META_PIXEL_ID`)
 - `META_ACCESS_TOKEN`
 - `META_TEST_EVENT_CODE`
 - `FIREBASE_PROJECT_ID`
@@ -129,6 +130,9 @@ Server-only variables must not use `VITE_`:
 
 - Public lead form submits through `/api/public-lead-submit`; it should not write leads directly from the browser.
 - Meta Access Token is server-only. The CAPI admin UI must not collect or store it client-side.
+- Vercel production always runs CAPI in production mode and never attaches `META_TEST_EVENT_CODE`, even when that variable is still configured.
+- `/capi` is read-only and reports the effective server environment. Runtime toggles are environment variables, not Firestore settings.
+- Browser/server Lead deduplication uses the same `meta_event_id`/`eventID` generated for each successful public form submission.
 - Public CMS reads should stay read-only. CMS repair/seed/write flows belong in authenticated admin actions.
 - Rotate Firebase service account keys and Meta tokens if they were ever present in a local `.env` that may have been shared or deployed.
 
@@ -142,4 +146,3 @@ Recommended deploy flow:
 4. Output directory: `dist`.
 5. Add all server-only environment variables in Vercel Project Settings.
 6. Use Vercel preview deployments before promoting to production.
-

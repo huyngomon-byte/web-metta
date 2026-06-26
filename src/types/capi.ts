@@ -31,7 +31,8 @@ export interface CapiEventLog {
   sourceUrl: string;
   leadId?: string;
   formId?: string;
-  status: 'success' | 'failed' | 'pending';
+  mode?: 'production' | 'test';
+  status: 'success' | 'failed' | 'pending' | 'skipped';
   responseMessage: string;
   ledgerId?: string;
   attempts?: number;
@@ -39,4 +40,35 @@ export interface CapiEventLog {
   createdAt: string;
   updatedAt?: string;
   payloadPreview: Record<string, unknown>;
+  retryCount?: number;
+  lastRetryAt?: string;
+  hasEm?: boolean;
+  hasPh?: boolean;
+  hasFbp?: boolean;
+  hasFbc?: boolean;
+  hasExternalId?: boolean;
+  usedCustomerMeta?: boolean;
+}
+
+export interface CapiRuntimeConfig {
+  mode: 'production' | 'test';
+  vercelEnv: string;
+  capiEnabled: boolean;
+  browserPixelEnabled: boolean;
+  pixelId: string;
+  browserPixelId: string;
+  pixelIdsMatch: boolean;
+  accessTokenConfigured: boolean;
+  testEventCodeConfigured: boolean;
+  testEventCodeActive: boolean;
+  testEventCodeMasked: string;
+  graphVersion: string;
+  timeoutMs: number;
+  manualEventsEnabled: boolean;
+  eventToggles: Record<'Lead' | 'QualifiedLead' | 'InitiateCheckout' | 'Purchase' | 'LeadFailed', boolean>;
+  statusMappings: Array<{
+    status: string;
+    eventName: string;
+    destination: string;
+  }>;
 }

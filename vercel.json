@@ -43,6 +43,10 @@
       "destination": "/login.html"
     },
     {
+      "source": "/api/meta-lead-webhook",
+      "destination": "/api/public-lead-submit?webhook=meta-lead"
+    },
+    {
       "source": "/((?!api/.*).*)",
       "destination": "/index.html"
     }

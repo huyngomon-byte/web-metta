@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "lint": "eslint .",
+    "test:capi": "node --experimental-strip-types --test scripts/meta-capi.test.mjs",
     "test:lead-import": "node --experimental-strip-types --test scripts/lead-import-rules.test.mjs"
   },
   "dependencies": {

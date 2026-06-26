@@ -146,13 +146,13 @@ function HeroLeadForm({ formId = 'preschool-ebook-hero', selectLabel = 'Độ tu
           age: form.age,
           source: 'Landing Page',
           status: leadStatuses[0],
+          metaContentName: pixelContent,
           initialNote: [noteLabel, form.age && `${selectLabel}: ${form.age}`].filter(Boolean).join(' · '),
           company: String(fd.get('company') || ''),
           website: String(fd.get('website') || ''),
         },
         formId,
       );
-      (window as any).fbq?.('track', 'Lead', { content_name: pixelContent });
       setDone(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không gửi được thông tin. Vui lòng thử lại.');

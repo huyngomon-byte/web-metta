@@ -50,6 +50,7 @@ export default function CapiEventsPage() {
             <option value="success">success</option>
             <option value="failed">failed</option>
             <option value="pending">pending</option>
+            <option value="skipped">skipped</option>
           </Select>
           <Input
             placeholder="Page / slug"
@@ -68,7 +69,9 @@ export default function CapiEventsPage() {
                 <TH>Event ID</TH>
                 <TH>Form</TH>
                 <TH>Lead</TH>
+                <TH>Mode</TH>
                 <TH>Status</TH>
+                <TH>Match data</TH>
                 <TH>Attempts</TH>
                 <TH>Response</TH>
                 <TH>Created</TH>
@@ -84,10 +87,14 @@ export default function CapiEventsPage() {
                     <TD className="max-w-[220px] truncate font-mono text-xs">{event.eventId}</TD>
                     <TD>{event.formId}</TD>
                     <TD>{event.leadId || '-'}</TD>
+                    <TD><Badge tone={event.mode === 'production' ? 'green' : 'amber'}>{event.mode || 'legacy'}</Badge></TD>
                     <TD>
-                      <Badge tone={event.status === 'success' ? 'green' : event.status === 'failed' ? 'red' : 'amber'}>
+                      <Badge tone={event.status === 'success' ? 'green' : event.status === 'failed' ? 'red' : event.status === 'skipped' ? 'gray' : 'amber'}>
                         {event.status}
                       </Badge>
+                    </TD>
+                    <TD className="whitespace-nowrap text-xs text-slate-500">
+                      {[event.hasEm && 'em', event.hasPh && 'ph', event.hasFbp && 'fbp', event.hasFbc && 'fbc', event.hasExternalId && 'external_id'].filter(Boolean).join(', ') || 'legacy'}
                     </TD>
                     <TD>{event.attempts || 1}</TD>
                     <TD className="max-w-[320px] truncate text-xs text-slate-500" title={event.responseMessage}>

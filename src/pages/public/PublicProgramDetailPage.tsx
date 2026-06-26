@@ -8,7 +8,7 @@ import {
   SUMMER_DEFAULTS,
   SUMMER_ENGLISH_WARMUP_ACTIVITIES,
   SUMMER_ENGLISH_WARMUP_NOTE,
-  WON_LEAD_STATUS,
+  DEAL_QUOTED_STATUS,
   leadStatuses,
   resolveCourseDealSizeForProgram,
   summerWeeklyColumnSchedule,
@@ -977,12 +977,14 @@ function SummerRegistrationModal({ program, onClose }: { program: ProgramCms; on
         contactType: 'parent',
         source: paid ? `Website - ${sourceLabel} QR chuyển khoản` : `Website - ${sourceLabel} đăng ký ngay`,
         interestedCourse: courseName || sourceLabel,
-        status: paid ? WON_LEAD_STATUS : leadStatuses[0],
+        // A self-reported transfer is not a confirmed purchase. Confirmation in CRM
+        // moves this lead to WON and emits the Purchase conversion.
+        status: paid ? DEAL_QUOTED_STATUS : leadStatuses[0],
         tags: paid ? ['Cần check CK'] : undefined,
         dealSize: price,
         dealCurrency: currency,
         expectedRevenue: price,
-        revenue: paid ? price : undefined,
+        revenue: undefined,
         dealPackage: courseName || sourceLabel,
         dealNote: `ND CK: ${cleanParentName} - ${cleanPhone}`,
         initialNote: paid

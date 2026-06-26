@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import { adminAppCheck, adminDb } from './_firebaseAdmin.js';
 import { dedupeIndexPayload, findLeadByDedupe, normalizeLeadPhone } from './_leadDedupe.js';
-import { sendLeadCapiSignal } from './_metaCapi.js';
+import { normalizeMetaEventId, sendLeadCapiSignal } from './_metaCapi.js';
+import metaLeadWebhookHandler from './_metaLeadWebhook.js';
 import { notifyLeadManagers } from './_notifications.js';
 
 const LEAD_STATUSES = [
@@ -17,6 +18,7 @@ const LEAD_STATUSES = [
 ];
 
 const WON_LEAD_STATUS = 'Đã đăng ký học';
+const DEAL_QUOTED_STATUS = 'Đã báo phí/Chờ chốt';
 const DEFAULT_DEAL_CURRENCY = 'VND';
 const METTA_SUMMER_COURSE = 'METTA Summer 2026';
 const METTA_SUMMER_DEAL_SIZE = 1999000;
@@ -60,7 +62,9 @@ type LeadDoc = Record<string, any> & {
 type VercelRequest = {
   method?: string;
   headers: Record<string, string | string[] | undefined>;
+  query?: Record<string, string | string[] | undefined>;
   body?: any;
+  url?: string;
 };
 
 type VercelResponse = {
@@ -83,6 +87,16 @@ function cleanCourseName(value: unknown) {
 
 function firstHeaderValue(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function queryValue(req: VercelRequest, key: string) {
+  const value = req.query?.[key];
+  if (Array.isArray(value)) return value[0] || '';
+  return value || '';
+}
+
+function isMetaLeadWebhookRequest(req: VercelRequest) {
+  return queryValue(req, 'webhook') === 'meta-lead';
 }
 
 function clientIp(req: VercelRequest) {
@@ -192,18 +206,48 @@ function mergeTags(existing: unknown, incoming: unknown) {
 
 function trackingFromLead(lead: Record<string, any>, sourceUrl: string, req: VercelRequest, now: string) {
   const input = lead.tracking && typeof lead.tracking === 'object' ? lead.tracking : {};
+  const fbclid = cleanOptional(input.fbclid);
+  const capturedAt = cleanOptional(input.capturedAt) || now;
+  const capturedAtMs = Date.parse(capturedAt);
+  const fbc = cleanOptional(input.fbc) || (fbclid
+    ? `fb.1.${Number.isFinite(capturedAtMs) ? capturedAtMs : Date.now()}.${fbclid}`
+    : undefined);
   return {
     sourceUrl,
     fbp: cleanOptional(input.fbp),
-    fbc: cleanOptional(input.fbc),
-    fbclid: cleanOptional(input.fbclid),
+    fbc,
+    fbclid,
     utmSource: cleanOptional(input.utmSource),
+    utmMedium: cleanOptional(input.utmMedium),
     utmCampaign: cleanOptional(input.utmCampaign),
     utmContent: cleanOptional(input.utmContent),
     utmTerm: cleanOptional(input.utmTerm),
     userAgent: cleanOptional(input.userAgent) || firstHeaderValue(req.headers['user-agent']) || '',
-    capturedAt: cleanOptional(input.capturedAt) || now,
+    capturedAt,
   };
+}
+
+function originalMetaValue(meta: Record<string, any>, snakeKey: string, camelKey: string, fallback?: string) {
+  return cleanOptional(meta[snakeKey]) || cleanOptional(meta[camelKey]) || cleanOptional(fallback);
+}
+
+function customerMetaFromSubmission(existingLead: LeadDoc | null, tracking: ReturnType<typeof trackingFromLead>, sourceUrl: string, req: VercelRequest) {
+  const existing = existingLead?.customerMeta && typeof existingLead.customerMeta === 'object'
+    ? existingLead.customerMeta
+    : {};
+  const originalIp = clientIp(req);
+  return stripUndefined({
+    client_ip_address: originalMetaValue(existing, 'client_ip_address', 'clientIpAddress', originalIp === 'unknown' ? '' : originalIp),
+    client_user_agent: originalMetaValue(existing, 'client_user_agent', 'clientUserAgent', tracking.userAgent),
+    fbp: originalMetaValue(existing, 'fbp', 'fbp', tracking.fbp),
+    fbc: originalMetaValue(existing, 'fbc', 'fbc', tracking.fbc),
+    event_source_url: originalMetaValue(existing, 'event_source_url', 'eventSourceUrl', sourceUrl),
+    first_utm_source: originalMetaValue(existing, 'first_utm_source', 'firstUtmSource', tracking.utmSource),
+    first_utm_medium: originalMetaValue(existing, 'first_utm_medium', 'firstUtmMedium', tracking.utmMedium),
+    first_utm_campaign: originalMetaValue(existing, 'first_utm_campaign', 'firstUtmCampaign', tracking.utmCampaign),
+    first_utm_content: originalMetaValue(existing, 'first_utm_content', 'firstUtmContent', tracking.utmContent),
+    first_utm_term: originalMetaValue(existing, 'first_utm_term', 'firstUtmTerm', tracking.utmTerm),
+  });
 }
 
 async function priorityForSource(db: ReturnType<typeof adminDb>, source: string) {
@@ -278,7 +322,7 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
 
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
-  const eventId = `lead_${nowMs}_${Math.random().toString(36).slice(2)}`;
+  const metaEventId = normalizeMetaEventId(lead.meta_event_id || lead.metaEventId) || `metta_${crypto.randomUUID()}`;
   const source = String(lead.source || 'Website');
   const referralPhone = lead.referralPhone ? normalizeLeadPhone(lead.referralPhone) : '';
   if (String(source).toLowerCase() === 'referral' && !isValidPhone(referralPhone)) {
@@ -314,11 +358,16 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
   const assignedExpiresAtMs = assignedTo ? Number(existingLead?.assignedExpiresAtMs || 0) : 0;
   const assignedStatus = assignedTo ? existingLead?.assignedStatus || 'active' : 'unassigned';
   const tracking = trackingFromLead(lead, sourceUrl, req, now);
+  const customerMeta = customerMetaFromSubmission(existingLead, tracking, sourceUrl, req);
+  const formId = String(lead.formId || 'public-lead-form');
+  const isUnconfirmedPaymentClaim = formId.includes('paid-popup') || (status === DEAL_QUOTED_STATUS && /chuyển khoản|qr/i.test(source));
+  const publicEventName = isUnconfirmedPaymentClaim ? 'InitiateCheckout' : 'Lead';
   const submissionEntry = stripUndefined({
     at: now,
     source,
     sourceUrl,
-    formId: lead.formId || 'public-lead-form',
+    formId,
+    metaEventId,
     pageSlug: lead.pageSlug || '',
     parentName,
     studentName,
@@ -376,6 +425,8 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
     pageSlug: stringOrExisting(lead.pageSlug, existingLead?.pageSlug),
     formId: stringOrExisting(lead.formId, existingLead?.formId, 'public-lead-form'),
     tracking,
+    customerMeta,
+    metaEventId,
     createdAt: existingLead?.createdAt || now,
     updatedAt: now,
     lastPublicSubmittedAt: now,
@@ -396,10 +447,10 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
   const capiResult = await sendLeadCapiSignal({
     db,
     lead: payload,
-    eventName: 'Lead',
-    statusKey: isWonLead ? 'da-dang-ky-hoc' : 'lead-moi',
+    eventName: publicEventName,
+    eventId: metaEventId,
+    statusKey: isUnconfirmedPaymentClaim ? 'unconfirmed-payment-claim' : 'public-form-submit',
     source: 'server',
-    request: req,
     formId: payload.formId,
   }).catch((error) => {
     console.warn('[PublicLead] CAPI Lead event failed:', error);
@@ -443,11 +494,11 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
     mode: existingLead ? 'updated' : 'created',
     assignedTo,
     assignedToName,
-    eventId: capiResult?.eventId || eventId,
+    eventId: capiResult?.eventId || metaEventId,
     capi: {
       triggered: Boolean(capiResult?.sent),
-      eventName: 'Lead',
-      dedupEventId: capiResult?.eventId || eventId,
+      eventName: publicEventName,
+      dedupEventId: capiResult?.eventId || metaEventId,
       logId: capiResult?.logId || '',
       status: capiResult?.status || 'failed',
     },
@@ -456,6 +507,9 @@ async function handlePublicLeadSubmit(req: VercelRequest, res: VercelResponse) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
+    if (isMetaLeadWebhookRequest(req)) {
+      return await metaLeadWebhookHandler(req, res);
+    }
     return await handlePublicLeadSubmit(req, res);
   } catch (error) {
     console.error('[PublicLead] Submit failed:', error);

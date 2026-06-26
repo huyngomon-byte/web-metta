@@ -15,7 +15,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
-import { captureLeadTracking, type PublicLeadTracking } from '@/lib/capiTracking';
+import type { PublicLeadTracking } from '@/lib/capiTracking';
 import { DEAL_QUOTED_STATUS, DEFAULT_DEAL_CURRENCY, LOST_LEAD_STATUS, WON_LEAD_STATUS, leadStatuses, pendingReasonOptions, resolveCourseDealSizeForProgram } from '@/lib/constants';
 import { isReferralSource, normalizeStageHistory, updateStageHistory } from '@/lib/leadAnalytics';
 import { financeDefaultsForLead, revenueAmount, type CourseDealSizeRule } from '@/lib/leadFinance';
@@ -24,6 +24,7 @@ import { appointmentService } from '@/services/appointmentService';
 import { currentUser } from '@/services/authService';
 import { lmsSyncService } from '@/services/lmsSyncService';
 import { notificationService } from '@/services/notificationService';
+import { publicLeadService } from '@/services/publicLeadService';
 import { purgeDemoDataOnServerOnce } from '@/services/demoDataPurgeService';
 import { sourceConfigService, sourcePriority } from '@/services/sourceConfigService';
 import { delay, store } from '@/services/store';
@@ -1408,30 +1409,7 @@ export const leadService = {
   },
 
   publicSubmit: async (lead: PublicLeadSubmitInput, formId = 'consultation-form') => {
-    const parentName = String(lead.parentName || '').replace(/\s+/g, ' ').trim();
-    const studentName = String(lead.studentName || lead.fullName || '').replace(/\s+/g, ' ').trim();
-    if (!parentName || !studentName || !lead.phone) throw new Error('Thiếu họ tên phụ huynh, họ tên bé hoặc số điện thoại.');
-    const response = await fetch('/api/public-lead-submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...lead,
-        fullName: studentName,
-        parentName,
-        studentName,
-        formId,
-        sourceUrl: lead.sourceUrl || window.location.href,
-        pageSlug: lead.pageSlug || window.location.pathname.replace(/^\/+/, ''),
-        tracking: { ...captureLeadTracking(), ...lead.tracking },
-      }),
-    });
-    const payload = await response.json().catch(() => ({})) as { leadId?: string; error?: string };
-    if (!response.ok) throw new Error(payload.error || 'Không gửi được thông tin. Vui lòng thử lại.');
-    return delay({
-      id: payload.leadId || `lead-${Date.now()}`,
-      ...lead,
-      formId,
-    });
+    return delay(await publicLeadService.submit(lead, formId));
   },
 
   assignLeads: async (leadIds: string[], sales: AdminUser, assignedBy: AdminUser) => {

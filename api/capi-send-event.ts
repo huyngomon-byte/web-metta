@@ -1,6 +1,6 @@
 import { ApiError, requireAnyRole, requireApiUser } from './_apiAuth.js';
 import { adminDb } from './_firebaseAdmin.js';
-import { capiEventsForLeadStatus, retryCapiLog, sendLeadCapiSignal, sendManualCapiEvent } from './_metaCapi.js';
+import { capiEventsForLeadStatus, capiRuntimeSummary, retryCapiLog, sendLeadCapiSignal, sendManualCapiEvent } from './_metaCapi.js';
 
 type VercelRequest = {
   method?: string;
@@ -19,18 +19,23 @@ function canSendStatusEvent(user: { id: string; role: string }, lead: Record<str
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'GET' && req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const db = adminDb();
     const user = await requireApiUser(db, req);
+    if (req.method === 'GET') {
+      requireAnyRole(user, ['admin', 'manager', 'ads']);
+      return res.status(200).json(capiRuntimeSummary());
+    }
+
     const action = String(req.body?.action || 'send');
 
     if (action === 'retry') {
       requireAnyRole(user, ['admin', 'manager', 'ads']);
       const logId = String(req.body?.id || req.body?.logId || '');
       if (!logId) return res.status(400).json({ error: 'Missing event log id.' });
-      const result = await retryCapiLog(db, req, logId);
+      const result = await retryCapiLog(db, logId);
       return res.status(200).json(result);
     }
 
@@ -62,7 +67,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           previousStatus,
           nextStatus,
           source: 'server',
-          request: req,
         }));
       }
       return res.status(200).json({ ok: true, results });

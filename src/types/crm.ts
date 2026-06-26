@@ -14,6 +14,19 @@ export interface LeadStageHistoryEntry {
   exitedAt?: string;
 }
 
+export interface LeadCustomerMeta {
+  client_ip_address?: string;
+  client_user_agent?: string;
+  fbp?: string;
+  fbc?: string;
+  event_source_url?: string;
+  first_utm_source?: string;
+  first_utm_medium?: string;
+  first_utm_campaign?: string;
+  first_utm_content?: string;
+  first_utm_term?: string;
+}
+
 export interface LeadSourceConfig {
   id: string;
   name: string;
@@ -91,6 +104,8 @@ export interface Lead {
   createdAt: string;
   updatedAt: string;
   convertedToStudentId?: string;
+  metaEventId?: string;
+  customerMeta?: LeadCustomerMeta;
 }
 
 export interface LeadActivity {

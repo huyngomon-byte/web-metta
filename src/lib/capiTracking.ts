@@ -4,6 +4,7 @@ export type PublicLeadTracking = {
   fbc?: string;
   fbclid?: string;
   utmSource?: string;
+  utmMedium?: string;
   utmCampaign?: string;
   utmContent?: string;
   utmTerm?: string;
@@ -23,16 +24,20 @@ function cookieValue(name: string) {
 export function captureLeadTracking(): PublicLeadTracking {
   if (typeof window === 'undefined') return {};
   const params = new URLSearchParams(window.location.search);
+  const capturedAt = new Date().toISOString();
+  const fbclid = params.get('fbclid') || undefined;
+  const fbc = cookieValue('_fbc') || (fbclid ? `fb.1.${Date.parse(capturedAt)}.${fbclid}` : undefined);
   return {
     sourceUrl: window.location.href,
     fbp: cookieValue('_fbp') || undefined,
-    fbc: cookieValue('_fbc') || undefined,
-    fbclid: params.get('fbclid') || undefined,
+    fbc,
+    fbclid,
     utmSource: params.get('utm_source') || undefined,
+    utmMedium: params.get('utm_medium') || undefined,
     utmCampaign: params.get('utm_campaign') || undefined,
     utmContent: params.get('utm_content') || undefined,
     utmTerm: params.get('utm_term') || undefined,
     userAgent: navigator.userAgent,
-    capturedAt: new Date().toISOString(),
+    capturedAt,
   };
 }

@@ -5,12 +5,15 @@ export type VercelRequestLike = {
   headers: Record<string, string | string[] | undefined>;
 };
 
+export type CapiMode = 'production' | 'test';
+
 export type CapiTracking = {
   sourceUrl?: string;
   fbp?: string;
   fbc?: string;
   fbclid?: string;
   utmSource?: string;
+  utmMedium?: string;
   utmCampaign?: string;
   utmContent?: string;
   utmTerm?: string;
@@ -18,11 +21,26 @@ export type CapiTracking = {
   capturedAt?: string;
 };
 
+export type CustomerMeta = {
+  client_ip_address?: string;
+  client_user_agent?: string;
+  fbp?: string;
+  fbc?: string;
+  event_source_url?: string;
+  first_utm_source?: string;
+  first_utm_medium?: string;
+  first_utm_campaign?: string;
+  first_utm_content?: string;
+  first_utm_term?: string;
+};
+
 export type LeadForCapi = {
   id: string;
   phone?: string;
   email?: string;
   interestedCourse?: string;
+  courseId?: string;
+  paymentId?: string;
   source?: string;
   status?: string;
   dealCurrency?: string;
@@ -32,16 +50,18 @@ export type LeadForCapi = {
   formId?: string;
   pageSlug?: string;
   sourceUrl?: string;
+  metaEventId?: string;
   tracking?: CapiTracking;
+  customerMeta?: CustomerMeta & Record<string, unknown>;
 };
 
 type SendLeadCapiOptions = {
   db: Firestore;
   lead: LeadForCapi;
   eventName: string;
+  eventId?: string;
   statusKey?: string;
   source?: 'server' | 'test' | 'retry';
-  request?: VercelRequestLike;
   previousStatus?: string;
   nextStatus?: string;
   formId?: string;
@@ -63,19 +83,103 @@ type ManualEventInput = {
   custom_data?: Record<string, unknown>;
 };
 
+type RuntimeConfig = ReturnType<typeof runtimeConfig>;
+
 const GRAPH_API_BASE = 'https://graph.facebook.com';
 const DEFAULT_GRAPH_VERSION = 'v25.0';
 const DEFAULT_SOURCE_URL = 'https://www.metta.edu.vn/';
 const DEFAULT_CAPI_TIMEOUT_MS = 8000;
 const SUCCESS_STATUS = 'success';
 
-function firstHeaderValue(value?: string | string[]) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
 function shortMessage(value: unknown) {
   if (typeof value === 'string') return value.slice(0, 800);
   return JSON.stringify(value || {}).slice(0, 800);
+}
+
+function envFlag(env: NodeJS.ProcessEnv, name: string, defaultValue: boolean) {
+  const value = String(env[name] || '').trim().toLowerCase();
+  if (!value) return defaultValue;
+  return value === 'true' || value === '1' || value === 'yes' || value === 'on';
+}
+
+export function resolveCapiMode(env: NodeJS.ProcessEnv = process.env): CapiMode {
+  if (env.VERCEL_ENV === 'production') return 'production';
+  return String(env.META_CAPI_MODE || '').trim().toLowerCase() === 'production' ? 'production' : 'test';
+}
+
+function graphVersion(env: NodeJS.ProcessEnv) {
+  const version = String(env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION).trim();
+  return version.startsWith('v') ? version : `v${version}`;
+}
+
+export function runtimeConfig(env: NodeJS.ProcessEnv = process.env) {
+  const mode = resolveCapiMode(env);
+  const pixelId = String(env.META_PIXEL_ID || '').trim();
+  const browserPixelId = String(env.VITE_META_PIXEL_ID || '').trim();
+  const configuredTestEventCode = String(env.META_TEST_EVENT_CODE || '').trim();
+  return {
+    mode,
+    vercelEnv: String(env.VERCEL_ENV || 'local'),
+    enabled: envFlag(env, 'META_CAPI_ENABLED', true),
+    browserPixelEnabled: envFlag(env, 'META_BROWSER_PIXEL_ENABLED', true)
+      && envFlag(env, 'VITE_META_BROWSER_PIXEL_ENABLED', true)
+      && Boolean(browserPixelId),
+    pixelId,
+    browserPixelId,
+    accessToken: String(env.META_ACCESS_TOKEN || '').trim(),
+    graphVersion: graphVersion(env),
+    configuredTestEventCode,
+    // Production is authoritative: a configured test code is never attached there.
+    testEventCode: mode === 'test' ? configuredTestEventCode : '',
+    timeoutMs: capiTimeoutMs(env),
+    manualEventsEnabled: envFlag(env, 'META_ALLOW_MANUAL_EVENTS', mode === 'test'),
+    eventToggles: {
+      Lead: envFlag(env, 'META_SEND_LEAD', true),
+      QualifiedLead: envFlag(env, 'META_SEND_QUALIFIED_LEAD', true),
+      InitiateCheckout: envFlag(env, 'META_SEND_INITIATE_CHECKOUT', true),
+      Purchase: envFlag(env, 'META_SEND_PURCHASE', true),
+      LeadFailed: envFlag(env, 'META_SEND_LEAD_FAILED', false),
+    },
+  };
+}
+
+function maskSecret(value: string) {
+  if (!value) return '';
+  if (value.length <= 6) return '*'.repeat(value.length);
+  return `${value.slice(0, 3)}${'*'.repeat(Math.min(8, value.length - 6))}${value.slice(-3)}`;
+}
+
+export function capiRuntimeSummary(env: NodeJS.ProcessEnv = process.env) {
+  const config = runtimeConfig(env);
+  return {
+    mode: config.mode,
+    vercelEnv: config.vercelEnv,
+    capiEnabled: config.enabled,
+    browserPixelEnabled: config.browserPixelEnabled,
+    pixelId: config.pixelId,
+    browserPixelId: config.browserPixelId,
+    pixelIdsMatch: Boolean(config.pixelId && config.browserPixelId && config.pixelId === config.browserPixelId),
+    accessTokenConfigured: Boolean(config.accessToken),
+    testEventCodeConfigured: Boolean(config.configuredTestEventCode),
+    testEventCodeActive: Boolean(config.testEventCode),
+    testEventCodeMasked: config.testEventCode ? maskSecret(config.testEventCode) : '',
+    graphVersion: config.graphVersion,
+    timeoutMs: config.timeoutMs,
+    manualEventsEnabled: config.manualEventsEnabled,
+    eventToggles: config.eventToggles,
+    statusMappings: [
+      { status: 'Public form submit', eventName: 'Lead', destination: 'Meta' },
+      { status: 'Đã liên hệ / Đã hẹn tư vấn / Đã tư vấn / Đã test', eventName: 'QualifiedLead', destination: 'Meta (first milestone only)' },
+      { status: 'Đã báo phí/Chờ chốt', eventName: 'InitiateCheckout', destination: 'Meta (first milestone only)' },
+      { status: 'Đã đăng ký học', eventName: 'Purchase', destination: 'Meta (first milestone only)' },
+      { status: 'Mất lead', eventName: 'LeadFailed', destination: config.eventToggles.LeadFailed ? 'Meta' : 'CRM internal only' },
+    ],
+  };
+}
+
+function capiTimeoutMs(env: NodeJS.ProcessEnv = process.env) {
+  const parsed = Number(env.META_CAPI_TIMEOUT_MS || DEFAULT_CAPI_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CAPI_TIMEOUT_MS;
 }
 
 export function sha256(value?: string) {
@@ -109,46 +213,12 @@ export function toStatusKey(value?: string) {
 }
 
 function cleanDocPart(value: string) {
-  return toStatusKey(value).replace(/[^a-z0-9-]/g, '-').slice(0, 80) || 'event';
+  return toStatusKey(value).replace(/[^a-z0-9-]/g, '-').slice(0, 100) || 'event';
 }
 
-function graphVersion() {
-  const version = String(process.env.META_GRAPH_VERSION || DEFAULT_GRAPH_VERSION).trim();
-  return version.startsWith('v') ? version : `v${version}`;
-}
-
-function runtimeConfig() {
-  const pixelId = String(process.env.META_PIXEL_ID || '').trim();
-  const accessToken = String(process.env.META_ACCESS_TOKEN || '').trim();
-  const enabled = process.env.META_CAPI_ENABLED !== 'false';
-  return {
-    enabled,
-    pixelId,
-    accessToken,
-    graphVersion: graphVersion(),
-    testEventCode: String(process.env.META_TEST_EVENT_CODE || '').trim(),
-  };
-}
-
-function capiTimeoutMs() {
-  const parsed = Number(process.env.META_CAPI_TIMEOUT_MS || DEFAULT_CAPI_TIMEOUT_MS);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CAPI_TIMEOUT_MS;
-}
-
-function clientIp(req?: VercelRequestLike) {
-  if (!req) return '';
-  const forwarded = firstHeaderValue(req.headers['x-forwarded-for']);
-  return (forwarded?.split(',')[0] || firstHeaderValue(req.headers['x-real-ip']) || '').trim();
-}
-
-function requestUserAgent(req?: VercelRequestLike) {
-  return firstHeaderValue(req?.headers['user-agent']);
-}
-
-function sourceUrlForLead(lead: LeadForCapi) {
-  return lead.tracking?.sourceUrl
-    || lead.sourceUrl
-    || (lead.pageSlug ? `https://www.metta.edu.vn/${lead.pageSlug}` : DEFAULT_SOURCE_URL);
+export function normalizeMetaEventId(value?: string) {
+  const eventId = String(value || '').trim();
+  return /^[A-Za-z0-9._:-]{8,128}$/.test(eventId) ? eventId : '';
 }
 
 function fbcFromTracking(tracking?: CapiTracking) {
@@ -156,6 +226,37 @@ function fbcFromTracking(tracking?: CapiTracking) {
   if (!tracking?.fbclid) return undefined;
   const capturedMs = tracking.capturedAt ? Date.parse(tracking.capturedAt) : Date.now();
   return `fb.1.${Number.isFinite(capturedMs) ? capturedMs : Date.now()}.${tracking.fbclid}`;
+}
+
+function customerMetaValue(meta: Record<string, unknown>, snakeKey: string, camelKey: string) {
+  return String(meta[snakeKey] || meta[camelKey] || '').trim() || undefined;
+}
+
+function customerMetaForLead(lead: LeadForCapi) {
+  const meta = (lead.customerMeta || {}) as Record<string, unknown>;
+  const tracking = lead.tracking || {};
+  const values = {
+    clientIpAddress: customerMetaValue(meta, 'client_ip_address', 'clientIpAddress'),
+    clientUserAgent: customerMetaValue(meta, 'client_user_agent', 'clientUserAgent') || tracking.userAgent,
+    fbp: customerMetaValue(meta, 'fbp', 'fbp') || tracking.fbp,
+    fbc: customerMetaValue(meta, 'fbc', 'fbc') || fbcFromTracking(tracking),
+    eventSourceUrl: customerMetaValue(meta, 'event_source_url', 'eventSourceUrl') || tracking.sourceUrl || lead.sourceUrl,
+    utmSource: customerMetaValue(meta, 'first_utm_source', 'firstUtmSource') || tracking.utmSource,
+    utmMedium: customerMetaValue(meta, 'first_utm_medium', 'firstUtmMedium') || tracking.utmMedium,
+    utmCampaign: customerMetaValue(meta, 'first_utm_campaign', 'firstUtmCampaign') || tracking.utmCampaign,
+    utmContent: customerMetaValue(meta, 'first_utm_content', 'firstUtmContent') || tracking.utmContent,
+    utmTerm: customerMetaValue(meta, 'first_utm_term', 'firstUtmTerm') || tracking.utmTerm,
+  };
+  return {
+    ...values,
+    usedCustomerMeta: Object.keys(meta).length > 0 && Object.values(values).some(Boolean),
+  };
+}
+
+function sourceUrlForLead(lead: LeadForCapi) {
+  const meta = customerMetaForLead(lead);
+  return meta.eventSourceUrl
+    || (lead.pageSlug ? `https://www.metta.edu.vn/${lead.pageSlug}` : DEFAULT_SOURCE_URL);
 }
 
 function eventValue(lead: LeadForCapi, eventName: string) {
@@ -167,8 +268,16 @@ function eventValue(lead: LeadForCapi, eventName: string) {
   return 0;
 }
 
-function buildEventId(leadId: string, eventName: string, statusKey: string) {
-  return `${leadId}_${cleanDocPart(eventName)}_${cleanDocPart(statusKey)}`;
+function defaultLifecycleEventId(leadId: string, eventName: string) {
+  return `${cleanDocPart(leadId)}_${cleanDocPart(eventName)}_milestone`;
+}
+
+export function ledgerIdentity(leadId: string, eventName: string, eventId: string) {
+  const ledgerKey = `${leadId}:${eventName}:${eventId}`;
+  return {
+    ledgerKey,
+    ledgerId: crypto.createHash('sha256').update(ledgerKey).digest('hex'),
+  };
 }
 
 function payloadPreviewFor(event: Record<string, any>, ledgerId?: string, statusKey?: string) {
@@ -187,51 +296,62 @@ function removeUndefined<T extends Record<string, any>>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== '')) as T;
 }
 
-function buildLeadEventPayload(options: SendLeadCapiOptions, eventId: string) {
-  const { lead, eventName, request } = options;
-  const tracking = lead.tracking || {};
+export function buildLeadEventPayload(options: Omit<SendLeadCapiOptions, 'db'>, eventId: string) {
+  const { lead, eventName } = options;
+  const customerMeta = customerMetaForLead(lead);
   const value = eventValue(lead, eventName);
   const userData = removeUndefined({
     em: sha256(normalizeEmail(lead.email)),
     ph: sha256(normalizeVietnamPhoneForHash(lead.phone)),
-    fbp: tracking.fbp,
-    fbc: fbcFromTracking(tracking),
+    fbp: customerMeta.fbp,
+    fbc: customerMeta.fbc,
     external_id: sha256(lead.id),
-    client_ip_address: clientIp(request),
-    client_user_agent: requestUserAgent(request) || tracking.userAgent,
+    client_ip_address: customerMeta.clientIpAddress,
+    client_user_agent: customerMeta.clientUserAgent,
   });
+  const isPurchase = eventName === 'Purchase';
   const customData = removeUndefined({
     currency: value ? (lead.dealCurrency || 'VND') : undefined,
     value: value || undefined,
     content_name: lead.interestedCourse || undefined,
-    content_category: 'education',
+    content_category: isPurchase ? 'english_course' : 'education',
+    content_ids: lead.courseId ? [lead.courseId] : undefined,
+    order_id: isPurchase ? (lead.paymentId || lead.id) : undefined,
     lead_status: options.nextStatus || lead.status || undefined,
     previous_status: options.previousStatus || undefined,
     lead_source: lead.source || undefined,
-    utm_source: tracking.utmSource,
-    utm_campaign: tracking.utmCampaign,
-    utm_content: tracking.utmContent,
-    utm_term: tracking.utmTerm,
+    utm_source: customerMeta.utmSource,
+    utm_medium: customerMeta.utmMedium,
+    utm_campaign: customerMeta.utmCampaign,
+    utm_content: customerMeta.utmContent,
+    utm_term: customerMeta.utmTerm,
   });
 
   return {
-    event_name: eventName,
-    event_time: Math.floor(Date.now() / 1000),
-    event_id: eventId,
-    action_source: 'website',
-    event_source_url: sourceUrlForLead(lead),
-    user_data: userData,
-    custom_data: customData,
+    event: {
+      event_name: eventName,
+      event_time: Math.floor(Date.now() / 1000),
+      event_id: eventId,
+      action_source: 'website',
+      event_source_url: sourceUrlForLead(lead),
+      user_data: userData,
+      custom_data: customData,
+    },
+    usedCustomerMeta: customerMeta.usedCustomerMeta,
   };
 }
 
-async function postMetaEvent(config: ReturnType<typeof runtimeConfig>, event: Record<string, any>) {
-  const payload = {
+export function buildMetaRequestPayload(config: Pick<RuntimeConfig, 'testEventCode'>, event: Record<string, any>) {
+  return {
     data: [event],
     ...(config.testEventCode ? { test_event_code: config.testEventCode } : {}),
   };
+}
+
+async function postMetaEvent(config: RuntimeConfig, event: Record<string, any>) {
+  const payload = buildMetaRequestPayload(config, event);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), capiTimeoutMs());
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
   try {
     const response = await fetch(`${GRAPH_API_BASE}/${config.graphVersion}/${config.pixelId}/events?access_token=${encodeURIComponent(config.accessToken)}`, {
       method: 'POST',
@@ -252,35 +372,74 @@ async function postMetaEvent(config: ReturnType<typeof runtimeConfig>, event: Re
   }
 }
 
+function eventToggleEnabled(config: RuntimeConfig, eventName: string) {
+  const toggles = config.eventToggles as Record<string, boolean>;
+  return toggles[eventName] ?? true;
+}
+
 async function writeCapiLog(db: Firestore, input: {
+  config: RuntimeConfig;
   event: Record<string, any>;
   status: 'success' | 'failed' | 'pending';
   source: 'server' | 'test' | 'retry';
   responseMessage: string;
+  metaResponse?: unknown;
+  usedCustomerMeta: boolean;
   leadId?: string;
   formId?: string;
   ledgerId?: string;
+  ledgerKey?: string;
   statusKey?: string;
   attempts?: number;
   httpStatus?: number;
 }) {
   const now = new Date().toISOString();
   const logRef = db.collection('capiEvents').doc();
+  const userData = input.event.user_data || {};
+  const attempts = input.attempts || 1;
   await logRef.set({
     id: logRef.id,
     eventName: input.event.event_name,
     eventId: input.event.event_id,
+    event_name: input.event.event_name,
+    event_id: input.event.event_id,
     formId: input.formId || '',
     leadId: input.leadId || '',
+    lead_id: input.leadId || '',
     sourceUrl: input.event.event_source_url || '',
+    event_source_url: input.event.event_source_url || '',
+    actionSource: input.event.action_source || 'website',
+    action_source: input.event.action_source || 'website',
     source: input.source,
+    mode: input.config.mode,
     status: input.status,
     responseMessage: input.responseMessage,
+    metaResponse: input.metaResponse || null,
+    meta_response: input.metaResponse || null,
     payloadPreview: payloadPreviewFor(input.event, input.ledgerId, input.statusKey),
     ledgerId: input.ledgerId || '',
-    attempts: input.attempts || 1,
+    ledgerKey: input.ledgerKey || '',
+    attempts,
+    retryCount: Math.max(0, attempts - 1),
+    retry_count: Math.max(0, attempts - 1),
+    lastRetryAt: input.source === 'retry' ? now : '',
+    last_retry_at: input.source === 'retry' ? now : '',
     httpStatus: input.httpStatus || 0,
+    http_status: input.httpStatus || 0,
+    hasEm: Boolean(userData.em),
+    hasPh: Boolean(userData.ph),
+    hasFbp: Boolean(userData.fbp),
+    hasFbc: Boolean(userData.fbc),
+    hasExternalId: Boolean(userData.external_id),
+    has_em: Boolean(userData.em),
+    has_ph: Boolean(userData.ph),
+    has_fbp: Boolean(userData.fbp),
+    has_fbc: Boolean(userData.fbc),
+    has_external_id: Boolean(userData.external_id),
+    usedCustomerMeta: input.usedCustomerMeta,
+    used_customer_meta: input.usedCustomerMeta,
     createdAt: now,
+    created_at: now,
     updatedAt: now,
   });
   return logRef.id;
@@ -288,9 +447,19 @@ async function writeCapiLog(db: Firestore, input: {
 
 export async function sendLeadCapiSignal(options: SendLeadCapiOptions) {
   const { db, lead, eventName } = options;
+  const config = runtimeConfig();
+  const suppliedEventId = normalizeMetaEventId(options.eventId);
+  const eventId = suppliedEventId || defaultLifecycleEventId(lead.id, eventName);
   const statusKey = options.statusKey || toStatusKey(options.nextStatus || lead.status || eventName);
-  const eventId = buildEventId(lead.id, eventName, statusKey);
-  const ledgerId = buildEventId(lead.id, eventName, statusKey);
+
+  if (!config.enabled) {
+    return { skipped: true, sent: false, status: 'skipped', eventId, message: 'Meta CAPI is disabled.' };
+  }
+  if (!eventToggleEnabled(config, eventName)) {
+    return { skipped: true, sent: false, status: 'skipped', eventId, message: `${eventName} is disabled for Meta.` };
+  }
+
+  const { ledgerId, ledgerKey } = ledgerIdentity(lead.id, eventName, eventId);
   const ledgerRef = db.collection('capiSignalLedger').doc(ledgerId);
   const ledgerSnap = await ledgerRef.get().catch(() => null);
   const ledger = ledgerSnap?.exists ? ledgerSnap.data() || {} : {};
@@ -303,31 +472,34 @@ export async function sendLeadCapiSignal(options: SendLeadCapiOptions) {
       status: SUCCESS_STATUS,
       eventId,
       ledgerId,
-      logId: ledger.logId || '',
-      message: 'Duplicate success event skipped.',
+      logId: ledger.lastLogId || '',
+      message: 'Duplicate successful event instance skipped.',
     };
   }
 
-  const event = buildLeadEventPayload(options, eventId);
-  const config = runtimeConfig();
+  const { event, usedCustomerMeta } = buildLeadEventPayload(options, eventId);
 
-  if (!config.enabled || !config.pixelId || !config.accessToken) {
-    const message = !config.enabled
-      ? 'Meta CAPI disabled by META_CAPI_ENABLED=false; event queued.'
-      : 'Missing META_PIXEL_ID or META_ACCESS_TOKEN; event queued for retry.';
+  if (!config.pixelId || !config.accessToken) {
+    const message = 'Missing META_PIXEL_ID or META_ACCESS_TOKEN; event queued for retry.';
+    const metaResponse = { error: message };
     const logId = await writeCapiLog(db, {
+      config,
       event,
       status: 'pending',
       source: options.source || 'server',
       responseMessage: message,
+      metaResponse,
+      usedCustomerMeta,
       leadId: lead.id,
       formId: options.formId || lead.formId,
       ledgerId,
+      ledgerKey,
       statusKey,
       attempts,
     });
     await ledgerRef.set({
       id: ledgerId,
+      ledgerKey,
       eventName,
       eventId,
       leadId: lead.id,
@@ -345,19 +517,24 @@ export async function sendLeadCapiSignal(options: SendLeadCapiOptions) {
   const meta = await postMetaEvent(config, event);
   const status = meta.ok ? 'success' : 'failed';
   const logId = await writeCapiLog(db, {
+    config,
     event,
     status,
     source: options.source || 'server',
     responseMessage: shortMessage(meta.result),
+    metaResponse: meta.result,
+    usedCustomerMeta,
     leadId: lead.id,
     formId: options.formId || lead.formId,
     ledgerId,
+    ledgerKey,
     statusKey,
     attempts,
     httpStatus: meta.status,
   });
   await ledgerRef.set({
     id: ledgerId,
+    ledgerKey,
     eventName,
     eventId,
     leadId: lead.id,
@@ -377,16 +554,22 @@ export async function sendLeadCapiSignal(options: SendLeadCapiOptions) {
 
 export function capiEventsForLeadStatus(status?: string) {
   const key = toStatusKey(status);
-  if (key === 'mat-lead') return ['LeadFailed'];
-  if (key === 'da-test-hoc-thu') return ['QualifiedLead'];
+  if (['da-lien-he', 'da-hen-tu-van', 'da-tu-van-dat-lich-test', 'da-test-hoc-thu'].includes(key)) return ['QualifiedLead'];
   if (key === 'da-bao-phi-cho-chot') return ['InitiateCheckout'];
   if (key === 'da-dang-ky-hoc') return ['Purchase'];
+  // Lost leads remain in CRM activity/history and are not sent to Meta by default.
+  if (key === 'mat-lead' && runtimeConfig().eventToggles.LeadFailed) return ['LeadFailed'];
   return [];
 }
 
 export async function sendManualCapiEvent(db: Firestore, req: VercelRequestLike, body: ManualEventInput) {
-  const eventId = body.event_id || `metta_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const config = runtimeConfig();
+  if (!config.manualEventsEnabled) {
+    return { ok: true, skipped: true, queued: false, reason: 'Manual CAPI events are disabled in this environment.' };
+  }
+  const eventId = normalizeMetaEventId(body.event_id) || `metta_${crypto.randomUUID()}`;
   const eventName = body.event_name || 'Lead';
+  const tracking: CapiTracking = { fbc: body.fbc, fbclid: body.fbclid };
   const event = {
     event_name: eventName,
     event_time: Math.floor(Date.now() / 1000),
@@ -397,19 +580,20 @@ export async function sendManualCapiEvent(db: Firestore, req: VercelRequestLike,
       em: sha256(normalizeEmail(body.email)),
       ph: sha256(normalizeVietnamPhoneForHash(body.phone)),
       fbp: body.fbp,
-      fbc: body.fbc || fbcFromTracking({ fbclid: body.fbclid }),
-      client_ip_address: clientIp(req),
-      client_user_agent: requestUserAgent(req),
+      fbc: fbcFromTracking(tracking),
     }),
     custom_data: body.custom_data || {},
   };
-  const config = runtimeConfig();
-  if (!config.enabled || !config.pixelId || !config.accessToken) {
+  if (!config.pixelId || !config.accessToken) {
+    const message = 'Missing META_PIXEL_ID or META_ACCESS_TOKEN; test event queued.';
     const logId = await writeCapiLog(db, {
+      config,
       event,
       status: 'pending',
       source: 'test',
-      responseMessage: 'Missing META_PIXEL_ID or META_ACCESS_TOKEN; test event queued.',
+      responseMessage: message,
+      metaResponse: { error: message },
+      usedCustomerMeta: false,
       leadId: body.leadId || body.lead_id,
       formId: body.formId || body.form_id,
     });
@@ -418,10 +602,13 @@ export async function sendManualCapiEvent(db: Firestore, req: VercelRequestLike,
 
   const meta = await postMetaEvent(config, event);
   const logId = await writeCapiLog(db, {
+    config,
     event,
     status: meta.ok ? 'success' : 'failed',
     source: 'test',
     responseMessage: shortMessage(meta.result),
+    metaResponse: meta.result,
+    usedCustomerMeta: false,
     leadId: body.leadId || body.lead_id,
     formId: body.formId || body.form_id,
     httpStatus: meta.status,
@@ -429,34 +616,30 @@ export async function sendManualCapiEvent(db: Firestore, req: VercelRequestLike,
   return { ok: meta.ok, queued: false, eventId, logId, result: meta.result };
 }
 
-export async function retryCapiLog(db: Firestore, req: VercelRequestLike, logId: string) {
+export async function retryCapiLog(db: Firestore, logId: string) {
   const logSnap = await db.collection('capiEvents').doc(logId).get();
   if (!logSnap.exists) throw new Error('Event log not found.');
   const log = logSnap.data() || {};
   if (log.status === SUCCESS_STATUS) {
-    return { skipped: true, status: SUCCESS_STATUS, eventId: log.eventId, logId };
+    return { skipped: true, status: SUCCESS_STATUS, eventId: log.eventId || log.event_id, logId };
   }
 
-  const leadId = String(log.leadId || '');
-  if (!leadId) {
-    return sendManualCapiEvent(db, req, {
-      event_name: String(log.eventName || 'Lead'),
-      event_source_url: String(log.sourceUrl || DEFAULT_SOURCE_URL),
-      formId: String(log.formId || ''),
-      custom_data: log.payloadPreview?.custom_data || {},
-    });
-  }
+  const leadId = String(log.leadId || log.lead_id || '');
+  if (!leadId) throw new Error('Legacy event has no lead metadata and cannot be retried safely.');
 
   const leadSnap = await db.collection('leads').doc(leadId).get();
   if (!leadSnap.exists) throw new Error('Lead not found for retry.');
   const lead = { id: leadSnap.id, ...leadSnap.data() } as LeadForCapi;
+  const eventName = String(log.eventName || log.event_name || 'Lead');
+  const eventId = normalizeMetaEventId(log.eventId || log.event_id);
+  if (!eventId) throw new Error('Event has no reusable event_id and cannot be retried safely.');
   return sendLeadCapiSignal({
     db,
     lead,
-    eventName: String(log.eventName || 'Lead'),
-    statusKey: String(log.payloadPreview?.status_key || toStatusKey(lead.status || log.eventName)),
+    eventName,
+    eventId,
+    statusKey: String(log.payloadPreview?.status_key || toStatusKey(lead.status || eventName)),
     source: 'retry',
-    request: req,
     formId: String(log.formId || lead.formId || ''),
   });
 }
